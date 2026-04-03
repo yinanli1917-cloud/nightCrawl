@@ -1,0 +1,17 @@
+node_modules/
+.DS_Store
+subtitles/
+*.zip
+*.rar
+
+# Claude Code
+.claude/settings.local.json
+.claude/worktrees/
+
+# Cookies and session data
+*-cookies.json
+*.session
+
+# OS
+.DS_Store
+Thumbs.db
