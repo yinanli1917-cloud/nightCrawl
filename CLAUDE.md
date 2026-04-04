@@ -1,4 +1,4 @@
-# nightCrawl 幽览
+# nightCrawl
 
 Autonomous stealth browser agent. Crawls the hostile web on its own, hands off to you when it needs a human touch.
 
@@ -27,20 +27,23 @@ No existing tool combines: **local stateful CLI + anti-bot stealth + cookie impo
 
 | Path | Purpose |
 |------|---------|
-| `stealth/` | Anti-bot stealth layer (patches, extensions, fingerprinting) |
-| `stealth/patches/` | CDP, UA, and fingerprint patches — owned code |
-| `stealth/extensions/` | Browser extensions (bypass-paywalls, etc.) |
-| `research/` | Competitive landscape, gstack study, anti-bot research |
+| `stealth/` | Anti-bot stealth layer — the actual working code |
+| `stealth/browser/` | Complete working browser engine (full source + tests) |
+| `stealth/patches/cdp/` | CDP Runtime.Enable bypass (6 Playwright files, ported from rebrowser-patches) |
+| `stealth/extensions/` | Chrome extensions (bypass-paywalls, nightCrawl extension) |
+| `research/` | Competitive landscape, anti-bot research |
 | `docs/` | Architecture docs, origin handoff |
 | `subtitles/` | Proof-of-concept artifacts (gitignored) |
 
 ## Stealth Architecture
 
-### Current (migrated from gstack patches)
-1. **UA fix** — removes `HeadlessChrome` from user agent, sets real viewport
-2. **CDP Runtime.Enable fix** — disables the primary bot detection vector (6 files, ported from rebrowser-patches)
-3. **bypass-paywalls-chrome** extension
-4. **Cookie persistence** + import from Arc/Chrome
+### Current
+1. **UA fix** — consistent User-Agent across JS + HTTP levels, removes HeadlessChrome, sets real viewport
+2. **CDP Runtime.Enable fix** — auto-applied at startup from `stealth/patches/cdp/` (6 files, ported from rebrowser-patches)
+3. **Extension management** — `BROWSE_EXTENSIONS=none|paywall|all` controls extension loading per mode
+4. **Auto-handover** — detects login walls and auto-switches to headed mode (`BROWSE_AUTO_HANDOVER=1`)
+5. **bypass-paywalls-chrome** extension
+6. **Cookie persistence** + import from Arc/Chrome
 
 ### Roadmap
 - C++ fingerprint spoofing (canvas, WebGL, audio context, fonts) — from Camoufox research
@@ -60,7 +63,10 @@ No existing tool combines: **local stateful CLI + anti-bot stealth + cookie impo
 ## Conventions
 
 - Bun runtime: `export PATH="$HOME/.bun/bin:$PATH"`
+- State directory: `.nightcrawl/` (per-project), `~/.nightcrawl/` (global cookies)
 - All anti-bot patches must pass: bot-detector.rebrowser.net, bot.sannysoft.com, creepjs
+- `BROWSE_EXTENSIONS=none|paywall|all` — control extension loading (default: `all`)
+- `BROWSE_AUTO_HANDOVER=1` — auto-detect login walls and switch to headed mode
 
 ## Key References
 

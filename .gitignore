@@ -1,17 +1,32 @@
 node_modules/
-.DS_Store
 subtitles/
 *.zip
 *.rar
+
+# Built binaries (large Bun-compiled executables)
+stealth/browser/dist/browse
+stealth/browser/dist/browse.bak
+stealth/browser/dist/find-browse
 
 # Claude Code
 .claude/settings.local.json
 .claude/worktrees/
 
-# Cookies and session data
+# Cookies and session data — NEVER commit
 *-cookies.json
 *.session
+browse-cookies.json
+
+# Scraped output data
+output/
+
+# Third-party extensions (install separately, see README)
+stealth/extensions/bypass-paywalls-chrome/
 
 # OS
 .DS_Store
 Thumbs.db
+
+# nightcrawl local state
+.nightcrawl/
+.gstack/

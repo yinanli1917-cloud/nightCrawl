@@ -1,0 +1,9 @@
+{
+  "name": "nightcrawl-browser",
+  "private": true,
+  "dependencies": {
+    "diff": "^8.0.4",
+    "playwright": "1.58.2",
+    "playwright-core": "1.58.2"
+  }
+}
