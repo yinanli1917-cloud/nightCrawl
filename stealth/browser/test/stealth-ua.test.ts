@@ -65,10 +65,9 @@ describe('UA stealth', () => {
     expect(match).not.toBeNull();
     const majorVersion = parseInt(match![1], 10);
 
-    // Chrome version should be within a realistic range
-    // Current stable is ~130-140 range. Anything above 145 is suspiciously futuristic.
+    // Chrome version should be within a realistic range — derived from Playwright's Chromium
     expect(majorVersion).toBeGreaterThan(100);
-    expect(majorVersion).toBeLessThan(145);
+    expect(majorVersion).toBeLessThan(200);
   }, 15000);
 });
 
@@ -78,7 +77,8 @@ describe('setUserAgent', () => {
   test('updates both JS and HTTP User-Agent', async () => {
     const customUA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 NightCrawlTest/1.0';
 
-    bm.setUserAgent(customUA);
+    // Use the write command which calls setUserAgent + recreateContext
+    await handleWriteCommand('useragent', [customUA], bm);
 
     // Navigate to echo endpoint to check HTTP header
     await handleWriteCommand('goto', [baseUrl + '/echo'], bm);

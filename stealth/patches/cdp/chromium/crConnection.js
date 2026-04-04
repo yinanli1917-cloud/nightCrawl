@@ -157,11 +157,12 @@ class CRSession extends import_instrumentation.SdkObject {
   async __re__emitExecutionContext({
     world,
     targetId,
-    frame = null
+    frame = null,
+    utilityWorldName: passedUtilityWorldName = null
   }) {
     const fixMode = process.env["REBROWSER_PATCHES_RUNTIME_FIX_MODE"] || "addBinding";
-    const utilityWorldName = process.env["REBROWSER_PATCHES_UTILITY_WORLD_NAME"] !== "0" ? process.env["REBROWSER_PATCHES_UTILITY_WORLD_NAME"] || "util" : "__playwright_utility_world__";
-    process.env["REBROWSER_PATCHES_DEBUG"] && console.log(`[rebrowser-patches][crSession] targetId = ${targetId}, world = ${world}, frame = ${frame ? "Y" : "N"}, fixMode = ${fixMode}`);
+    const utilityWorldName = passedUtilityWorldName || (process.env["REBROWSER_PATCHES_UTILITY_WORLD_NAME"] !== "0" ? process.env["REBROWSER_PATCHES_UTILITY_WORLD_NAME"] || "__playwright_utility_world__" : "__playwright_utility_world__");
+    process.env["REBROWSER_PATCHES_DEBUG"] && console.log(`[rebrowser-patches][crSession] targetId = ${targetId}, world = ${world}, frame = ${frame ? "Y" : "N"}, fixMode = ${fixMode}, utilityWorldName = ${utilityWorldName}`);
     let getWorldPromise;
     if (fixMode === "addBinding") {
       if (world === "utility") {
@@ -172,7 +173,7 @@ class CRSession extends import_instrumentation.SdkObject {
         }).then((contextId) => {
           return {
             id: contextId,
-            name: "__playwright_utility_world__",
+            name: utilityWorldName,
             auxData: {
               frameId: targetId,
               isDefault: false

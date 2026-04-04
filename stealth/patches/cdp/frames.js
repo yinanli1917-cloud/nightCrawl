@@ -411,8 +411,11 @@ class Frame extends import_instrumentation.SdkObject {
       this._startNetworkIdleTimer();
     this._page.mainFrame()._recalculateNetworkIdle(this);
     this._onLifecycleEvent("commit");
-    const crSession = (this._page._delegate._sessions.get(this._id) || this._page._delegate._mainFrameSession)._client;
-    crSession.emit("Runtime.executionContextsCleared");
+    const delegate = this._page.delegate;
+    if (delegate?._sessions) {
+      const crSession = (delegate._sessions.get(this._id) || delegate._mainFrameSession)?._client;
+      if (crSession) crSession.emit("Runtime.executionContextsCleared");
+    }
   }
   setPendingDocument(documentInfo) {
     this._pendingDocument = documentInfo;
@@ -588,11 +591,19 @@ class Frame extends import_instrumentation.SdkObject {
         throw new Error(contextOrDestroyedReason.destroyedReason);
       });
     }
-    const crSession = (this._page._delegate._sessions.get(this._id) || this._page._delegate._mainFrameSession)._client;
+    const delegate = this._page.delegate;
+    if (!delegate?._sessions) {
+      return this._contextData.get(world).contextPromise.then((contextOrDestroyedReason) => {
+        if (contextOrDestroyedReason instanceof js.ExecutionContext) return contextOrDestroyedReason;
+        throw new Error(contextOrDestroyedReason.destroyedReason);
+      });
+    }
+    const crSession = (delegate._sessions.get(this._id) || delegate._mainFrameSession)._client;
     return crSession.__re__emitExecutionContext({
       world,
       targetId: this._id,
-      frame: this
+      frame: this,
+      utilityWorldName: delegate.utilityWorldName
     }).then(() => {
       return this._context(world, true);
     }).catch((error) => {
@@ -604,6 +615,10 @@ class Frame extends import_instrumentation.SdkObject {
       const import_debugLogger = require("../../utils/debugLogger");
       import_debugLogger.debugLogger.log("error", error);
       console.error("[rebrowser-patches][frames._context] cannot get world, error:", error);
+      return this._contextData.get(world).contextPromise.then((contextOrDestroyedReason) => {
+        if (contextOrDestroyedReason instanceof js.ExecutionContext) return contextOrDestroyedReason;
+        throw new Error(contextOrDestroyedReason.destroyedReason);
+      });
     });
   }
   _mainContext() {
