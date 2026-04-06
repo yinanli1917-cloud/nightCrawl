@@ -41,7 +41,7 @@ No existing tool combines: **local stateful CLI + anti-bot stealth + cookie impo
 1. **UA fix** — consistent User-Agent across JS + HTTP levels, removes HeadlessChrome, sets real viewport
 2. **CDP Runtime.Enable fix** — auto-applied at startup from `stealth/patches/cdp/` (6 files, ported from rebrowser-patches)
 3. **Extension management** — `BROWSE_EXTENSIONS=none|paywall|all` controls extension loading per mode
-4. **Auto-handover** — detects login walls and auto-switches to headed mode (`BROWSE_AUTO_HANDOVER=1`)
+4. **Auto-handover** — detects login walls, opens headed Chrome, user logs in, auto-resumes headless (on by default, opt-out with `BROWSE_AUTO_HANDOVER=0`)
 5. **bypass-paywalls-chrome** extension
 6. **Cookie persistence** + import from Arc/Chrome
 
@@ -66,7 +66,8 @@ No existing tool combines: **local stateful CLI + anti-bot stealth + cookie impo
 - State directory: `.nightcrawl/` (per-project), `~/.nightcrawl/` (global cookies)
 - All anti-bot patches must pass: bot-detector.rebrowser.net, bot.sannysoft.com, creepjs
 - `BROWSE_EXTENSIONS=none|paywall|all` — control extension loading (default: `all`)
-- `BROWSE_AUTO_HANDOVER=1` — auto-detect login walls and switch to headed mode
+- Auto-handover on by default — login walls auto-open headed Chrome (opt-out: `BROWSE_AUTO_HANDOVER=0`)
+- Cookies auto-persisted after handoff/resume + every 5 min + on shutdown
 
 ## Key References
 

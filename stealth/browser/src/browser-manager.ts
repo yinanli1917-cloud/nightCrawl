@@ -1048,11 +1048,11 @@ export class BrowserManager {
   /**
    * Detect login walls, captchas, and auth barriers.
    * Returns detection result or null if no login wall found.
-   * Called after navigation commands when BROWSE_AUTO_HANDOVER=1.
+   * Called after navigation commands. On by default (opt-out with BROWSE_AUTO_HANDOVER=0).
    */
   async detectLoginWall(): Promise<{ detected: boolean; reason: string } | null> {
     if (this.isHeaded) return null;
-    if (process.env.BROWSE_AUTO_HANDOVER !== '1') return null;
+    if (process.env.BROWSE_AUTO_HANDOVER === '0') return null;
 
     const page = this.getPage();
     if (!page) return null;

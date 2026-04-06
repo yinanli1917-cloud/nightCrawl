@@ -20,43 +20,31 @@ shares their login sessions. Stealth patches mean sites can't tell it apart from
 browser. First call auto-starts the server (~3s), then commands are fast (~100-200ms).
 Auto-shuts down after 30 min idle.
 
-## Setup
-
-Run this check before any nightcrawl command:
+## Setup (run once per session)
 
 ```bash
 export PATH="$HOME/.bun/bin:$PATH"
-NC_DIR="/Users/yinanli/Documents/nightCrawl/stealth/browser"
-if [ -f "$NC_DIR/src/cli.ts" ]; then
-  echo "READY"
-else
-  echo "NOT_FOUND: $NC_DIR"
-fi
+NC="/Users/yinanli/Documents/nightCrawl/stealth/browser"
+export BROWSE_EXTENSIONS=none BROWSE_EXTENSIONS_DIR= BROWSE_IGNORE_HTTPS_ERRORS=1
+alias nc="bun run $NC/src/cli.ts"
+nc status
 ```
 
-If bun is not installed:
+If bun is not installed: `curl -fsSL https://bun.sh/install | bash`
+
+After setup, all commands are just `nc <command>`:
 ```bash
-curl -fsSL https://bun.sh/install | bash
-export PATH="$HOME/.bun/bin:$PATH"
+nc goto https://example.com
+nc text
+nc screenshot /tmp/page.png
 ```
 
-Then all commands follow this pattern:
-```bash
-bun run $NC_DIR/src/cli.ts <command> [args...]
-```
-
-## Environment Variables
-
-Set these before commands when needed:
-
-```bash
-export BROWSE_EXTENSIONS=none           # default for nightcrawl (stealth)
-export BROWSE_EXTENSIONS_DIR=           # clear any gstack extension path
-export BROWSE_IGNORE_HTTPS_ERRORS=1     # for sites with bad SSL certs (Chinese VPNs, CDNs)
-```
-
-The stealth layer (CDP patches, UA spoofing, webdriver bypass) activates automatically
-on every launch. No configuration needed.
+Everything is automatic:
+- **Stealth** (CDP patches, UA, webdriver bypass) — activates on launch
+- **Cookie persistence** — saved every 5 min + on shutdown + after handoff/resume
+- **Auto-handover** — detects login walls, opens headed Chrome for you to log in,
+  auto-resumes headless when done. No manual `handoff`/`resume` commands needed.
+- **HTTPS errors** — ignored for sites with bad certs (VPN proxies, CDNs)
 
 ## How to Browse
 
