@@ -174,6 +174,7 @@ export class BrowserManager {
     const contextOptions: BrowserContextOptions = {
       viewport: { width: 1920, height: 1080 },
       userAgent: ua,
+      ignoreHTTPSErrors: process.env.BROWSE_IGNORE_HTTPS_ERRORS === '1',
     };
 
     if (extensionsDir) {
