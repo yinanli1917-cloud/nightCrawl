@@ -12,6 +12,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { resolveConfig, ensureStateDir, readVersionHash } from './config';
+import { findInstalledBrowsers } from './cookie-import-browser';
 
 const config = resolveConfig();
 const IS_WINDOWS = process.platform === 'win32';
@@ -436,6 +437,38 @@ async function sendCommand(state: ServerState, command: string, args: string[], 
   }
 }
 
+// ─── First-Run Onboarding ─────────────────────────────────────
+function showWelcome(): void {
+  const globalDir = path.join(process.env.HOME || '/tmp', '.nightcrawl');
+  const welcomeFlag = path.join(globalDir, '.welcomed');
+  if (fs.existsSync(welcomeFlag)) return;
+
+  // Mark as shown first — even if the message fails, don't nag
+  try {
+    fs.mkdirSync(globalDir, { recursive: true });
+    fs.writeFileSync(welcomeFlag, new Date().toISOString());
+  } catch {}
+
+  const browsers = findInstalledBrowsers();
+  const names = browsers.map(b => b.name);
+
+  console.error('');
+  console.error('  Welcome to nightCrawl.');
+  console.error('');
+  console.error('  Tip: Import cookies from your browser so nightCrawl can access');
+  console.error('  sites you\'re already logged into:');
+  console.error('');
+  if (names.length > 0) {
+    console.error(`    Detected: ${names.join(', ')}`);
+    console.error('');
+    console.error(`    browse cookie-import-browser ${names[0].toLowerCase()} --domain <site>`);
+    console.error('    browse cookie-import-browser    (interactive picker)');
+  } else {
+    console.error('    browse cookie-import-browser    (interactive picker)');
+  }
+  console.error('');
+}
+
 // ─── Main ──────────────────────────────────────────────────────
 async function main() {
   const args = process.argv.slice(2);
@@ -667,6 +700,7 @@ Refs:           After 'snapshot', use @e1, @e2... as selectors:
   }
 
   const state = await ensureServer();
+  showWelcome();
   await sendCommand(state, command, commandArgs);
 }
 

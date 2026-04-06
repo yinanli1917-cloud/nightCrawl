@@ -694,6 +694,10 @@ async function handleCommand(body: any): Promise<Response> {
       result = await handleWriteCommand(command, args, browserManager);
     } else if (META_COMMANDS.has(command)) {
       result = await handleMetaCommand(command, args, browserManager, shutdown);
+      // After handoff/resume, persist cookies immediately so login sessions survive
+      if (command === 'resume' || command === 'handoff') {
+        persistStorage().catch(() => {});
+      }
       // Start periodic snapshot interval when watch mode begins
       if (command === 'watch' && args[0] !== 'stop' && browserManager.isWatching()) {
         const watchInterval = setInterval(async () => {
