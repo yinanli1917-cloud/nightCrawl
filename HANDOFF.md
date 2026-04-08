@@ -37,13 +37,15 @@ Safe to test without accounts:
 ## Real-World Verification Test Suite
 
 ### Tier 1: Bot Detection Sites (SAFE — no account needed, test after every change)
-| Site | What it checks | Must pass |
-|------|---------------|-----------|
-| `bot.sannysoft.com` | WebDriver, Chrome object, Plugins, Languages, Permissions | All green |
-| `bot-detector.rebrowser.net` | CDP Runtime.Enable leak, automation markers | Green |
-| `browserleaks.com/javascript` | navigator properties, screen, canvas hash | No "headless" markers |
-| `creepjs.com` | 50+ fingerprint metrics, trust score | Score > 70% |
-| `iphey.com` | Browser consistency checks | "Not a bot" |
+| Site | What it checks | Must pass | Priority |
+|------|---------------|-----------|----------|
+| `bot-detector.rebrowser.net` | CDP Runtime.Enable leak, Playwright-specific traces | Green | **#1 — tests exactly what our patches fix** |
+| `bot.incolumitas.com` | 30+ classifiers: fingerprint + behavioral + network + proxy/VPN | Score > 0.7 | **#2 — best overall bot test** |
+| `abrahamjuliot.github.io/creepjs` | 50+ fingerprint metrics, cross-metric contradiction detection | Trust score > 70% | **#3 — detects spoofed values** |
+| `demo.fingerprint.com/web-scraping` | Commercial FingerprintJS (what real sites actually use) | Not flagged | **#4 — real-world detection** |
+| `pixelscan.net` | Browser fingerprint consistency, OS/browser mismatch | Consistent | #5 |
+| `bot.sannysoft.com` | WebDriver, Chrome object, Plugins, Languages | All green | #6 — outdated (2019-era), minimum bar only |
+| `browserleaks.com` | WebRTC, Canvas, WebGL, fonts, screen | No headless markers | #7 — manual inspection |
 
 ### Tier 2: Anti-Bot Protected Sites (SAFE — public pages, no login)
 | Site | Anti-bot system | What to test |
@@ -159,32 +161,35 @@ This is the gate to Chinese internet. Without C++ level fingerprint spoofing, Ti
 
 ---
 
-## Anti-Bot Threat Landscape (2026)
+## Anti-Bot Threat Landscape (2026) — from web research
+
+### Critical insight: TLS fingerprinting is the #1 blocker
+Playwright's bundled Chromium has a JA3 hash matching NO real Chrome release. Akamai's sensor.js reads your TLS ClientHello BEFORE any HTTP traffic. Detection happens before JavaScript runs. JS-level patches CANNOT fix this. Only C++ binary patches (CloakBrowser) can.
 
 ### Detection difficulty ranking
 | Tier | System | Key signals | nightCrawl status |
 |------|--------|------------|-------------------|
-| 1 | Basic WAF | IP, headers, rate | PASS (cookie import = real session) |
-| 2 | Cloudflare standard | JS challenge, TLS | PASS (CDP patches + real Chrome TLS) |
-| 3 | Cloudflare Turnstile | Proof-of-work + fingerprint | PARTIAL (passes basic, fails advanced) |
-| 4 | Akamai | sensor.js reads TLS ClientHello BEFORE HTTP, behavioral ML | FAIL (need CloakBrowser) |
-| 5 | DataDome | Real-time AI scoring, hardware consistency | FAIL (need CloakBrowser + behavioral) |
-| 5 | XHS/Douyin | Device fingerprint + canvas + WebGL + audio + behavioral + account scoring | FAIL (need CloakBrowser + behavioral + test account) |
+| 1 | Basic WAF | IP, headers, rate | **PASS** (cookie import = real session) |
+| 2 | Cloudflare standard | JS challenge | **PASS** (CDP patches) |
+| 3 | Cloudflare Turnstile v2 | CDP detection (Chrome bug since Feb 2025) + TLS + fingerprint + crypto | **PARTIAL** (CDP patches help, but multi-layer) |
+| 3 | Bilibili, Zhihu | Standard fingerprint + rate limiting | **LIKELY PASS** (CDP patches + cookies) |
+| 4 | DataDome | 35+ signals, 85,000 customer-specific ML models, behavioral | **FAIL** (need CloakBrowser + behavioral) |
+| 4 | PerimeterX/HUMAN | px.js deep fingerprinting + behavioral biometrics, quarterly updates | **FAIL** (need CloakBrowser) |
+| 5 | Akamai | sensor.js: TLS ClientHello BEFORE HTTP, behavioral ML, session flow | **FAIL** (TLS mismatch = instant block) |
+| 5 | XHS | x-s/x-s-common/x-t proprietary signatures + device fingerprint + behavioral + active AI account crackdown (March 2026) | **FAIL** (need CloakBrowser + reverse-engineering + test account) |
+| 5 | Douyin | X-Bogus/A-Bogus proprietary tokens + TLS + device binding | **FAIL** (need CloakBrowser + signature reverse-engineering) |
 
-### What Akamai's sensor.js detects (2026)
-- TLS ClientHello: cipher suites, extensions, elliptic curves — identifies your HTTP library before any content
-- Session flow: cookie rotation, navigation patterns, timing between requests
-- Behavioral: mouse events, keyboard events, scroll patterns, idle time
-- This happens BEFORE the page even loads
+### What makes Chinese platforms especially dangerous
+- **Proprietary signature systems**: XHS uses x-s/x-t tokens, Douyin uses X-Bogus/A-Bogus. These are NOT standard anti-bot — they require reverse-engineering platform-specific token generation. Generic stealth patches are irrelevant.
+- **Device binding**: XHS ties fingerprint to account. Get flagged once = flagged forever on that device fingerprint.
+- **Active crackdown**: XHS specifically targeting AI-managed accounts as of March 2026 (TechNode report).
+- **IP flagging**: Even loading public XHS pages without login may flag IP for later account detection.
+- **puppeteer-extra-stealth declared "fundamentally unsustainable"** against DataDome/Akamai/Chinese platforms — detection uses TLS + behavioral, not just automation flags.
 
-### What Xiaohongshu detects (2026)
-- Canvas fingerprint (pixel-level rendering differences)
-- WebGL fingerprint (GPU vendor/renderer strings)
-- AudioContext fingerprint (audio processing output)
-- navigator.plugins enumeration (Playwright shows different plugins)
-- Behavioral patterns (scroll speed, click precision, dwell time)
-- Device binding (ties fingerprint to account — flag one = flag all)
-- **WARNING**: Even loading public XHS pages without login may flag your IP for later account detection
+### The path forward
+1. **Wave 2** (CDP patches + Playwright upgrade) → pass Tier 1-2 reliably
+2. **Wave 4** (CloakBrowser) → pass Tier 3-4, attempt Tier 5 with test accounts
+3. **Wave 5** (behavioral humanization) → sustain access on Tier 5 without account flags
 
 ---
 
