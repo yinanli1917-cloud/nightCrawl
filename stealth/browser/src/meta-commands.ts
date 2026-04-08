@@ -478,12 +478,12 @@ export async function handleMetaCommand(
 
       if (action === 'save') {
         const state = await bm.saveState();
-        // V1: cookies + URLs only (not localStorage — breaks on load-before-navigate)
+        // V2: cookies + URLs + localStorage/sessionStorage
         const saveData = {
-          version: 1,
+          version: 2,
           savedAt: new Date().toISOString(),
           cookies: state.cookies,
-          pages: state.pages.map(p => ({ url: p.url, isActive: p.isActive })),
+          pages: state.pages.map(p => ({ url: p.url, isActive: p.isActive, storage: p.storage })),
         };
         fs.writeFileSync(statePath, JSON.stringify(saveData, null, 2), { mode: 0o600 });
         return `State saved: ${statePath} (${state.cookies.length} cookies, ${state.pages.length} pages)\n⚠️  Cookies stored in plaintext. Delete when no longer needed.`;
@@ -508,7 +508,8 @@ export async function handleMetaCommand(
         await bm.closeAllPages();
         await bm.restoreState({
           cookies: data.cookies,
-          pages: data.pages.map((p: any) => ({ ...p, storage: null })),
+          // V2 files have storage; V1 files don't — default to null for backward compat
+          pages: data.pages.map((p: any) => ({ ...p, storage: p.storage ?? null })),
         });
         return `State loaded: ${data.cookies.length} cookies, ${data.pages.length} pages`;
       }
