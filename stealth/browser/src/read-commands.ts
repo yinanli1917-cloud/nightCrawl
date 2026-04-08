@@ -11,6 +11,7 @@ import type { Page, Frame } from 'playwright';
 import * as fs from 'fs';
 import * as path from 'path';
 import { TEMP_DIR, isPathWithin } from './platform';
+import { stripHiddenElements } from './content-security';
 
 /** Detect await keyword, ignoring comments. Accepted risk: await in string literals triggers wrapping (harmless). */
 function hasAwait(code: string): boolean {
@@ -69,21 +70,17 @@ export function validateReadPath(filePath: string): void {
 }
 
 /**
- * Extract clean text from a page (strips script/style/noscript/svg).
+ * Extract clean text from a page with content security stripping.
+ * Strips script/style/noscript/svg AND CSS-hidden prompt injection elements.
  * Exported for DRY reuse in meta-commands (diff).
  */
 export async function getCleanText(page: Page | Frame): Promise<string> {
-  return await page.evaluate(() => {
-    const body = document.body;
-    if (!body) return '';
-    const clone = body.cloneNode(true) as HTMLElement;
-    clone.querySelectorAll('script, style, noscript, svg').forEach(el => el.remove());
-    return clone.innerText
-      .split('\n')
-      .map(line => line.trim())
-      .filter(line => line.length > 0)
-      .join('\n');
-  });
+  const result = await stripHiddenElements(page);
+  // Log warnings to stderr for observability (but don't block output)
+  if (result.warnings.length > 0) {
+    console.error(`[content-security] Stripped ${result.warnings.length} hidden element(s)`);
+  }
+  return result.strippedText;
 }
 
 export async function handleReadCommand(

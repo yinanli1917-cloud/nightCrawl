@@ -22,6 +22,7 @@ export const WRITE_COMMANDS = new Set([
   'click', 'fill', 'select', 'hover', 'type', 'press', 'scroll', 'wait',
   'viewport', 'cookie', 'cookie-import', 'cookie-import-browser', 'header', 'useragent',
   'upload', 'dialog-accept', 'dialog-dismiss',
+  'cleanup',
 ]);
 
 export const META_COMMANDS = new Set([
@@ -43,15 +44,18 @@ export const ALL_COMMANDS = new Set([...READ_COMMANDS, ...WRITE_COMMANDS, ...MET
 /** Commands that return untrusted third-party page content */
 export const PAGE_CONTENT_COMMANDS = new Set([
   'text', 'html', 'links', 'forms', 'accessibility',
-  'console', 'dialog',
+  'console', 'dialog', 'attrs',
 ]);
 
 /** Wrap output from untrusted-content commands with trust boundary markers */
 export function wrapUntrustedContent(result: string, url: string): string {
   // Sanitize URL: remove newlines to prevent marker injection via history.pushState
   const safeUrl = url.replace(/[\n\r]/g, '').slice(0, 200);
-  // Escape marker strings in content to prevent boundary escape attacks
-  const safeResult = result.replace(/--- (BEGIN|END) UNTRUSTED EXTERNAL CONTENT/g, '--- $1 UNTRUSTED EXTERNAL C\u200BONTENT');
+  // Escape ALL known boundary-forging techniques in content
+  const zwsp = '\u200B';
+  const safeResult = result
+    .replace(/--- (BEGIN|END) UNTRUSTED EXTERNAL CONTENT/g, '--- $1 UNTRUSTED EXTERNAL C' + zwsp + 'ONTENT')
+    .replace(/════════ (BEGIN|END) UNTRUSTED WEB CONTENT/g, '════════ $1 UNTRUSTED WEB C' + zwsp + 'ONTENT');
   return `--- BEGIN UNTRUSTED EXTERNAL CONTENT (source: ${safeUrl}) ---\n${safeResult}\n--- END UNTRUSTED EXTERNAL CONTENT ---`;
 }
 
@@ -98,6 +102,7 @@ export const COMMAND_DESCRIPTIONS: Record<string, { category: string; descriptio
   'useragent': { category: 'Interaction', description: 'Set user agent', usage: 'useragent <string>' },
   'dialog-accept': { category: 'Interaction', description: 'Auto-accept next alert/confirm/prompt. Optional text is sent as the prompt response', usage: 'dialog-accept [text]' },
   'dialog-dismiss': { category: 'Interaction', description: 'Auto-dismiss next dialog' },
+  'cleanup': { category: 'Interaction', description: 'Remove ads, cookie banners, paywalls, overlays, and other page noise to save tokens', usage: 'cleanup' },
   // Visual
   'screenshot': { category: 'Visual', description: 'Save screenshot (supports element crop via CSS/@ref, --clip region, --viewport)', usage: 'screenshot [--viewport] [--clip x,y,w,h] [selector|@ref] [path]' },
   'pdf':     { category: 'Visual', description: 'Save as PDF', usage: 'pdf [path]' },

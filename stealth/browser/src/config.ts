@@ -17,6 +17,7 @@ export interface BrowseConfig {
   projectDir: string;
   stateDir: string;
   stateFile: string;
+  socketPath: string;
   storageFile: string;
   consoleLog: string;
   networkLog: string;
@@ -64,10 +65,17 @@ export function resolveConfig(
     stateFile = path.join(stateDir, 'browse.json');
   }
 
+  // Socket path must be short — macOS sun_path limit is 104 bytes.
+  // Use /tmp/ with a hash of the stateDir to keep it well under the limit.
+  const { createHash } = require('crypto');
+  const dirHash = createHash('md5').update(stateDir).digest('hex').slice(0, 8);
+  const socketPath = `/tmp/nightcrawl-${dirHash}.sock`;
+
   return {
     projectDir,
     stateDir,
     stateFile,
+    socketPath,
     storageFile: path.join(process.env.HOME || '/tmp', '.nightcrawl', 'browse-cookies.json'),
     consoleLog: path.join(stateDir, 'browse-console.log'),
     networkLog: path.join(stateDir, 'browse-network.log'),

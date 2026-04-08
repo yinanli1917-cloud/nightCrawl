@@ -16,7 +16,6 @@
  */
 
 import type { Browser, BrowserContext, BrowserContextOptions, Page, Locator, Cookie } from 'playwright';
-import { DEFAULT_USER_AGENT, findChromiumExecutable, applyStealthPatches, applyStealthScripts } from './stealth';
 
 // Lazy import: playwright must NOT be loaded until AFTER CDP patches are applied.
 // Static imports resolve before any function body runs, so patches would miss.
@@ -44,6 +43,160 @@ export interface BrowserState {
     isActive: boolean;
     storage: { localStorage: Record<string, string>; sessionStorage: Record<string, string> } | null;
   }>;
+}
+
+// ─── Stealth: Realistic User-Agent ──────────────────────────
+const DEFAULT_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
+
+/**
+ * Find the full Chromium binary for headed mode.
+ * Playwright's browser resolution can pick the wrong version when multiple
+ * versions coexist in the cache. We find the binary ourselves.
+ */
+function findChromiumExecutable(): string | undefined {
+  const fs = require('fs');
+  const path = require('path');
+  const cacheDir = path.join(process.env.HOME || '/tmp', 'Library', 'Caches', 'ms-playwright');
+
+  // Match Chromium revision to the installed playwright-core version.
+  // Mismatch (e.g., chromium-1217 with playwright 1.58.2 expecting 1208) causes crashes.
+  let expectedRevision: string | undefined;
+  try {
+    const browsersJson = path.resolve(__dirname, '..', 'node_modules', 'playwright-core', 'browsers.json');
+    const browsers = JSON.parse(fs.readFileSync(browsersJson, 'utf-8'));
+    const chromium = browsers.browsers?.find((b: any) => b.name === 'chromium');
+    if (chromium?.revision) expectedRevision = chromium.revision;
+  } catch {}
+
+  try {
+    if (expectedRevision) {
+      const binary = path.join(cacheDir, `chromium-${expectedRevision}`, 'chrome-mac-arm64',
+        'Google Chrome for Testing.app', 'Contents', 'MacOS', 'Google Chrome for Testing');
+      if (fs.existsSync(binary)) return binary;
+    }
+    // Fallback: newest available
+    const entries = fs.readdirSync(cacheDir)
+      .filter((e: string) => e.startsWith('chromium-'))
+      .sort()
+      .reverse();
+    for (const entry of entries) {
+      const binary = path.join(cacheDir, entry, 'chrome-mac-arm64',
+        'Google Chrome for Testing.app', 'Contents', 'MacOS', 'Google Chrome for Testing');
+      if (fs.existsSync(binary)) return binary;
+    }
+  } catch {}
+  return undefined;
+}
+
+// ─── Stealth: Patch Caching ─────��──────────────────────────
+/**
+ * Check if a patch file is already current at the destination.
+ * Compares file sizes and modification times to avoid redundant copies.
+ * Returns true if dest exists and matches src (no copy needed).
+ */
+export function isPatchCurrent(srcPath: string, destPath: string): boolean {
+  const fs = require('fs');
+  try {
+    const srcStat = fs.statSync(srcPath);
+    const destStat = fs.statSync(destPath);
+    return srcStat.size === destStat.size && destStat.mtimeMs >= srcStat.mtimeMs;
+  } catch {
+    return false;
+  }
+}
+
+// ──�� LaunchAgent: macOS daemon auto-start ────────────────────
+/**
+ * Generate a macOS LaunchAgent plist for auto-starting the nightCrawl daemon.
+ * Opt-in only via `nightcrawl daemon install`.
+ */
+export function generateLaunchAgentPlist(bunPath: string, serverPath: string): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.nightcrawl.daemon</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${bunPath}</string>
+    <string>run</string>
+    <string>${serverPath}</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <false/>
+  <key>LowPriorityIO</key>
+  <true/>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>BROWSE_EXTENSIONS</key>
+    <string>none</string>
+    <key>BROWSE_IDLE_TIMEOUT</key>
+    <string>3600000</string>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/tmp/nightcrawl-daemon.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/nightcrawl-daemon.log</string>
+</dict>
+</plist>`;
+}
+
+// ���── Stealth: CDP Patch Application ─────────────────────────
+async function applyStealthPatches(): Promise<void> {
+  const fs = require('fs');
+  const path = require('path');
+
+  const cacheBase = path.join(process.env.HOME || '/tmp', '.bun', 'install', 'cache');
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(cacheBase).filter((e: string) => e.startsWith('playwright-core@'));
+  } catch {
+    console.warn('[nightcrawl] Playwright cache not found — CDP patches skipped');
+    return;
+  }
+  if (entries.length === 0) {
+    console.warn('[nightcrawl] No playwright-core in bun cache — CDP patches skipped');
+    return;
+  }
+
+  const patchesDir = path.resolve(__dirname, '..', '..', 'patches', 'cdp');
+
+  const patchMap = [
+    ['chromium/crConnection.js', 'chromium/crConnection.js'],
+    ['chromium/crPage.js', 'chromium/crPage.js'],
+    ['chromium/crServiceWorker.js', 'chromium/crServiceWorker.js'],
+    ['chromium/crDevTools.js', 'chromium/crDevTools.js'],
+    ['frames.js', 'frames.js'],
+    ['page.js', 'page.js'],
+    ['screencast.js', 'screencast.js'],
+  ];
+
+  // Collect all playwright-core server dirs to patch (bun cache + local node_modules)
+  const patchTargets: string[] = [];
+  for (const entry of entries) {
+    patchTargets.push(path.join(cacheBase, entry, 'lib', 'server'));
+  }
+  // Also patch local node_modules (bun install creates a real copy, not just cache symlinks)
+  const localPw = path.resolve(__dirname, '..', 'node_modules', 'playwright-core', 'lib', 'server');
+  if (fs.existsSync(localPw)) patchTargets.push(localPw);
+
+  let applied = 0;
+  for (const pwDir of patchTargets) {
+    for (const [src, dest] of patchMap) {
+      const srcPath = path.join(patchesDir, src);
+      const destPath = path.join(pwDir, dest);
+      if (fs.existsSync(srcPath) && fs.existsSync(destPath)) {
+        fs.copyFileSync(srcPath, destPath);
+        applied++;
+      }
+    }
+  }
+  console.log(`[nightcrawl] Applied ${applied} CDP stealth patches`);
 }
 
 export class BrowserManager {
@@ -156,8 +309,9 @@ export class BrowserManager {
   }
 
   async launch() {
-    await applyStealthPatches();
-    process.env.REBROWSER_PATCHES_RUNTIME_FIX_MODE = 'addBinding';
+    // CDP stealth patches temporarily disabled — version mismatch investigation
+    // await applyStealthPatches();
+    // process.env.REBROWSER_PATCHES_RUNTIME_FIX_MODE = 'addBinding';
 
     const extensionMode = process.env.BROWSE_EXTENSIONS || 'all';
     const extensionsDir = extensionMode !== 'none' ? process.env.BROWSE_EXTENSIONS_DIR : undefined;
@@ -174,7 +328,6 @@ export class BrowserManager {
     const contextOptions: BrowserContextOptions = {
       viewport: { width: 1920, height: 1080 },
       userAgent: ua,
-      ignoreHTTPSErrors: process.env.BROWSE_IGNORE_HTTPS_ERRORS === '1',
     };
 
     if (extensionsDir) {
@@ -228,9 +381,6 @@ export class BrowserManager {
       'User-Agent': ua,
     });
 
-    // Stealth: inject anti-bot init scripts
-    await applyStealthScripts(this.context);
-
     // Create first tab
     await this.newTab();
   }
@@ -246,8 +396,9 @@ export class BrowserManager {
    * every action Claude takes in real time.
    */
   async launchHeaded(authToken?: string): Promise<void> {
-    await applyStealthPatches();
-    process.env.REBROWSER_PATCHES_RUNTIME_FIX_MODE = 'addBinding';
+    // CDP stealth patches temporarily disabled — version mismatch investigation
+    // await applyStealthPatches();
+    // process.env.REBROWSER_PATCHES_RUNTIME_FIX_MODE = 'addBinding';
 
     // Clear old state before repopulating
     this.pages.clear();
@@ -298,9 +449,6 @@ export class BrowserManager {
     this.browser = this.context.browser();
     this.connectionMode = 'headed';
     this.intentionalDisconnect = false;
-
-    // Stealth: inject anti-bot init scripts
-    await applyStealthScripts(this.context);
 
     // Inject visual indicator — subtle top-edge amber gradient
     // Extension's content script handles the floating pill
@@ -753,7 +901,7 @@ export class BrowserManager {
       // 3. Create new context with updated settings
       const ua = this.customUserAgent || DEFAULT_USER_AGENT;
       const contextOptions: BrowserContextOptions = {
-        viewport: { width: 1920, height: 1080 },
+        viewport: { width: 1280, height: 720 },
         userAgent: ua,
       };
       this.context = await this.browser.newContext(contextOptions);
@@ -762,7 +910,6 @@ export class BrowserManager {
         ...this.extraHeaders,
         'User-Agent': ua,
       });
-      await applyStealthScripts(this.context);
 
       // 4. Restore state
       await this.restoreState(state);
@@ -776,7 +923,7 @@ export class BrowserManager {
 
         const fallbackUa = this.customUserAgent || DEFAULT_USER_AGENT;
         const contextOptions: BrowserContextOptions = {
-          viewport: { width: 1920, height: 1080 },
+          viewport: { width: 1280, height: 720 },
           userAgent: fallbackUa,
         };
         this.context = await this.browser!.newContext(contextOptions);
@@ -784,7 +931,6 @@ export class BrowserManager {
           ...this.extraHeaders,
           'User-Agent': fallbackUa,
         });
-        await applyStealthScripts(this.context);
         await this.newTab();
         this.clearRefs();
       } catch {
@@ -886,7 +1032,6 @@ export class BrowserManager {
       if (Object.keys(this.extraHeaders).length > 0) {
         await newContext.setExtraHTTPHeaders(this.extraHeaders);
       }
-      await applyStealthScripts(this.context);
 
       // Register crash handler on new browser
       if (this.browser) {
@@ -972,7 +1117,6 @@ export class BrowserManager {
         headless: true,
         chromiumSandbox: process.platform !== 'win32',
         args: ['--disable-blink-features=AutomationControlled'],
-        ignoreDefaultArgs: ['--enable-automation'],
       });
       this.context = await this.browser.newContext({
         viewport: { width: 1920, height: 1080 },
@@ -982,7 +1126,6 @@ export class BrowserManager {
         ...this.extraHeaders,
         'User-Agent': ua,
       });
-      await applyStealthScripts(this.context);
 
       // Chromium crash handler for the new headless browser
       this.browser.on('disconnected', () => {
@@ -1002,22 +1145,8 @@ export class BrowserManager {
       // Try to at least launch a clean headless browser
       try {
         const chromium = await getChromium();
-        const fallbackUa = this.customUserAgent || DEFAULT_USER_AGENT;
-        this.browser = await chromium.launch({
-          headless: true,
-          chromiumSandbox: process.platform !== 'win32',
-          args: ['--disable-blink-features=AutomationControlled'],
-          ignoreDefaultArgs: ['--enable-automation'],
-        });
-        this.context = await this.browser.newContext({
-          viewport: { width: 1920, height: 1080 },
-          userAgent: fallbackUa,
-        });
-        await this.context.setExtraHTTPHeaders({
-          ...this.extraHeaders,
-          'User-Agent': fallbackUa,
-        });
-        await applyStealthScripts(this.context);
+        this.browser = await chromium.launch({ headless: true, args: ['--disable-blink-features=AutomationControlled'] });
+        this.context = await this.browser.newContext({ viewport: { width: 1920, height: 1080 } });
         await this.newTab();
       } catch {}
       return `Resume partially failed: ${msg}. Headless browser relaunched (clean state).`;
@@ -1048,11 +1177,11 @@ export class BrowserManager {
   /**
    * Detect login walls, captchas, and auth barriers.
    * Returns detection result or null if no login wall found.
-   * Called after navigation commands. On by default (opt-out with BROWSE_AUTO_HANDOVER=0).
+   * Called after navigation commands when BROWSE_AUTO_HANDOVER=1.
    */
   async detectLoginWall(): Promise<{ detected: boolean; reason: string } | null> {
     if (this.isHeaded) return null;
-    if (process.env.BROWSE_AUTO_HANDOVER === '0') return null;
+    if (process.env.BROWSE_AUTO_HANDOVER !== '1') return null;
 
     const page = this.getPage();
     if (!page) return null;
@@ -1094,20 +1223,6 @@ export class BrowserManager {
 
     if (hasAuthBarrier) {
       return { detected: true, reason: `Auth barrier text detected at ${url}` };
-    }
-
-    // Check 4: Minimal page content with login/register links (Chinese gov sites
-    // use custom form elements, not <input type="password">)
-    const isMinimalLoginPage = await page.evaluate(() => {
-      const text = (document.body?.innerText || '').trim();
-      // Very short page with login/register links = stripped-down auth gate
-      const hasLoginLink = text.includes('登录') || text.includes('注册');
-      const isShort = text.length < 200;
-      return hasLoginLink && isShort;
-    }).catch(() => false);
-
-    if (isMinimalLoginPage) {
-      return { detected: true, reason: `Minimal login/register page detected at ${url}` };
     }
 
     return null;

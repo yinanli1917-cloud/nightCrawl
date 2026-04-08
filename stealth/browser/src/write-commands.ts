@@ -2,12 +2,13 @@
  * Write commands — navigate and interact with pages (side effects)
  *
  * goto, back, forward, reload, click, fill, select, hover, type,
- * press, scroll, wait, viewport, cookie, header, useragent
+ * press, scroll, wait, viewport, cookie, header, useragent, cleanup
  */
 
 import type { BrowserManager } from './browser-manager';
 import { findInstalledBrowsers, importCookies, listSupportedBrowserNames } from './cookie-import-browser';
 import { validateNavigationUrl } from './url-validation';
+import { cleanup, formatCleanupResult } from './cleanup';
 import * as fs from 'fs';
 import * as path from 'path';
 import { TEMP_DIR, isPathWithin } from './platform';
@@ -315,6 +316,11 @@ export async function handleWriteCommand(
 
       await page.context().addCookies(cookies);
       return `Loaded ${cookies.length} cookies from ${filePath}`;
+    }
+
+    case 'cleanup': {
+      const result = await cleanup(page);
+      return formatCleanupResult(result);
     }
 
     case 'cookie-import-browser': {

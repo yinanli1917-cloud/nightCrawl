@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Cleanup Test Page</title></head>
+<body>
+  <!-- Main content (must be preserved) -->
+  <nav id="main-nav"><a href="/">Home</a><a href="/about">About</a></nav>
+  <main id="main-content">
+    <article>
+      <h1>Important Article Title</h1>
+      <p>This is the main article body that must be preserved after cleanup.
+         It contains important information the agent needs to read.</p>
+      <form id="contact-form"><input type="text" name="name"><button>Submit</button></form>
+    </article>
+  </main>
+
+  <!-- Cookie consent banners -->
+  <div id="onetrust-banner-sdk" class="onetrust-banner">
+    <p>We use cookies to enhance your experience. Accept all cookies?</p>
+    <button>Accept All</button>
+  </div>
+  <div id="CybotCookiebotDialog">
+    <p>This website uses cookies to ensure you get the best experience.</p>
+    <button>Allow all</button>
+  </div>
+  <div class="cc-banner cc-bottom">
+    <p>This site uses cookies. By continuing, you agree.</p>
+  </div>
+
+  <!-- Ad containers -->
+  <ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-1234">Ad slot</ins>
+  <div id="div-gpt-ad-header-0" class="ad-container">Google Publisher Tag Ad</div>
+  <div class="taboola-container"><p>Recommended for you by Taboola</p></div>
+  <div class="OUTBRAIN" data-widget-id="AR_1"><p>More from the web</p></div>
+
+  <!-- Newsletter popup -->
+  <div class="newsletter-popup" style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:9999;background:rgba(0,0,0,0.5)">
+    <div class="newsletter-modal">
+      <h2>Subscribe to our newsletter</h2>
+      <input type="email" placeholder="Enter your email">
+      <button>Subscribe</button>
+    </div>
+  </div>
+
+  <!-- Fixed overlay covering >30% viewport -->
+  <div id="big-overlay" style="position:fixed;top:0;left:0;width:100%;height:50%;z-index:2000;background:white">
+    <p>This overlay blocks content</p>
+  </div>
+
+  <!-- aria-modal dialog -->
+  <div role="dialog" aria-modal="true" class="modal-backdrop" style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:5000">
+    <div class="modal-content">
+      <h2>Sign up for premium access</h2>
+      <button>Sign Up</button>
+    </div>
+  </div>
+
+  <!-- App download banner -->
+  <div class="app-banner smart-banner" style="position:fixed;bottom:0;width:100%">
+    <p>Download our app for a better experience</p>
+    <button>Download</button>
+  </div>
+
+  <!-- Push notification prompt -->
+  <div class="notification-prompt" style="position:fixed;top:10px;right:10px;z-index:9999">
+    <p>Allow notifications to stay updated?</p>
+    <button>Allow</button><button>Block</button>
+  </div>
+
+  <!-- Paywall overlay -->
+  <div class="paywall-overlay" style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:8000">
+    <p>Subscribe to continue reading</p>
+  </div>
+
+  <!-- TP modal (Piano/TinyPass used by many publishers) -->
+  <div class="tp-modal">Subscription required</div>
+  <div class="tp-backdrop" style="position:fixed;top:0;left:0;width:100%;height:100%"></div>
+</body>
+</html>

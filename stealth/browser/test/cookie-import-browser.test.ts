@@ -502,17 +502,18 @@ describe('Cookie Import Browser', () => {
 
   describe('Unknown Browser', () => {
     test('throws for unknown browser name', () => {
-      expect(() => listDomains('firefox')).toThrow(/Unknown browser.*firefox/i);
+      expect(() => listDomains('netscape')).toThrow(/Unknown browser.*netscape/i);
     });
 
     test('error includes list of supported browsers', () => {
       try {
-        listDomains('firefox');
+        listDomains('netscape');
         throw new Error('Should have thrown');
       } catch (err: any) {
         expect(err.code).toBe('unknown_browser');
-        expect(err.message).toContain('comet');
         expect(err.message).toContain('chrome');
+        expect(err.message).toContain('firefox');
+        expect(err.message).toContain('safari');
       }
     });
   });

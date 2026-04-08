@@ -1,7 +1,11 @@
 /**
- * Chromium browser cookie import — read and decrypt cookies from real browsers
+ * Browser cookie import — unified API for Chromium, Firefox, and Safari
  *
- * Supports macOS and Linux Chromium-based browsers.
+ * [INPUT]: Depends on cookie-import-firefox.ts, cookie-import-safari.ts for non-Chromium browsers
+ * [OUTPUT]: Exports importCookies, findInstalledBrowsers, listSupportedBrowserNames, listDomains, listProfiles
+ * [POS]: Main entry point for the cookie-import subsystem
+ *
+ * Supports macOS and Linux Chromium-based browsers, Firefox, and Safari.
  * Pure logic module — no Playwright dependency, no HTTP concerns.
  *
  * Decryption pipeline:
@@ -40,6 +44,8 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { findFirefoxProfiles, importFirefoxCookies, listFirefoxDomains } from './cookie-import-firefox';
+import { importSafariCookies, listSafariDomains } from './cookie-import-safari';
 
 // ─── Types ──────────────────────────────────────────────────────
 
@@ -111,6 +117,22 @@ const BROWSER_REGISTRY: BrowserInfo[] = [
   { name: 'Edge',     dataDir: 'Microsoft Edge/',            keychainService: 'Microsoft Edge Safe Storage', aliases: ['edge'], linuxDataDir: 'microsoft-edge/', linuxApplication: 'microsoft-edge' },
 ];
 
+// ─── Non-Chromium Browser Descriptors ───────────────────────────
+
+const FIREFOX_BROWSER_INFO: BrowserInfo = {
+  name: 'Firefox',
+  dataDir: '',
+  keychainService: '',
+  aliases: ['firefox', 'ff'],
+};
+
+const SAFARI_BROWSER_INFO: BrowserInfo = {
+  name: 'Safari',
+  dataDir: '',
+  keychainService: '',
+  aliases: ['safari'],
+};
+
 // ─── Key Cache ──────────────────────────────────────────────────
 // Cache derived AES keys per browser. First import per browser does
 // Keychain + PBKDF2. Subsequent imports reuse the cached key.
@@ -121,12 +143,11 @@ const keyCache = new Map<string, Buffer>();
 
 /**
  * Find which browsers are installed (have a cookie DB on disk in any profile).
+ * Includes Chromium-based browsers, Firefox, and Safari.
  */
 export function findInstalledBrowsers(): BrowserInfo[] {
-  return BROWSER_REGISTRY.filter(browser => {
-    // Check Default profile on any platform
+  const chromiumBrowsers = BROWSER_REGISTRY.filter(browser => {
     if (findBrowserMatch(browser, 'Default') !== null) return true;
-    // Check numbered profiles (Profile 1, Profile 2, etc.)
     for (const platform of getSearchPlatforms()) {
       const dataDir = getDataDirForPlatform(browser, platform);
       if (!dataDir) continue;
@@ -141,13 +162,31 @@ export function findInstalledBrowsers(): BrowserInfo[] {
     }
     return false;
   });
+
+  // Firefox: check if any profiles have cookies.sqlite
+  if (findFirefoxProfiles().length > 0) {
+    chromiumBrowsers.push(FIREFOX_BROWSER_INFO);
+  }
+
+  // Safari: check if Cookies.binarycookies exists (macOS only)
+  if (process.platform === 'darwin') {
+    const safariPath = path.join(os.homedir(), 'Library', 'Cookies', 'Cookies.binarycookies');
+    if (fs.existsSync(safariPath)) {
+      chromiumBrowsers.push(SAFARI_BROWSER_INFO);
+    }
+  }
+
+  return chromiumBrowsers;
 }
 
 export function listSupportedBrowserNames(): string[] {
   const hostPlatform = getHostPlatform();
-  return BROWSER_REGISTRY
+  const names = BROWSER_REGISTRY
     .filter(browser => hostPlatform ? getDataDirForPlatform(browser, hostPlatform) !== null : true)
     .map(browser => browser.name);
+  names.push('Firefox');
+  if (!hostPlatform || hostPlatform === 'darwin') names.push('Safari');
+  return names;
 }
 
 /**
@@ -217,6 +256,18 @@ export function listProfiles(browserName: string): ProfileEntry[] {
  */
 export function listDomains(browserName: string, profile = 'Default'): { domains: DomainEntry[]; browser: string } {
   const browser = resolveBrowser(browserName);
+
+  // Dispatch to Firefox/Safari if applicable
+  if (browser.name === 'Firefox') {
+    const profiles = findFirefoxProfiles();
+    const match = profiles.find(p => p.name === profile) || profiles[0];
+    if (!match) throw new CookieImportError('No Firefox profiles found', 'not_installed');
+    return listFirefoxDomains(match.dbPath);
+  }
+  if (browser.name === 'Safari') {
+    return listSafariDomains();
+  }
+
   const match = getBrowserMatch(browser, profile);
   const db = openDb(match.dbPath, browser.name);
   try {
@@ -236,6 +287,7 @@ export function listDomains(browserName: string, profile = 'Default'): { domains
 
 /**
  * Decrypt and return Playwright-compatible cookies for specific domains.
+ * Dispatches to the correct importer based on browser type.
  */
 export async function importCookies(
   browserName: string,
@@ -245,6 +297,18 @@ export async function importCookies(
   if (domains.length === 0) return { cookies: [], count: 0, failed: 0, domainCounts: {} };
 
   const browser = resolveBrowser(browserName);
+
+  // Dispatch to Firefox/Safari if applicable
+  if (browser.name === 'Firefox') {
+    const profiles = findFirefoxProfiles();
+    const match = profiles.find(p => p.name === profile) || profiles[0];
+    if (!match) throw new CookieImportError('No Firefox profiles found', 'not_installed');
+    return importFirefoxCookies(domains, match.dbPath);
+  }
+  if (browser.name === 'Safari') {
+    return importSafariCookies(domains);
+  }
+
   const match = getBrowserMatch(browser, profile);
   const derivedKeys = await getDerivedKeys(match);
   const db = openDb(match.dbPath, browser.name);
@@ -287,13 +351,23 @@ export async function importCookies(
 
 function resolveBrowser(nameOrAlias: string): BrowserInfo {
   const needle = nameOrAlias.toLowerCase().trim();
+
+  // Check non-Chromium browsers first
+  for (const info of [FIREFOX_BROWSER_INFO, SAFARI_BROWSER_INFO]) {
+    if (info.aliases.includes(needle) || info.name.toLowerCase() === needle) return info;
+  }
+
   const found = BROWSER_REGISTRY.find(b =>
     b.aliases.includes(needle) || b.name.toLowerCase() === needle
   );
   if (!found) {
-    const supported = BROWSER_REGISTRY.flatMap(b => b.aliases).join(', ');
+    const allAliases = [
+      ...BROWSER_REGISTRY.flatMap(b => b.aliases),
+      ...FIREFOX_BROWSER_INFO.aliases,
+      ...SAFARI_BROWSER_INFO.aliases,
+    ].join(', ');
     throw new CookieImportError(
-      `Unknown browser '${nameOrAlias}'. Supported: ${supported}`,
+      `Unknown browser '${nameOrAlias}'. Supported: ${allAliases}`,
       'unknown_browser',
     );
   }
@@ -370,7 +444,9 @@ function getBrowserMatch(browser: BrowserInfo, profile: string): BrowserMatch {
 
 function openDb(dbPath: string, browserName: string): Database {
   try {
-    return new Database(dbPath, { readonly: true });
+    const db = new Database(dbPath, { readonly: true });
+    db.run('PRAGMA mmap_size = 268435456'); // 256 MB mmap for zero-syscall warm reads
+    return db;
   } catch (err: any) {
     if (err.message?.includes('SQLITE_BUSY') || err.message?.includes('database is locked')) {
       return openDbFromCopy(dbPath, browserName);
@@ -396,6 +472,7 @@ function openDbFromCopy(dbPath: string, browserName: string): Database {
     if (fs.existsSync(shmPath)) fs.copyFileSync(shmPath, tmpPath + '-shm');
 
     const db = new Database(tmpPath, { readonly: true });
+    db.run('PRAGMA mmap_size = 268435456');
     // Schedule cleanup after the DB is closed
     const origClose = db.close.bind(db);
     db.close = () => {

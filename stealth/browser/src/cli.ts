@@ -87,11 +87,24 @@ if (IS_WINDOWS && !NODE_SERVER_SCRIPT) {
 interface ServerState {
   pid: number;
   port: number;
+  socket?: string;
   token: string;
   startedAt: string;
   serverPath: string;
   binaryVersion?: string;
   mode?: 'launched' | 'headed';
+}
+
+// ─── UDS/TCP Transport Helpers ──────────────────────────────────
+function serverUrl(state: ServerState, pathname: string): string {
+  // When using UDS, hostname is ignored by Bun — use a placeholder
+  if (state.socket) return `http://localhost${pathname}`;
+  return `http://127.0.0.1:${state.port}${pathname}`;
+}
+
+function fetchOptions(state: ServerState): Record<string, any> {
+  if (state.socket) return { unix: state.socket };
+  return {};
 }
 
 // ─── State File ────────────────────────────────────────────────
@@ -128,11 +141,15 @@ function isProcessAlive(pid: number): boolean {
 
 /**
  * HTTP health check — definitive proof the server is alive and responsive.
- * Used in all polling loops instead of isProcessAlive() (which is slow on Windows).
+ * Supports both UDS (socket path) and TCP (port) transports.
  */
-export async function isServerHealthy(port: number): Promise<boolean> {
+export async function isServerHealthy(portOrState: number | ServerState): Promise<boolean> {
   try {
-    const resp = await fetch(`http://127.0.0.1:${port}/health`, {
+    const state: ServerState = typeof portOrState === 'number'
+      ? { pid: 0, port: portOrState, token: '', startedAt: '', serverPath: '' }
+      : portOrState;
+    const resp = await fetch(serverUrl(state, '/health'), {
+      ...fetchOptions(state),
       signal: AbortSignal.timeout(2000),
     });
     if (!resp.ok) return false;
@@ -254,7 +271,7 @@ async function startServer(extraEnv?: Record<string, string>): Promise<ServerSta
   const start = Date.now();
   while (Date.now() - start < MAX_START_WAIT) {
     const state = readState();
-    if (state && await isServerHealthy(state.port)) {
+    if (state && await isServerHealthy(state)) {
       return state;
     }
     await Bun.sleep(100);
@@ -320,7 +337,7 @@ async function ensureServer(): Promise<ServerState> {
   // Health-check-first: HTTP is definitive proof the server is alive and responsive.
   // This replaces the PID-gated approach which breaks on Windows (Bun's process.kill
   // always throws ESRCH for Windows PIDs in compiled binaries).
-  if (state && await isServerHealthy(state.port)) {
+  if (state && await isServerHealthy(state)) {
     // Check for binary version mismatch (auto-restart on update)
     const currentVersion = readVersionHash();
     if (currentVersion && state.binaryVersion && currentVersion !== state.binaryVersion) {
@@ -351,7 +368,7 @@ async function ensureServer(): Promise<ServerState> {
     const start = Date.now();
     while (Date.now() - start < MAX_START_WAIT) {
       const freshState = readState();
-      if (freshState && await isServerHealthy(freshState.port)) return freshState;
+      if (freshState && await isServerHealthy(freshState)) return freshState;
       await Bun.sleep(200);
     }
     throw new Error('Timed out waiting for another instance to start the server');
@@ -360,7 +377,7 @@ async function ensureServer(): Promise<ServerState> {
   try {
     // Re-read state under lock in case another process just started the server
     const freshState = readState();
-    if (freshState && await isServerHealthy(freshState.port)) {
+    if (freshState && await isServerHealthy(freshState)) {
       return freshState;
     }
 
@@ -380,7 +397,8 @@ async function sendCommand(state: ServerState, command: string, args: string[], 
   const body = JSON.stringify({ command, args });
 
   try {
-    const resp = await fetch(`http://127.0.0.1:${state.port}/command`, {
+    const resp = await fetch(serverUrl(state, '/command'), {
+      ...fetchOptions(state),
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -523,7 +541,8 @@ Refs:           After 'snapshot', use @e1, @e2... as selectors:
     const existingState = readState();
     if (existingState && existingState.mode === 'headed' && isProcessAlive(existingState.pid)) {
       try {
-        const resp = await fetch(`http://127.0.0.1:${existingState.port}/health`, {
+        const resp = await fetch(serverUrl(existingState, '/health'), {
+          ...fetchOptions(existingState),
           signal: AbortSignal.timeout(2000),
         });
         if (resp.ok) {
@@ -585,7 +604,8 @@ Refs:           After 'snapshot', use @e1, @e2... as selectors:
       const newState = await startServer(serverEnv);
 
       // Print connected status
-      const resp = await fetch(`http://127.0.0.1:${newState.port}/command`, {
+      const resp = await fetch(serverUrl(newState, '/command'), {
+        ...fetchOptions(newState),
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -659,7 +679,8 @@ Refs:           After 'snapshot', use @e1, @e2... as selectors:
     }
     // Try graceful shutdown via server
     try {
-      const resp = await fetch(`http://127.0.0.1:${existingState.port}/command`, {
+      const resp = await fetch(serverUrl(existingState, '/command'), {
+        ...fetchOptions(existingState),
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

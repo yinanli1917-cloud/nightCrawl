@@ -591,6 +591,17 @@ export { READ_COMMANDS, WRITE_COMMANDS, META_COMMANDS };
 const browserManager = new BrowserManager();
 let isShuttingDown = false;
 
+// ─── Browser Readiness Gate ──────────────────────────────────
+// Commands wait on this promise. Resolves when browser is fully launched.
+// Server starts accepting HTTP requests immediately (for fast state file write),
+// but commands block until Chromium is warm.
+let browserReadyResolve: () => void;
+let browserReadyReject: (err: Error) => void;
+const browserReady = new Promise<void>((resolve, reject) => {
+  browserReadyResolve = resolve;
+  browserReadyReject = reject;
+});
+
 // Test if a port is available by binding and immediately releasing.
 // Uses net.createServer instead of Bun.serve to avoid a race condition
 // in the Node.js polyfill where listen/close are async but the caller
@@ -661,6 +672,13 @@ async function handleCommand(body: any): Promise<Response> {
     });
   }
 
+  // Wait for browser to be ready (parallel startup gate)
+  // Skip for commands that don't need browser
+  const skipBrowser = process.env.BROWSE_HEADLESS_SKIP === '1';
+  if (!skipBrowser) {
+    await browserReady;
+  }
+
   // Block mutation commands while watching (read-only observation mode)
   if (browserManager.isWatching() && WRITE_COMMANDS.has(command)) {
     return new Response(JSON.stringify({
@@ -694,10 +712,6 @@ async function handleCommand(body: any): Promise<Response> {
       result = await handleWriteCommand(command, args, browserManager);
     } else if (META_COMMANDS.has(command)) {
       result = await handleMetaCommand(command, args, browserManager, shutdown);
-      // After handoff/resume, persist cookies immediately so login sessions survive
-      if (command === 'resume' || command === 'handoff') {
-        persistStorage().catch(() => {});
-      }
       // Start periodic snapshot interval when watch mode begins
       if (command === 'watch' && args[0] !== 'stop' && browserManager.isWatching()) {
         const watchInterval = setInterval(async () => {
@@ -820,8 +834,9 @@ async function shutdown() {
     try { fs.unlinkSync(path.join(profileDir, lockFile)); } catch {}
   }
 
-  // Clean up state file (but keep storage file for next restart)
+  // Clean up state file and socket (but keep storage file for next restart)
   try { fs.unlinkSync(config.stateFile); } catch {}
+  if (config.socketPath) { try { fs.unlinkSync(config.socketPath); } catch {} }
 
   process.exit(0);
 }
@@ -851,6 +866,7 @@ function emergencyCleanup() {
     try { fs.unlinkSync(path.join(profileDir, lockFile)); } catch {}
   }
   try { fs.unlinkSync(config.stateFile); } catch {}
+  if (config.socketPath) { try { fs.unlinkSync(config.socketPath); } catch {} }
 }
 process.on('uncaughtException', (err) => {
   console.error('[browse] FATAL uncaught exception:', err.message);
@@ -872,35 +888,23 @@ async function start() {
 
   const port = await findPort();
 
-  // Launch browser (headless or headed with extension)
-  // BROWSE_HEADLESS_SKIP=1 skips browser launch entirely (for HTTP-only testing)
-  const skipBrowser = process.env.BROWSE_HEADLESS_SKIP === '1';
-  if (!skipBrowser) {
-    const headed = process.env.BROWSE_HEADED === '1';
-    if (headed) {
-      await browserManager.launchHeaded(AUTH_TOKEN);
-      console.log(`[browse] Launched headed Chromium with extension`);
-    } else {
-      await browserManager.launch();
-    }
-  }
-
-  // Restore cookies from previous session (pages are not restored — start fresh)
-  try {
-    const raw = fs.readFileSync(config.storageFile, 'utf-8');
-    const saved = JSON.parse(raw);
-    if (saved.cookies?.length > 0) {
-      await browserManager.restoreCookies(saved.cookies);
-      console.log(`[browse] Restored ${saved.cookies.length} cookies from previous session`);
-    }
-  } catch {
-    // No storage file or parse error — start fresh
-  }
+  // ─── Parallel Startup ──────────────────────────────────────
+  // Start HTTP server FIRST so the CLI can discover port/token immediately.
+  // Browser launches in parallel — commands wait on browserReady gate.
+  // This eliminates 2-3s cold start where CLI blocked waiting for state file.
 
   const startTime = Date.now();
+  // UDS by default (3x lower latency), TCP fallback when BROWSE_PORT is set
+  const useUds = !BROWSE_PORT && config.socketPath;
+  if (useUds) {
+    // Clean up stale socket from previous crash
+    try { fs.unlinkSync(config.socketPath); } catch {}
+  }
+  const serverOptions: any = useUds
+    ? { unix: config.socketPath }
+    : { port, hostname: '127.0.0.1' };
   const server = Bun.serve({
-    port,
-    hostname: '127.0.0.1',
+    ...serverOptions,
     fetch: async (req) => {
       const url = new URL(req.url);
 
@@ -1222,10 +1226,17 @@ async function start() {
     },
   });
 
-  // Write state file (atomic: write .tmp then rename)
+  // Write state file IMMEDIATELY (atomic: write .tmp then rename)
+  // CLI discovers port/token from this file — write it before browser launch
+  // so the CLI can connect while Chromium is still starting up.
+  // Set socket permissions (owner-only)
+  if (useUds) {
+    try { fs.chmodSync(config.socketPath, 0o600); } catch {}
+  }
   const state: Record<string, unknown> = {
     pid: process.pid,
-    port,
+    port: useUds ? 0 : port,
+    socket: useUds ? config.socketPath : '',
     token: AUTH_TOKEN,
     startedAt: new Date().toISOString(),
     serverPath: path.resolve(import.meta.dir, 'server.ts'),
@@ -1237,6 +1248,48 @@ async function start() {
   fs.renameSync(tmpFile, config.stateFile);
 
   browserManager.serverPort = port;
+
+  console.log(`[browse] Server running on ${useUds ? `unix:${config.socketPath}` : `http://127.0.0.1:${port}`} (PID: ${process.pid})`);
+  console.log(`[browse] State file: ${config.stateFile}`);
+  console.log(`[browse] Idle timeout: ${IDLE_TIMEOUT_MS / 1000}s`);
+
+  // ─── Browser Launch (parallel with server accepting requests) ─────
+  // Commands arriving before browser is ready wait on the browserReady gate.
+  const skipBrowser = process.env.BROWSE_HEADLESS_SKIP === '1';
+  if (skipBrowser) {
+    browserReadyResolve();
+  } else {
+    const browserLaunchStart = Date.now();
+    (async () => {
+      try {
+        const headed = process.env.BROWSE_HEADED === '1';
+        if (headed) {
+          await browserManager.launchHeaded(AUTH_TOKEN);
+          console.log(`[browse] Launched headed Chromium with extension`);
+        } else {
+          await browserManager.launch();
+        }
+
+        // Restore cookies from previous session
+        try {
+          const raw = fs.readFileSync(config.storageFile, 'utf-8');
+          const saved = JSON.parse(raw);
+          if (saved.cookies?.length > 0) {
+            await browserManager.restoreCookies(saved.cookies);
+            console.log(`[browse] Restored ${saved.cookies.length} cookies from previous session`);
+          }
+        } catch {
+          // No storage file or parse error — start fresh
+        }
+
+        console.log(`[browse] Browser warm in ${Date.now() - browserLaunchStart}ms`);
+        browserReadyResolve();
+      } catch (err: any) {
+        console.error(`[browse] Browser launch failed: ${err.message}`);
+        browserReadyReject(err);
+      }
+    })();
+  }
 
   // Clean up stale state files (older than 7 days)
   try {
@@ -1253,10 +1306,6 @@ async function start() {
       }
     }
   } catch {}
-
-  console.log(`[browse] Server running on http://127.0.0.1:${port} (PID: ${process.pid})`);
-  console.log(`[browse] State file: ${config.stateFile}`);
-  console.log(`[browse] Idle timeout: ${IDLE_TIMEOUT_MS / 1000}s`);
 
   // Initialize sidebar session (load existing or create new)
   initSidebarSession();

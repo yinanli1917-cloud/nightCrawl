@@ -60,6 +60,8 @@ async function resolvesToBlockedIp(hostname: string): Promise<boolean> {
   }
 }
 
+import { isExfiltrationUrl } from './content-security';
+
 export async function validateNavigationUrl(url: string): Promise<void> {
   let parsed: URL;
   try {
@@ -71,6 +73,13 @@ export async function validateNavigationUrl(url: string): Promise<void> {
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     throw new Error(
       `Blocked: scheme "${parsed.protocol}" is not allowed. Only http: and https: URLs are permitted.`
+    );
+  }
+
+  // Exfiltration URL check — block known data-capture services
+  if (isExfiltrationUrl(url)) {
+    throw new Error(
+      `Blocked: ${parsed.hostname} is a known data exfiltration service. Navigation denied for security.`
     );
   }
 
