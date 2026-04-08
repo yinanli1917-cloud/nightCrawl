@@ -1,75 +1,223 @@
-# HANDOFF — 2026-04-07
+# HANDOFF — 2026-04-07 (Session 2)
 
-## Current Task
-Architecture revolution to surpass gstack browse v0.15 in every dimension. Wave 1 complete and pushed. Waves 2-5 defined and ready for autonomous self-reinforcing execution.
+## Mission
+Surpass gstack browse v0.15 in every dimension. Wave 1 shipped. Continue with Waves 2-5 autonomously, self-reinforcing through parallel subagents. Every change must be verified against REAL websites, not just unit test fixtures.
 
-## Completion Status
-- ✅ Full audit: gstack browse v0.15 vs nightCrawl (content-security, token-registry, cdp-inspector)
-- ✅ Full audit: MediaCrawler/MediaCrawlerPro (not a competitor — scraper vs digital twin)
-- ✅ Wave 1A: Cookie revolution — Firefox + Safari import, mmap optimization (42 tests)
-- ✅ Wave 1B: Content security pipeline — 4-layer defense (56 tests)
-- ✅ Wave 1C: Unix domain socket IPC — 2x faster (14 tests)
-- ✅ Wave 1D: Page cleanup command — 9 categories, token savings (20 tests)
-- ✅ Wave 1E: Pre-warmed browser pool — 66x faster startup (7 tests)
-- ✅ Integration: all 5 worktrees merged, 179 tests passing, 0 new failures
-- ✅ Dependency audit complete, pushed to GitHub (55f6087 + 6f28d40)
-- 🔄 Wave 2: CDP patch re-port + Playwright upgrade (CRITICAL)
-- ⏳ Wave 3: Security hardening (scoped tokens, IPv6, ReDoS)
-- ⏳ Wave 4: CloakBrowser integration (v0.2)
-- ⏳ Wave 5: TLS/JA3, behavioral humanization
+## What's Done (Wave 1 — pushed to GitHub)
+- **Cookie revolution**: Firefox + Safari import, mmap optimization (42 tests, 8 browsers total)
+- **Content security**: 4-layer defense — hidden element stripping, exfil blocklist, datamarking, envelope (56 tests)
+- **Unix domain sockets**: 2x faster IPC, backwards-compatible TCP fallback (14 tests)
+- **Page cleanup**: 9 categories of noise removal, token savings reporting (20 tests)
+- **Pre-warmed startup**: 66x faster (3377ms → 51ms server-internal, ~2.6s real cold start) (7 tests)
+- **Dependency audit**: Playwright 1.59.1 available, rebrowser-patches 6 releases behind, bypass-paywalls 5 months behind
+- **Real-world verified**: bot.sannysoft.com passes, The Atlantic paywall bypassed, Forbes cleanup works, webhook.site blocked, 38ms/command
 
-## Key Decisions
-- **Product-first filter**: every upgrade must pass "does this make the twin more like you?"
-- **Rejected**: actor model, event sourcing, gRPC, plugin architecture (engineering toys, not user features)
-- **MediaCrawler**: scraper (extracts data FROM platforms) vs nightCrawl digital twin (acts AS you). Zero overlap.
-- **gstack v0.15 has real new code**: content-security.ts, token-registry.ts, cdp-inspector.ts. But still NO stealth.
-- **CDP patches 6 releases behind**: rebrowser-patches v1.0.19 changed format. MUST re-port before Playwright upgrade.
+---
 
-## Known Issues
-- **CDP patches**: target PW ~1.48. Upgrading to 1.59 without re-porting BREAKS stealth. New format: unified .patch files.
-- **Arc iCloud Keychain**: may have migrated keys to Apple's Passwords.app (yt-dlp#13710). Not confirmed broken.
-- **browser-manager.ts over 800 lines**: pre-warm agent inlined stealth functions. Consider splitting.
-- **Pre-existing test failures**: 2 flaky tests in commands.test.ts (not Wave 1 related).
+## ACCOUNT SAFETY — CRITICAL RULE
 
-## Next Steps — Autonomous Self-Reinforcing Evolution
+**NEVER use the user's main accounts for testing on hostile platforms.**
 
-Execute all waves using parallel subagents in worktrees. Each agent: research online → write tests → implement → verify → iterate.
+Before touching ANY site that requires login on an aggressive anti-bot platform, ASK the user for a test account. The user has offered to provide test accounts for Chinese platforms.
+
+Hostile platforms (will ban accounts on detection):
+- Xiaohongshu (小红书) — device fingerprinting + behavioral ML + account scoring
+- Douyin (抖音) — TLS fingerprinting + request signing + device binding
+- Weibo (微博) — IP reputation + behavioral patterns
+- LinkedIn — aggressive automation detection + account restriction
+- Instagram — Meta behavioral fingerprinting + shadow bans
+
+Safe to test without accounts:
+- Bot detection test sites (bot.sannysoft.com, creepjs, browserleaks.com, bot-detector.rebrowser.net)
+- Paywalled news (The Atlantic, Medium, Forbes — no login needed)
+- Public pages (GitHub, Wikipedia, Hacker News)
+
+---
+
+## Real-World Verification Test Suite
+
+### Tier 1: Bot Detection Sites (SAFE — no account needed, test after every change)
+| Site | What it checks | Must pass |
+|------|---------------|-----------|
+| `bot.sannysoft.com` | WebDriver, Chrome object, Plugins, Languages, Permissions | All green |
+| `bot-detector.rebrowser.net` | CDP Runtime.Enable leak, automation markers | Green |
+| `browserleaks.com/javascript` | navigator properties, screen, canvas hash | No "headless" markers |
+| `creepjs.com` | 50+ fingerprint metrics, trust score | Score > 70% |
+| `iphey.com` | Browser consistency checks | "Not a bot" |
+
+### Tier 2: Anti-Bot Protected Sites (SAFE — public pages, no login)
+| Site | Anti-bot system | What to test |
+|------|----------------|-------------|
+| `cloudflare.com/cdn-cgi/trace` | Cloudflare | Returns connection info (not challenge page) |
+| Any Cloudflare-protected site | Turnstile | Page loads, not stuck on challenge |
+| `medium.com` (any article) | Cloudflare | Full article text via bypass-paywalls |
+| `bloomberg.com` | Akamai | Page loads without bot block |
+| `linkedin.com/jobs` (public) | LinkedIn WAF | Job listings load (no login needed) |
+
+### Tier 3: Paywalled Sites (SAFE — bypass-paywalls, no login)
+| Site | Paywall type | Expected result |
+|------|-------------|----------------|
+| `theatlantic.com` | Metered paywall | Full article text (VERIFIED: 10,421 chars) |
+| `nytimes.com` | Hard paywall | Article text or paywall indicator |
+| `washingtonpost.com` | Metered | Full article text |
+| `wired.com` | Metered | Full article text |
+
+### Tier 4: Chinese Protected Sites (CAUTION — public pages only, NO login)
+| Site | Detection | What to test (public only) |
+|------|----------|--------------------------|
+| `zhihu.com` (public Q&A) | Moderate anti-bot | Can read public answers |
+| `bilibili.com` (public video page) | Moderate | Can read video info |
+| `xiaohongshu.com` (public posts) | **EXTREME** — device fingerprint, canvas, WebGL, audio, behavioral | Even loading public pages may flag IP |
+| `douyin.com` (public) | **EXTREME** — TLS/JA3, request signing | Public page load without block |
+
+### Tier 5: Chinese Protected Sites (DANGEROUS — requires test account from user)
+| Site | What to test | Pre-requisite |
+|------|-------------|--------------|
+| XHS login + browse | Session persistence, no account flag | CloakBrowser (Wave 4) + test account |
+| Douyin login + browse | Cookie import, session maintenance | CloakBrowser (Wave 4) + test account |
+| Weibo login + browse | Feed browsing, content reading | Wave 2 stealth upgrade + test account |
+
+---
+
+## Waves 2-5: Autonomous Self-Reinforcing Evolution
+
+### How to Execute
+Launch parallel subagents in isolated worktrees. Each agent:
+1. **Research online** (WebSearch/WebFetch) for latest techniques and best practices — NEVER rely solely on training data
+2. **Write failing tests first** (TDD iron law)
+3. **Implement** the feature
+4. **Run unit tests** to verify
+5. **Run real-world tests** (Tier 1-3 from the test suite above) to verify user experience
+6. **Iterate** until both unit AND real-world tests pass
 
 ### Wave 2: Stealth Foundation (CRITICAL PATH)
-1. Re-port CDP patches from rebrowser-patches v1.0.19 (new unified .patch format)
-2. Upgrade Playwright to 1.59.1 (AFTER patches)
-3. Update bypass-paywalls-chrome to 4.3.4.0
-4. Verify: bot-detector.rebrowser.net + bot.sannysoft.com must pass
+
+**Agent 1: Re-port CDP patches**
+- Clone rebrowser-patches latest from GitHub
+- Understand new unified .patch format (lib.patch + src.patch)
+- Port to nightCrawl's patch system in stealth.ts
+- Test against Tier 1 bot detection sites
+- MUST pass bot-detector.rebrowser.net (the rebrowser project's own test)
+
+**Agent 2: Upgrade Playwright to 1.59.1**
+- BLOCKED on Agent 1 (patches must work first)
+- Update package.json, run bun install
+- Run full test suite + Tier 1 real-world tests
+- New features: screencast API, browser.bind(), locator.normalize()
+
+**Agent 3: Update bypass-paywalls-chrome to 4.3.4.0**
+- Download from gitflic.ru/project/magnolia1234/bypass-paywalls-chrome-clean
+- Replace stealth/extensions/bypass-paywalls-chrome/
+- Test against Tier 3 paywalled sites
 
 ### Wave 3: Security Hardening
-1. Scoped token system (read/write/admin/meta scopes, domain globs, tab ownership)
-2. IPv6 ULA full-range blocking (fc00::/7 + AAAA DNS)
-3. ReDoS fixes (frame --url regex)
 
-### Wave 4: CloakBrowser (v0.2)
-1. 48 C++ patches: canvas, WebGL, audio, fonts, GPU, WebRTC
-2. Drop-in Playwright replacement
-3. Test against DataDome, Cloudflare Turnstile, PerimeterX
+**Agent 1: Scoped token system**
+- Per-agent permissions: read/write/admin/meta scopes
+- Domain restriction globs
+- Rate limiting per client
+- Test: sidebar agent cannot run `js`, `cookie`, `storage set`
 
-### Wave 5: Advanced Stealth
-1. TLS/JA3/JA4 masking
-2. HTTP/2 fingerprinting defense
-3. Behavioral humanization (mouse curves, typing jitter, scroll momentum)
+**Agent 2: IPv6 + DNS hardening**
+- fc00::/7 ULA full-range blocking
+- AAAA record resolution in DNS rebinding check
+- fe80::1 and ::ffff:169.254.169.254 blocked
+- ReDoS fixes (frame --url regex, escapeRegExp)
 
-## Key Files Changed in Wave 1
-- `stealth/browser/src/content-security.ts` — 4-layer content security
-- `stealth/browser/src/cleanup.ts` — smart page noise removal
-- `stealth/browser/src/cookie-import-firefox.ts` — Firefox cookies
-- `stealth/browser/src/cookie-import-safari.ts` — Safari binary cookies
-- `stealth/browser/src/server.ts` — UDS + parallel startup
-- `stealth/browser/src/cli.ts` — UDS client
-- `stealth/browser/src/config.ts` — socketPath
-- `stealth/browser/src/browser-manager.ts` — pre-warm + patch caching
+### Wave 4: CloakBrowser Integration (v0.2 — the stealth revolution)
+
+This is the gate to Chinese internet. Without C++ level fingerprint spoofing, Tier 4-5 sites will detect us.
+
+**Research first:**
+- How does CloakBrowser npm package work?
+- What are the 48 C++ patches? (canvas, WebGL, audio, fonts, GPU, WebRTC, screen, automation, behavioral, storage)
+- Can it be used as a drop-in Playwright replacement?
+- What fingerprint seed format does it use?
+
+**Then implement:**
+- Integration as alternative browser engine
+- Fingerprint profile generation and persistence
+- Test against Tier 1 → Tier 2 → Tier 4 (progressive)
+- Only attempt Tier 5 (XHS/Douyin login) with user's test account
+
+### Wave 5: Advanced Stealth + Behavioral
+
+**TLS/JA3/JA4 masking:**
+- Playwright's bundled Chromium has a real Chrome TLS fingerprint
+- But proxy traffic may have different JA3 — detect and warn
+- Research: does CloakBrowser handle this already?
+
+**HTTP/2 fingerprinting:**
+- SETTINGS frame ordering must match real Chrome
+- Research: is this handled by Chromium itself or needs patching?
+
+**Behavioral humanization:**
+- Bezier mouse curves (not straight lines)
+- Typing jitter (not instant fills)
+- Scroll momentum (not instant jumps)
+- Only needed for Tier 5 sites — Tier 1-3 don't care about behavior
+
+---
+
+## Anti-Bot Threat Landscape (2026)
+
+### Detection difficulty ranking
+| Tier | System | Key signals | nightCrawl status |
+|------|--------|------------|-------------------|
+| 1 | Basic WAF | IP, headers, rate | PASS (cookie import = real session) |
+| 2 | Cloudflare standard | JS challenge, TLS | PASS (CDP patches + real Chrome TLS) |
+| 3 | Cloudflare Turnstile | Proof-of-work + fingerprint | PARTIAL (passes basic, fails advanced) |
+| 4 | Akamai | sensor.js reads TLS ClientHello BEFORE HTTP, behavioral ML | FAIL (need CloakBrowser) |
+| 5 | DataDome | Real-time AI scoring, hardware consistency | FAIL (need CloakBrowser + behavioral) |
+| 5 | XHS/Douyin | Device fingerprint + canvas + WebGL + audio + behavioral + account scoring | FAIL (need CloakBrowser + behavioral + test account) |
+
+### What Akamai's sensor.js detects (2026)
+- TLS ClientHello: cipher suites, extensions, elliptic curves — identifies your HTTP library before any content
+- Session flow: cookie rotation, navigation patterns, timing between requests
+- Behavioral: mouse events, keyboard events, scroll patterns, idle time
+- This happens BEFORE the page even loads
+
+### What Xiaohongshu detects (2026)
+- Canvas fingerprint (pixel-level rendering differences)
+- WebGL fingerprint (GPU vendor/renderer strings)
+- AudioContext fingerprint (audio processing output)
+- navigator.plugins enumeration (Playwright shows different plugins)
+- Behavioral patterns (scroll speed, click precision, dwell time)
+- Device binding (ties fingerprint to account — flag one = flag all)
+- **WARNING**: Even loading public XHS pages without login may flag your IP for later account detection
+
+---
+
+## Known Issues
+- **CDP patches 6 releases behind**: rebrowser-patches v1.0.19 uses new unified .patch format (was individual JS files). Must re-port.
+- **Arc iCloud Keychain**: may have migrated encryption keys to Apple's Passwords.app. Not confirmed broken. Flagged by yt-dlp#13710.
+- **browser-manager.ts over 800 lines**: pre-warm agent inlined stealth functions. Consider splitting.
+- **Pre-existing test failures**: 2 flaky tests in commands.test.ts (console buffer noise + stale cookies).
+- **Cold start still 2.6s for user**: 51ms is server-internal metric. Real user experience includes binary spawn + Chromium launch. Pre-warm helps subsequent commands (38ms each).
+
+## File Map (Wave 1 changes)
+```
+NEW:  stealth/browser/src/content-security.ts    — 4-layer defense
+NEW:  stealth/browser/src/cleanup.ts             — smart noise removal
+NEW:  stealth/browser/src/cookie-import-firefox.ts — Firefox cookies
+NEW:  stealth/browser/src/cookie-import-safari.ts  — Safari cookies
+MOD:  stealth/browser/src/server.ts              — UDS + parallel startup
+MOD:  stealth/browser/src/cli.ts                 — UDS client
+MOD:  stealth/browser/src/config.ts              — socketPath
+MOD:  stealth/browser/src/browser-manager.ts     — pre-warm + patch cache
+MOD:  stealth/browser/src/commands.ts            — cleanup + enhanced trust
+MOD:  stealth/browser/src/read-commands.ts       — hidden element stripping
+MOD:  stealth/browser/src/url-validation.ts      — exfil URL blocklist
+MOD:  stealth/browser/src/write-commands.ts      — cleanup handler
+MOD:  stealth/browser/src/cookie-import-browser.ts — FF/Safari dispatch
+```
 
 ## Memory References
 - `project_gstack_v015_audit.md` — full gstack v0.14→v0.15 diff
-- `project_mediacrawler_analysis.md` — scraper, not competitor
-- `project_architecture_revolution_plan.md` — 4-wave plan
+- `project_architecture_revolution_plan.md` — product-aligned wave plan
+- `feedback_test_accounts_safety.md` — NEVER use main accounts on hostile sites
+- `reference_antibot_bypass.md` — per-site stealth strategies
+- `reference_stealth_roadmap.md` — C++ fingerprinting, JA3, Chinese tiers
 
 ---
 *Created by Claude Code · 2026-04-07*
