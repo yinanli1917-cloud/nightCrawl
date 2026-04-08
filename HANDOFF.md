@@ -1,95 +1,75 @@
-# HANDOFF — 2026-04-06
+# HANDOFF — 2026-04-07
 
-## What nightcrawl Is
+## Current Task
+Architecture revolution to surpass gstack browse v0.15 in every dimension. Wave 1 complete and pushed. Waves 2-5 defined and ready for autonomous self-reinforcing execution.
 
-The user's digital twin browser. Everything they can do in Arc, nightcrawl automates. Stealth is invisible infrastructure. Invoke via `/nightcrawl` skill.
+## Completion Status
+- ✅ Full audit: gstack browse v0.15 vs nightCrawl (content-security, token-registry, cdp-inspector)
+- ✅ Full audit: MediaCrawler/MediaCrawlerPro (not a competitor — scraper vs digital twin)
+- ✅ Wave 1A: Cookie revolution — Firefox + Safari import, mmap optimization (42 tests)
+- ✅ Wave 1B: Content security pipeline — 4-layer defense (56 tests)
+- ✅ Wave 1C: Unix domain socket IPC — 2x faster (14 tests)
+- ✅ Wave 1D: Page cleanup command — 9 categories, token savings (20 tests)
+- ✅ Wave 1E: Pre-warmed browser pool — 66x faster startup (7 tests)
+- ✅ Integration: all 5 worktrees merged, 179 tests passing, 0 new failures
+- ✅ Dependency audit complete, pushed to GitHub (55f6087 + 6f28d40)
+- 🔄 Wave 2: CDP patch re-port + Playwright upgrade (CRITICAL)
+- ⏳ Wave 3: Security hardening (scoped tokens, IPv6, ReDoS)
+- ⏳ Wave 4: CloakBrowser integration (v0.2)
+- ⏳ Wave 5: TLS/JA3, behavioral humanization
 
-## How to Run
-
-```bash
-export PATH="$HOME/.bun/bin:$PATH"
-NC_DIR="/Users/yinanli/Documents/nightCrawl/stealth/browser"
-BROWSE_EXTENSIONS=none BROWSE_EXTENSIONS_DIR= bun run $NC_DIR/src/cli.ts <command>
-# Add BROWSE_IGNORE_HTTPS_ERRORS=1 for sites with bad certs
-```
-
-CDP patches require clean playwright-core on first run:
-```bash
-cd stealth/browser && rm -rf node_modules/playwright-core ~/.bun/install/cache/playwright-core@1.58.2@@@1 && bun install
-```
-
-## What's Working
-
-### Stealth (verified 2026-04-05)
-- CDP Runtime.Enable bypass (ported to PW 1.58.2)
-- Dynamic UA from browsers.json (Chrome/145)
-- navigator.webdriver deleted from prototype
-- bot.sannysoft.com: UA/WebDriver/Chrome all PASS
-- bot-detector.rebrowser.net: runtimeEnableLeak PASS
-
-### Sites Verified
-| Site | Status | Method |
-|------|--------|--------|
-| oversea.cnki.net | Full access | Direct stealth |
-| CNKI China (www.cnki.net) | 42万 results | VPN proxy: `www--cnki--net--https.cnki.mdjsf.utuvpn.utuedu.com:9000` |
-| wenshu.court.gov.cn | 871 results for "爬虫" | Handoff login (phone 15307739027), sessions expire on browser close |
-
-### Cookie Persistence (generalized)
-- Cookies auto-saved every 5 min + on shutdown + immediately after handoff/resume
-- Stored at `~/.nightcrawl/browse-cookies.json`
-- Auto-restored on next server startup
-- Named states: `state save <name>` / `state load <name>` in `~/.nightcrawl/browse-states/`
-- Saved state: `wenshu-authenticated` (3,164 cookies, likely expired)
-
-### Handoff Flow
-When nightcrawl can't get past a login (captcha, verification):
-1. `handoff "message"` — opens headed Chrome at current page
-2. User logs in manually (captcha, phone verification, whatever)
-3. `resume` — closes headed, resumes headless, preserves all cookies
-4. Cookies immediately persisted to disk for next session
-
-Set `BROWSE_AUTO_HANDOVER=1` to auto-detect login walls and open headed mode.
+## Key Decisions
+- **Product-first filter**: every upgrade must pass "does this make the twin more like you?"
+- **Rejected**: actor model, event sourcing, gRPC, plugin architecture (engineering toys, not user features)
+- **MediaCrawler**: scraper (extracts data FROM platforms) vs nightCrawl digital twin (acts AS you). Zero overlap.
+- **gstack v0.15 has real new code**: content-security.ts, token-registry.ts, cdp-inspector.ts. But still NO stealth.
+- **CDP patches 6 releases behind**: rebrowser-patches v1.0.19 changed format. MUST re-port before Playwright upgrade.
 
 ## Known Issues
+- **CDP patches**: target PW ~1.48. Upgrading to 1.59 without re-porting BREAKS stealth. New format: unified .patch files.
+- **Arc iCloud Keychain**: may have migrated keys to Apple's Passwords.app (yt-dlp#13710). Not confirmed broken.
+- **browser-manager.ts over 800 lines**: pre-warm agent inlined stealth functions. Consider splitting.
+- **Pre-existing test failures**: 2 flaky tests in commands.test.ts (not Wave 1 related).
 
-### XHS (小红书) — DO NOT TOUCH
-User got a bot detection warning, account ban threatened. Must identify and fix detection vectors before accessing XHS again. Use throwaway account for testing. This is the ultimate benchmark.
+## Next Steps — Autonomous Self-Reinforcing Evolution
 
-### wenshu Sessions Expire
-Server-side sessions die on browser close. Must handoff → login each new browser session. Image captcha blocks full automation.
+Execute all waves using parallel subagents in worktrees. Each agent: research online → write tests → implement → verify → iterate.
 
-### CNKI China Blocked Direct
-Tencent Cloud WAF returns HTTP 418. Only accessible via university VPN proxy.
+### Wave 2: Stealth Foundation (CRITICAL PATH)
+1. Re-port CDP patches from rebrowser-patches v1.0.19 (new unified .patch format)
+2. Upgrade Playwright to 1.59.1 (AFTER patches)
+3. Update bypass-paywalls-chrome to 4.3.4.0
+4. Verify: bot-detector.rebrowser.net + bot.sannysoft.com must pass
 
-### Headless Limitations
-- Plugins length = 0, WebGL = no context (inherent to headless, not fixable with JS)
-- These don't trigger real-world detection
+### Wave 3: Security Hardening
+1. Scoped token system (read/write/admin/meta scopes, domain globs, tab ownership)
+2. IPv6 ULA full-range blocking (fc00::/7 + AAAA DNS)
+3. ReDoS fixes (frame --url regex)
 
-## nightcrawl Skill
-At `.claude/skills/nightcrawl/SKILL.md`. Created via `/skill-creator` — eval loop started but not completed. 3 test prompts drafted (wenshu, sannysoft, CNKI VPN).
+### Wave 4: CloakBrowser (v0.2)
+1. 48 C++ patches: canvas, WebGL, audio, fonts, GPU, WebRTC
+2. Drop-in Playwright replacement
+3. Test against DataDome, Cloudflare Turnstile, PerimeterX
 
-## Key Files
-| File | Purpose |
-|------|---------|
-| `stealth/browser/src/stealth.ts` | All stealth: UA, patches, init scripts |
-| `stealth/browser/src/browser-manager.ts` | Browser lifecycle, handoff/resume |
-| `stealth/browser/src/server.ts` | HTTP server, cookie persistence, auto-handover |
-| `stealth/patches/cdp/frames.js` | Patched for PW 1.58.2 |
-| `.claude/skills/nightcrawl/SKILL.md` | Skill definition |
+### Wave 5: Advanced Stealth
+1. TLS/JA3/JA4 masking
+2. HTTP/2 fingerprinting defense
+3. Behavioral humanization (mouse curves, typing jitter, scroll momentum)
 
-## Next Steps
-1. Complete skill-creator eval loop (run test prompts, generate viewer, iterate)
-2. XHS investigation (identify detection vectors with throwaway account)
-3. Captcha solving for wenshu (screenshot + vision)
-4. CNKI VPN personal login (modal form in iframe, credentials: 255122884 / Luffy551024usst for 上海理工大学)
+## Key Files Changed in Wave 1
+- `stealth/browser/src/content-security.ts` — 4-layer content security
+- `stealth/browser/src/cleanup.ts` — smart page noise removal
+- `stealth/browser/src/cookie-import-firefox.ts` — Firefox cookies
+- `stealth/browser/src/cookie-import-safari.ts` — Safari binary cookies
+- `stealth/browser/src/server.ts` — UDS + parallel startup
+- `stealth/browser/src/cli.ts` — UDS client
+- `stealth/browser/src/config.ts` — socketPath
+- `stealth/browser/src/browser-manager.ts` — pre-warm + patch caching
 
-## Commits This Session
-```
-e89e1d9 feat: nightcrawl skill, HTTPS error bypass, wenshu breakthrough
-1072076 feat: CNKI China breakthrough — 42万 results via university VPN proxy
-2ac18c8 fix: update wenshu test expectations, fix resume await
-5fdb4b0 feat: stealth overhaul — CDP patches fixed, dynamic UA, anti-bot init scripts
-```
+## Memory References
+- `project_gstack_v015_audit.md` — full gstack v0.14→v0.15 diff
+- `project_mediacrawler_analysis.md` — scraper, not competitor
+- `project_architecture_revolution_plan.md` — 4-wave plan
 
 ---
-*Created by Claude Code · 2026-04-06*
+*Created by Claude Code · 2026-04-07*
