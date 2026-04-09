@@ -34,8 +34,8 @@ No existing tool combines: **local CLI + real browser cookies + stealth + persis
 |------|---------|
 | `stealth/` | Anti-bot stealth layer — the actual working code |
 | `stealth/browser/` | Complete working browser engine (CLI + daemon + commands) |
-| `stealth/patches/cdp/` | CDP Runtime.Enable bypass (6 Playwright files, ported from rebrowser-patches) |
-| `stealth/extensions/` | Chrome extensions (bypass-paywalls, nightCrawl extension) |
+| `stealth/patches/cdp/` | CDP Runtime.Enable bypass (5 files + VERSION, rebrowser-patches v1.0.19 adapted for PW 1.58.2) |
+| `stealth/extensions/` | Chrome extensions (bypass-paywalls v4.3.4.5 MV3, nightCrawl extension) |
 | `research/` | Competitive landscape, anti-bot research |
 | `docs/` | PRD, architecture docs, origin handoff |
 | `docs/PRD.md` | Product Requirements Document (v0.2 — the source of truth) |
@@ -45,21 +45,29 @@ No existing tool combines: **local CLI + real browser cookies + stealth + persis
 
 ### Current
 1. **UA fix** — consistent User-Agent across JS + HTTP levels, removes HeadlessChrome, sets real viewport
-2. **CDP Runtime.Enable fix** — auto-applied at startup from `stealth/patches/cdp/` (6 files, ported from rebrowser-patches)
+2. **CDP Runtime.Enable fix** — rebrowser-patches v1.0.19, adapted for PW 1.58.2 (5 files, auto-applied with `isPatchCurrent` optimization)
 3. **Extension management** — `BROWSE_EXTENSIONS=none|paywall|all` controls extension loading per mode
 4. **Auto-handover** — detects login walls, opens headed Chrome, user logs in, auto-resumes headless (on by default, opt-out with `BROWSE_AUTO_HANDOVER=0`)
-5. **bypass-paywalls-chrome** extension
-6. **Cookie persistence** + import from Arc/Chrome (AES-128-CBC decrypt via Keychain)
+5. **bypass-paywalls-chrome v4.3.4.5** — Manifest V3, declarativeNetRequest
+6. **Cookie persistence** + import from Arc/Chrome/Firefox/Safari (AES-128-CBC decrypt via Keychain)
+7. **Scoped token system** — per-agent permissions (read/write/admin/meta scopes), domain restrictions, rate limiting
+8. **IPv6 + DNS hardening** — full fc00::/7, fe80::/10, IPv4-mapped IPv6, AAAA DNS rebinding, ReDoS-safe regex
 
-### Stealth Limitation (v0.1)
+9. **CloakBrowser engine** — `BROWSE_ENGINE=cloakbrowser` uses CloakBrowser's stealth Chromium with 48 C++ patches (canvas, WebGL, audio, fonts, GPU, WebRTC, etc.). Falls back to stock Playwright if unavailable.
+10. **Fingerprint profiles** — `BROWSE_FINGERPRINT_SEED` or per-identity seeds in `~/.nightcrawl/identities/`. Deterministic fingerprints across all surfaces.
+11. **Behavioral humanization** — `BROWSE_HUMANIZE=1` enables CloakBrowser's built-in Bezier mouse, typing jitter, non-linear scroll (Tier 4-5 sites only)
+
+### Engine Selection
+- `BROWSE_ENGINE=playwright` (default) — stock Playwright Chromium with CDP patches
+- `BROWSE_ENGINE=cloakbrowser` — CloakBrowser stealth Chromium (skips CDP patches, uses 48 C++ patches instead)
+- `BROWSE_FINGERPRINT_SEED=12345` — explicit fingerprint seed (10000-99999)
+- `BROWSE_HUMANIZE=0|1` — behavioral humanization (CloakBrowser only)
+
+### Stealth Limitation (Playwright engine)
 CDP patches fix basic automation detection, but canvas/WebGL/audio fingerprinting and
-behavioral analysis are NOT patched. Sites with aggressive anti-bot (Xiaohongshu, DataDome)
-may still detect automation. CloakBrowser integration (v0.2) will fix this with 48 C++ patches.
+behavioral analysis are NOT patched. Switch to `BROWSE_ENGINE=cloakbrowser` for full stealth.
 
-### Roadmap (v0.2+)
-- CloakBrowser integration (48 C++ patches: canvas, WebGL, audio, fonts, GPU, WebRTC)
-- Multi-identity sessions (isolated browser profiles for risky platforms)
-- Behavioral humanization (mouse curves, keyboard timing, scroll patterns)
+### Roadmap (v0.3+)
 - TLS/JA3 fingerprint masking
 - Chinese internet tiers (Xiaohongshu, Zhihu via separate identities)
 

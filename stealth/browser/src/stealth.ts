@@ -92,7 +92,6 @@ export async function applyStealthPatches(): Promise<void> {
     ['chromium/crDevTools.js', 'chromium/crDevTools.js'],
     ['frames.js', 'frames.js'],
     ['page.js', 'page.js'],
-    ['screencast.js', 'screencast.js'],
   ];
 
   const patchTargets: string[] = [];

@@ -1,0 +1,6 @@
+rebrowser-patches: 1.0.19
+playwright-core: 1.58.2
+adapted: 2026-04-07
+notes: Patches adapted from rebrowser-patches v1.0.19 (targets PW 1.52.0) to Playwright 1.58.2.
+  Key adaptations: delegate._sessions (not _delegate), optional chaining for null safety,
+  screencast.stopFrameThrottler safety check, ManualPromise-based Worker class.

@@ -29,6 +29,8 @@ async function getChromium() {
 }
 import { addConsoleEntry, addNetworkEntry, addDialogEntry, networkBuffer, type DialogEntry } from './buffers';
 import { validateNavigationUrl } from './url-validation';
+import { parseEngineConfig } from './engine-config';
+import { launchCloakBrowser, shouldSkipCdpPatches } from './cloakbrowser-engine';
 
 export interface RefEntry {
   locator: Locator;
@@ -309,74 +311,93 @@ export class BrowserManager {
   }
 
   async launch() {
-    // CDP stealth patches temporarily disabled — version mismatch investigation
-    // await applyStealthPatches();
-    // process.env.REBROWSER_PATCHES_RUNTIME_FIX_MODE = 'addBinding';
+    const engineConfig = parseEngineConfig(process.env);
+
+    // CDP stealth patches — skip when CloakBrowser handles it internally
+    if (!shouldSkipCdpPatches(engineConfig.engine)) {
+      await applyStealthPatches();
+      process.env.REBROWSER_PATCHES_RUNTIME_FIX_MODE = 'addBinding';
+    }
 
     const extensionMode = process.env.BROWSE_EXTENSIONS || 'all';
     const extensionsDir = extensionMode !== 'none' ? process.env.BROWSE_EXTENSIONS_DIR : undefined;
-    const launchArgs: string[] = [
-      '--disable-blink-features=AutomationControlled',
-    ];
-
-    if (process.env.CI || process.env.CONTAINER) {
-      launchArgs.push('--no-sandbox');
-    }
-
-    // Stealth: consistent UA across JS + HTTP levels
     const ua = this.customUserAgent || DEFAULT_USER_AGENT;
-    const contextOptions: BrowserContextOptions = {
-      viewport: { width: 1920, height: 1080 },
-      userAgent: ua,
-    };
 
-    if (extensionsDir) {
-      // ─── Extension Mode: Persistent Context ──────────────────
-      launchArgs.push(
-        `--disable-extensions-except=${extensionsDir}`,
-        `--load-extension=${extensionsDir}`,
-        '--headless=new',
-      );
-      const ignoreArgs = [
-        '--disable-extensions',
-        '--enable-automation',
-        '--disable-component-extensions-with-background-pages',
+    // ─── CloakBrowser Engine ─────────────────────────────────
+    if (engineConfig.engine === 'cloakbrowser') {
+      const result = await launchCloakBrowser({
+        fingerprintSeed: engineConfig.fingerprintSeed,
+        extensionsDir,
+        headless: true,
+        humanize: engineConfig.humanize,
+        humanPreset: engineConfig.humanize ? 'default' : undefined,
+        userAgent: ua,
+        viewport: { width: 1920, height: 1080 },
+      });
+      this.browser = result.browser;
+      this.context = result.context;
+      console.log(`[nightcrawl] Engine: CloakBrowser (seed: ${engineConfig.fingerprintSeed ?? 'random'})`);
+    } else {
+      // ─── Stock Playwright Engine ─────────────────────────────
+      const launchArgs: string[] = [
+        '--disable-blink-features=AutomationControlled',
       ];
 
-      const userDataDir = await import('fs').then(fs =>
-        fs.promises.mkdtemp(require('path').join(require('os').tmpdir(), 'browse-ext-'))
-      );
+      if (process.env.CI || process.env.CONTAINER) {
+        launchArgs.push('--no-sandbox');
+      }
 
-      const chromiumPath = findChromiumExecutable();
-      this.context = await (await getChromium()).launchPersistentContext(userDataDir, {
-        headless: false,
-        ...(chromiumPath ? { executablePath: chromiumPath } : {}),
-        chromiumSandbox: process.platform !== 'win32',
-        args: launchArgs,
-        ignoreDefaultArgs: ignoreArgs,
-        ...contextOptions,
-      });
-      this.browser = this.context.browser()!;
-      console.log(`[nightcrawl] Extensions loaded from: ${extensionsDir}`);
-    } else {
-      // ─── Standard Mode: Isolated Context ─────────────────────
-      this.browser = await (await getChromium()).launch({
-        headless: true,
-        chromiumSandbox: process.platform !== 'win32',
-        args: launchArgs,
-      });
-      this.context = await this.browser.newContext(contextOptions);
+      const contextOptions: BrowserContextOptions = {
+        viewport: { width: 1920, height: 1080 },
+        userAgent: ua,
+      };
+
+      if (extensionsDir) {
+        launchArgs.push(
+          `--disable-extensions-except=${extensionsDir}`,
+          `--load-extension=${extensionsDir}`,
+          '--headless=new',
+        );
+        const ignoreArgs = [
+          '--disable-extensions',
+          '--enable-automation',
+          '--disable-component-extensions-with-background-pages',
+        ];
+
+        const userDataDir = await import('fs').then(fs =>
+          fs.promises.mkdtemp(require('path').join(require('os').tmpdir(), 'browse-ext-'))
+        );
+
+        const chromiumPath = findChromiumExecutable();
+        this.context = await (await getChromium()).launchPersistentContext(userDataDir, {
+          headless: false,
+          ...(chromiumPath ? { executablePath: chromiumPath } : {}),
+          chromiumSandbox: process.platform !== 'win32',
+          args: launchArgs,
+          ignoreDefaultArgs: ignoreArgs,
+          ...contextOptions,
+        });
+        this.browser = this.context.browser()!;
+        console.log(`[nightcrawl] Extensions loaded from: ${extensionsDir}`);
+      } else {
+        this.browser = await (await getChromium()).launch({
+          headless: true,
+          chromiumSandbox: process.platform !== 'win32',
+          args: launchArgs,
+        });
+        this.context = await this.browser.newContext(contextOptions);
+      }
     }
 
     // Chromium crash → exit with clear message
-    this.browser.on('disconnected', () => {
+    this.browser!.on('disconnected', () => {
       console.error('[nightcrawl] FATAL: Chromium process crashed or was killed. Server exiting.');
       console.error('[nightcrawl] Console/network logs flushed to .nightcrawl/browse-*.log');
       process.exit(1);
     });
 
     // Stealth: sync UA at HTTP header level
-    await this.context.setExtraHTTPHeaders({
+    await this.context!.setExtraHTTPHeaders({
       ...this.extraHeaders,
       'User-Agent': ua,
     });
@@ -396,9 +417,8 @@ export class BrowserManager {
    * every action Claude takes in real time.
    */
   async launchHeaded(authToken?: string): Promise<void> {
-    // CDP stealth patches temporarily disabled — version mismatch investigation
-    // await applyStealthPatches();
-    // process.env.REBROWSER_PATCHES_RUNTIME_FIX_MODE = 'addBinding';
+    await applyStealthPatches();
+    process.env.REBROWSER_PATCHES_RUNTIME_FIX_MODE = 'addBinding';
 
     // Clear old state before repopulating
     this.pages.clear();
@@ -1181,7 +1201,7 @@ export class BrowserManager {
    */
   async detectLoginWall(): Promise<{ detected: boolean; reason: string } | null> {
     if (this.isHeaded) return null;
-    if (process.env.BROWSE_AUTO_HANDOVER !== '1') return null;
+    if (process.env.BROWSE_AUTO_HANDOVER === '0') return null;
 
     const page = this.getPage();
     if (!page) return null;

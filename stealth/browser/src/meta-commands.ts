@@ -536,7 +536,9 @@ export async function handleMetaCommand(
         frame = page.frame({ name: args[1] });
       } else if (target === '--url') {
         if (!args[1]) throw new Error('Usage: frame --url <pattern>');
-        frame = page.frame({ url: new RegExp(args[1]) });
+        // Escape user input to prevent ReDoS — treat as literal substring match
+        const { escapeRegExp } = await import('./url-validation');
+        frame = page.frame({ url: new RegExp(escapeRegExp(args[1])) });
       } else {
         // CSS selector or @ref for the iframe element
         const resolved = await bm.resolveRef(target);

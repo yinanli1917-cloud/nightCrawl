@@ -63,7 +63,7 @@ describe('validateNavigationUrl', () => {
   });
 
   it('blocks IPv6 metadata with brackets', async () => {
-    await expect(validateNavigationUrl('http://[fd00::]/')).rejects.toThrow(/cloud metadata/i);
+    await expect(validateNavigationUrl('http://[fd00::]/')).rejects.toThrow(/blocked/i);
   });
 
   it('throws on malformed URLs', async () => {

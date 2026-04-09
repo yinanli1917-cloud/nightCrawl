@@ -22,6 +22,8 @@ import { sanitizeExtensionUrl } from './sidebar-utils';
 import { COMMAND_DESCRIPTIONS, PAGE_CONTENT_COMMANDS, wrapUntrustedContent } from './commands';
 import { handleSnapshot, SNAPSHOT_FLAGS } from './snapshot';
 import { resolveConfig, ensureStateDir, readVersionHash } from './config';
+import { TokenRegistry, checkPermission, type ScopedToken } from './token-registry';
+import { checkForUpdates } from './update-checker';
 import { emitActivity, subscribe, getActivityAfter, getActivityHistory, getSubscriberCount } from './activity';
 // Bun.spawn used instead of child_process.spawn (compiled bun binaries
 // fail posix_spawn on all executables including /bin/bash)
@@ -34,8 +36,10 @@ import * as crypto from 'crypto';
 const config = resolveConfig();
 ensureStateDir(config);
 
-// ─── Auth ───────────────────────────────────────────────────────
+// ─── Auth & Token Registry ──────────────────────────────────────
 const AUTH_TOKEN = crypto.randomUUID();
+const tokenRegistry = new TokenRegistry();
+const mainToken = tokenRegistry.createFullAccessToken(AUTH_TOKEN);
 const BROWSE_PORT = parseInt(process.env.BROWSE_PORT || '0', 10);
 const IDLE_TIMEOUT_MS = parseInt(process.env.BROWSE_IDLE_TIMEOUT || '1800000', 10); // 30 min
 // Sidebar chat is always enabled in headed mode (ungated in v0.12.0)
@@ -43,6 +47,14 @@ const IDLE_TIMEOUT_MS = parseInt(process.env.BROWSE_IDLE_TIMEOUT || '1800000', 1
 function validateAuth(req: Request): boolean {
   const header = req.headers.get('authorization');
   return header === `Bearer ${AUTH_TOKEN}`;
+}
+
+/** Extract the scoped token from a request's Authorization header. */
+function getTokenFromRequest(req: Request): ScopedToken | null {
+  const header = req.headers.get('authorization');
+  if (!header?.startsWith('Bearer ')) return null;
+  const tokenId = header.slice(7);
+  return tokenRegistry.get(tokenId);
 }
 
 // ─── Help text (auto-generated from COMMAND_DESCRIPTIONS) ────────
@@ -556,6 +568,7 @@ const flushInterval = setInterval(flushBuffers, 1000);
 // Persist browser cookies + localStorage to disk so they survive daemon restarts.
 // Called periodically (every 5 min) and on shutdown.
 async function persistStorage() {
+  if (process.env.BROWSE_INCOGNITO === '1') return; // Incognito: never persist cookies
   try {
     const state = await browserManager.saveState();
     if (state.cookies.length === 0) return;
@@ -662,12 +675,36 @@ function wrapError(err: any): string {
   return msg;
 }
 
-async function handleCommand(body: any): Promise<Response> {
+async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
   const { command, args = [] } = body;
 
   if (!command) {
     return new Response(JSON.stringify({ error: 'Missing "command" field' }), {
       status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  // ─── Permission check (scoped tokens) ────────────────────────
+  const currentUrl = browserManager?.getCurrentUrl();
+  const permission = checkPermission(token, command, currentUrl);
+  if (!permission.allowed) {
+    return new Response(JSON.stringify({
+      error: `Permission denied: ${permission.reason}`,
+      hint: `Token '${token.id.slice(0, 8)}…' scopes: [${token.scopes.join(', ')}]`,
+    }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  // ─── Rate limit check ────────────────────────────────────────
+  if (!tokenRegistry.checkRateLimit(token.id)) {
+    return new Response(JSON.stringify({
+      error: 'Rate limit exceeded',
+      hint: `Token '${token.id.slice(0, 8)}…' has a rate limit of ${token.rateLimit} requests/minute`,
+    }), {
+      status: 429,
       headers: { 'Content-Type': 'application/json' },
     });
   }
@@ -875,6 +912,7 @@ process.on('uncaughtException', (err) => {
 });
 process.on('unhandledRejection', (err: any) => {
   console.error('[browse] FATAL unhandled rejection:', err?.message || err);
+  if (err?.stack) console.error(err.stack);
   emergencyCleanup();
   process.exit(1);
 });
@@ -1219,7 +1257,8 @@ async function start() {
       if (url.pathname === '/command' && req.method === 'POST') {
         resetIdleTimer();  // Only commands reset idle timer
         const body = await req.json();
-        return handleCommand(body);
+        const token = getTokenFromRequest(req) || mainToken;
+        return handleCommand(body, token);
       }
 
       return new Response('Not found', { status: 404 });
@@ -1270,16 +1309,20 @@ async function start() {
           await browserManager.launch();
         }
 
-        // Restore cookies from previous session
-        try {
-          const raw = fs.readFileSync(config.storageFile, 'utf-8');
-          const saved = JSON.parse(raw);
-          if (saved.cookies?.length > 0) {
-            await browserManager.restoreCookies(saved.cookies);
-            console.log(`[browse] Restored ${saved.cookies.length} cookies from previous session`);
+        // Restore cookies from previous session (skip in incognito mode)
+        if (process.env.BROWSE_INCOGNITO === '1') {
+          console.log(`[browse] Incognito mode — no cookies restored`);
+        } else {
+          try {
+            const raw = fs.readFileSync(config.storageFile, 'utf-8');
+            const saved = JSON.parse(raw);
+            if (saved.cookies?.length > 0) {
+              await browserManager.restoreCookies(saved.cookies);
+              console.log(`[browse] Restored ${saved.cookies.length} cookies from previous session`);
+            }
+          } catch {
+            // No storage file or parse error — start fresh
           }
-        } catch {
-          // No storage file or parse error — start fresh
         }
 
         console.log(`[browse] Browser warm in ${Date.now() - browserLaunchStart}ms`);
@@ -1290,6 +1333,13 @@ async function start() {
       }
     })();
   }
+
+  // ─── Dependency update check (non-blocking) ─────────────────────
+  checkForUpdates({
+    stateDir: path.join(process.env.HOME || '/tmp', '.nightcrawl'),
+    packageJsonPath: path.resolve(import.meta.dir, '..', 'package.json'),
+    patchesDir: path.resolve(import.meta.dir, '..', '..', 'patches', 'cdp'),
+  }).catch(() => {}); // Fire-and-forget — never block startup
 
   // Clean up stale state files (older than 7 days)
   try {

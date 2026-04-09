@@ -252,7 +252,7 @@ class Page extends import_instrumentation.SdkObject {
     await PageBinding.dispatch(this, payload, context);
   }
   addConsoleMessage(worker, type, args, location, text) {
-    const message = new import_console.ConsoleMessage(this, worker, type, text, args, location);
+    const message = new import_console.ConsoleMessage(this, worker, type, text, args, location, Date.now());
     const intercepted = this.frameManager.interceptConsoleMessage(message);
     if (intercepted) {
       args.forEach((arg) => arg.dispose());
