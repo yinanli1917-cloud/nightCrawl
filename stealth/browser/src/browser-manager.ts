@@ -1307,8 +1307,32 @@ export class BrowserManager {
     const graceMs = 15000;
     const startTime = Date.now();
 
-    // Grace period — don't check anything, just wait
+    // Grace period — don't check anything, just wait for headed page to render
     await new Promise(resolve => setTimeout(resolve, graceMs));
+
+    // Wait for the login wall to appear in headed mode before we start
+    // checking if it disappeared. Without this, a slow-loading headed page
+    // would look "not blocked" and trigger false-positive auto-resume.
+    let loginWallSeen = false;
+    const confirmWaitMs = 10000;
+    const confirmStart = Date.now();
+    while (Date.now() - confirmStart < confirmWaitMs) {
+      const page = this.getPage();
+      if (page) {
+        const hasWall = await page.evaluate(() => {
+          const qr = document.querySelector('[class*="qrcode"], [class*="qr-"], canvas[class*="qr"]');
+          const text = document.body?.innerText?.slice(0, 2000) || '';
+          const hasLoginText = /请登录|请先登录|登录后|扫码登录/i.test(text);
+          const hasLoginForm = document.querySelectorAll('input[type="password"], input[type="tel"]').length > 0;
+          return !!(qr || hasLoginText || hasLoginForm);
+        }).catch(() => false);
+        if (hasWall) { loginWallSeen = true; break; }
+      }
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    if (!loginWallSeen) {
+      console.log('[nightcrawl] Login wall not found in headed mode — page may have changed. Skipping auto-resume polling.');
+    }
 
     while (Date.now() - startTime < maxWaitMs) {
       await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
@@ -1324,19 +1348,20 @@ export class BrowserManager {
         break;
       }
 
-      // Strategy 2: Login wall disappeared (SPA login — URL stays the same,
-      // but QR code / login form vanishes after successful auth. XHS does this.)
-      const stillBlocked = await page.evaluate(() => {
-        const qr = document.querySelector('[class*="qrcode"], [class*="qr-"], canvas[class*="qr"]');
-        const text = document.body?.innerText?.slice(0, 2000) || '';
-        const hasLoginText = /请登录|请先登录|登录后|扫码登录/i.test(text);
-        const hasLoginForm = document.querySelectorAll('input[type="password"], input[type="tel"]').length > 0;
-        return qr || hasLoginText || hasLoginForm;
-      }).catch(() => true);
+      // Strategy 2: Login wall disappeared — only if we confirmed it was there first
+      if (loginWallSeen) {
+        const stillBlocked = await page.evaluate(() => {
+          const qr = document.querySelector('[class*="qrcode"], [class*="qr-"], canvas[class*="qr"]');
+          const text = document.body?.innerText?.slice(0, 2000) || '';
+          const hasLoginText = /请登录|请先登录|登录后|扫码登录/i.test(text);
+          const hasLoginForm = document.querySelectorAll('input[type="password"], input[type="tel"]').length > 0;
+          return qr || hasLoginText || hasLoginForm;
+        }).catch(() => true);
 
-      if (!stillBlocked) {
-        console.log(`[nightcrawl] Login successful! Login wall disappeared. Returning to headless...`);
-        break;
+        if (!stillBlocked) {
+          console.log(`[nightcrawl] Login successful! Login wall disappeared. Returning to headless...`);
+          break;
+        }
       }
     }
 
