@@ -1302,9 +1302,24 @@ export class BrowserManager {
 
       const currentUrl = await page.evaluate(() => location.href).catch(() => loginUrl);
 
-      // Login success: URL changed away from the login page
+      // Strategy 1: URL changed away from the login page
       if (currentUrl !== loginUrl && !/[/=](login|signin|sign-in|auth|captcha|verify|sso)\b/i.test(currentUrl)) {
         console.log(`[nightcrawl] Login successful! URL changed to ${currentUrl}. Returning to headless...`);
+        break;
+      }
+
+      // Strategy 2: Login wall disappeared (SPA login — URL stays the same,
+      // but QR code / login form vanishes after successful auth. XHS does this.)
+      const stillBlocked = await page.evaluate(() => {
+        const qr = document.querySelector('[class*="qrcode"], [class*="qr-"], canvas[class*="qr"]');
+        const text = document.body?.innerText?.slice(0, 2000) || '';
+        const hasLoginText = /请登录|请先登录|登录后|扫码登录/i.test(text);
+        const hasLoginForm = document.querySelectorAll('input[type="password"], input[type="tel"]').length > 0;
+        return qr || hasLoginText || hasLoginForm;
+      }).catch(() => true);
+
+      if (!stillBlocked) {
+        console.log(`[nightcrawl] Login successful! Login wall disappeared. Returning to headless...`);
         break;
       }
     }
