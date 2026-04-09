@@ -1,0 +1,204 @@
+#!/usr/bin/env bash
+# nightcrawl-update-check — check for nightcrawl updates
+#
+# Outputs one of:
+#   JUST_UPGRADED <old> <new>         — user just upgraded
+#   UPGRADE_AVAILABLE <local> <remote> — newer version available
+#   (nothing)                          — up to date or error
+#
+# Always exits 0 (agents call this in preamble; exit 1 breaks them).
+
+set -uo pipefail
+
+NIGHTCRAWL_DIR="${NIGHTCRAWL_DIR:-$HOME/.nightcrawl}"
+STATE_DIR="${NIGHTCRAWL_STATE_DIR:-$NIGHTCRAWL_DIR/state}"
+REMOTE_URL="${NIGHTCRAWL_REMOTE_URL:-https://raw.githubusercontent.com/nightcrawl/nightcrawl/main/VERSION}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+CACHE_FILE="$STATE_DIR/last-update-check"
+SNOOZE_FILE="$STATE_DIR/update-snoozed"
+UPGRADE_MARKER="$STATE_DIR/just-upgraded-from"
+
+FORCE=0
+for arg in "$@"; do
+  [[ "$arg" == "--force" ]] && FORCE=1
+done
+
+# ─── Helpers ───────────────────────────────────────────────────────
+
+write_cache() {
+  mkdir -p "$STATE_DIR"
+  printf '%s' "$1" > "$CACHE_FILE"
+}
+
+is_valid_version() {
+  [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+}
+
+# Check if snooze is active for a given version.
+# Returns 0 (true) if snoozed, 1 (false) if not.
+is_snoozed() {
+  local version="$1"
+  [[ ! -f "$SNOOZE_FILE" ]] && return 1
+
+  local sv sl se
+  # read returns non-zero on missing trailing newline — ignore exit code,
+  # validate fields instead
+  read -r sv sl se < "$SNOOZE_FILE" 2>/dev/null || true
+  [[ -z "$sv" ]] && return 1
+
+  # Different version = snooze doesn't apply
+  [[ "$sv" != "$version" ]] && return 1
+
+  # Validate numeric fields
+  [[ ! "$sl" =~ ^[0-9]+$ ]] && return 1
+  [[ ! "$se" =~ ^[0-9]+$ ]] && return 1
+
+  local now duration
+  now=$(date +%s)
+
+  # Snooze durations: level 1=24h, level 2=48h, level 3+=7d
+  case "$sl" in
+    1) duration=86400 ;;
+    2) duration=172800 ;;
+    *) duration=604800 ;;
+  esac
+
+  local expires=$((se + duration))
+  [[ "$now" -lt "$expires" ]]
+}
+
+# ─── Config check ─────────────────────────────────────────────────
+
+config_get() {
+  if [[ -x "$SCRIPT_DIR/nightcrawl-config" ]]; then
+    NIGHTCRAWL_STATE_DIR="$STATE_DIR" "$SCRIPT_DIR/nightcrawl-config" get "$1" 2>/dev/null || true
+  fi
+}
+
+update_check_disabled() {
+  local val
+  val=$(config_get "update_check")
+  [[ "$val" == "false" ]]
+}
+
+# ─── Main ──────────────────────────────────────────────────────────
+
+# Check if updates are disabled in config
+if update_check_disabled; then
+  exit 0
+fi
+
+# Read local version
+VERSION_FILE="$NIGHTCRAWL_DIR/VERSION"
+if [[ ! -f "$VERSION_FILE" ]]; then
+  exit 0
+fi
+
+LOCAL_VERSION=$(tr -d '[:space:]' < "$VERSION_FILE")
+if [[ -z "$LOCAL_VERSION" ]]; then
+  exit 0
+fi
+
+# ─── Just-upgraded marker ─────────────────────────────────────────
+
+JUST_UPGRADED_OUTPUT=""
+if [[ -f "$UPGRADE_MARKER" ]]; then
+  OLD_VERSION=$(tr -d '[:space:]' < "$UPGRADE_MARKER")
+  if [[ -n "$OLD_VERSION" ]]; then
+    JUST_UPGRADED_OUTPUT="JUST_UPGRADED $OLD_VERSION $LOCAL_VERSION"
+  fi
+  rm -f "$UPGRADE_MARKER"
+  rm -f "$SNOOZE_FILE"
+fi
+
+# ─── --force: clear cache and snooze ─────────────────────────────
+
+if [[ "$FORCE" -eq 1 ]]; then
+  rm -f "$CACHE_FILE"
+  rm -f "$SNOOZE_FILE"
+fi
+
+# ─── Cache check ──────────────────────────────────────────────────
+
+if [[ -z "$JUST_UPGRADED_OUTPUT" && -f "$CACHE_FILE" && "$FORCE" -eq 0 ]]; then
+  CACHED=$(cat "$CACHE_FILE" 2>/dev/null || true)
+
+  # Parse cache
+  CACHE_STATUS=$(echo "$CACHED" | awk '{print $1}')
+  CACHE_VERSION=$(echo "$CACHED" | awk '{print $2}')
+
+  if [[ "$CACHE_STATUS" == "UP_TO_DATE" || "$CACHE_STATUS" == "UPGRADE_AVAILABLE" ]]; then
+    # Check if local version changed since cache was written
+    if [[ "$CACHE_VERSION" == "$LOCAL_VERSION" ]]; then
+      # Check cache freshness
+      local_mtime=$(stat -f %m "$CACHE_FILE" 2>/dev/null || echo 0)
+      now=$(date +%s)
+      age=$(( now - local_mtime ))
+
+      # TTL: UP_TO_DATE=60min, UPGRADE_AVAILABLE=720min
+      if [[ "$CACHE_STATUS" == "UP_TO_DATE" ]]; then
+        ttl=3600   # 60 min
+      else
+        ttl=43200  # 720 min
+      fi
+
+      if [[ "$age" -lt "$ttl" ]]; then
+        # Cache is fresh
+        if [[ "$CACHE_STATUS" == "UPGRADE_AVAILABLE" ]]; then
+          UPGRADE_VERSION=$(echo "$CACHED" | awk '{print $3}')
+          # Check snooze before outputting
+          if ! is_snoozed "$UPGRADE_VERSION"; then
+            echo "$CACHED"
+          fi
+        fi
+        # UP_TO_DATE: silent
+        exit 0
+      fi
+    fi
+    # Cache stale or version mismatch — fall through to remote fetch
+  fi
+  # Corrupt cache — fall through to remote fetch
+fi
+
+# ─── Remote fetch ─────────────────────────────────────────────────
+
+REMOTE_VERSION=""
+if [[ "$REMOTE_URL" == file://* ]]; then
+  # file:// URL — read directly
+  local_path="${REMOTE_URL#file://}"
+  REMOTE_VERSION=$(tr -d '[:space:]' < "$local_path" 2>/dev/null || true)
+else
+  REMOTE_VERSION=$(curl -fsSL --max-time 5 "$REMOTE_URL" 2>/dev/null | tr -d '[:space:]' || true)
+fi
+
+# Validate remote version
+if ! is_valid_version "$REMOTE_VERSION"; then
+  # Invalid or empty — treat as up to date
+  write_cache "UP_TO_DATE $LOCAL_VERSION"
+  if [[ -n "$JUST_UPGRADED_OUTPUT" ]]; then
+    echo "$JUST_UPGRADED_OUTPUT"
+  fi
+  exit 0
+fi
+
+# Compare versions
+if [[ "$REMOTE_VERSION" != "$LOCAL_VERSION" ]]; then
+  write_cache "UPGRADE_AVAILABLE $LOCAL_VERSION $REMOTE_VERSION"
+
+  if [[ -n "$JUST_UPGRADED_OUTPUT" ]]; then
+    echo "$JUST_UPGRADED_OUTPUT"
+  fi
+
+  # Check snooze before outputting upgrade
+  if ! is_snoozed "$REMOTE_VERSION"; then
+    echo "UPGRADE_AVAILABLE $LOCAL_VERSION $REMOTE_VERSION"
+  fi
+else
+  write_cache "UP_TO_DATE $LOCAL_VERSION"
+  if [[ -n "$JUST_UPGRADED_OUTPUT" ]]; then
+    echo "$JUST_UPGRADED_OUTPUT"
+  fi
+fi
+
+exit 0

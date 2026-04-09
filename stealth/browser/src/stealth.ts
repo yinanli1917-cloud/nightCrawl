@@ -1,8 +1,9 @@
 /**
  * [INPUT]: Depends on playwright-core/browsers.json for version detection,
  *          stealth/patches/cdp/ for CDP patch files
- * [OUTPUT]: Exports getDefaultUserAgent, findChromiumExecutable, applyStealthPatches, applyStealthScripts
- * [POS]: Stealth hardening layer within browser engine
+ * [OUTPUT]: Exports DEFAULT_USER_AGENT, findChromiumExecutable, applyStealthPatches,
+ *           applyStealthScripts, isPatchCurrent
+ * [POS]: Single source of truth for all stealth hardening within browser engine
  */
 
 import type { BrowserContext } from 'playwright';
@@ -51,6 +52,7 @@ export function findChromiumExecutable(): string | undefined {
         'Google Chrome for Testing.app', 'Contents', 'MacOS', 'Google Chrome for Testing');
       if (fs.existsSync(binary)) return binary;
     }
+    // Fallback: newest available
     const entries = fs.readdirSync(cacheDir)
       .filter((e: string) => e.startsWith('chromium-'))
       .sort()
@@ -62,6 +64,23 @@ export function findChromiumExecutable(): string | undefined {
     }
   } catch {}
   return undefined;
+}
+
+// ─── CDP Patch Caching ──────────────────────────────────────
+/**
+ * Check if a patch file is already current at the destination.
+ * Compares file sizes and modification times to avoid redundant copies.
+ * Returns true if dest exists and matches src (no copy needed).
+ */
+export function isPatchCurrent(srcPath: string, destPath: string): boolean {
+  const fs = require('fs');
+  try {
+    const srcStat = fs.statSync(srcPath);
+    const destStat = fs.statSync(destPath);
+    return srcStat.size === destStat.size && destStat.mtimeMs >= srcStat.mtimeMs;
+  } catch {
+    return false;
+  }
 }
 
 // ─── CDP Patch Application ──────────────────────────────────
@@ -85,6 +104,7 @@ export async function applyStealthPatches(): Promise<void> {
   }
 
   const patchesDir = path.resolve(__dirname, '..', '..', 'patches', 'cdp');
+
   const patchMap = [
     ['chromium/crConnection.js', 'chromium/crConnection.js'],
     ['chromium/crPage.js', 'chromium/crPage.js'],
@@ -94,10 +114,12 @@ export async function applyStealthPatches(): Promise<void> {
     ['page.js', 'page.js'],
   ];
 
+  // Collect all playwright-core server dirs to patch (bun cache + local node_modules)
   const patchTargets: string[] = [];
   for (const entry of entries) {
     patchTargets.push(path.join(cacheBase, entry, 'lib', 'server'));
   }
+  // Also patch local node_modules (bun install creates a real copy, not just cache symlinks)
   const localPw = path.resolve(__dirname, '..', 'node_modules', 'playwright-core', 'lib', 'server');
   if (fs.existsSync(localPw)) patchTargets.push(localPw);
 

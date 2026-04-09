@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# nightcrawl-config — simple YAML-like config get/set/list
+# State dir: $NIGHTCRAWL_STATE_DIR or ~/.nightcrawl/state
+
+set -euo pipefail
+
+STATE_DIR="${NIGHTCRAWL_STATE_DIR:-$HOME/.nightcrawl/state}"
+CONFIG_FILE="$STATE_DIR/config.yaml"
+
+# ─── Header template for new config files ─────────────────────────
+read -r -d '' HEADER << 'HEREDOC' || true
+# nightcrawl configuration — edit freely
+#
+# Available keys (uncomment and set):
+#   proactive:        true/false — suggest automations from browsing history
+#   telemetry:        anonymous/community/off — anonymous usage stats
+#   auto_upgrade:     true/false — auto-install updates
+#   update_check:     true/false — check for updates at startup
+#   skill_prefix:     string — prefix for skill commands
+#   routing_declined: true/false — declined smart routing
+#   codex_reviews:    true/false — enable codex code reviews
+#   skip_eng_review:  true/false — skip engineering review
+HEREDOC
+
+# ─── Validate key name (alphanumeric + underscore only) ────────────
+validate_key() {
+  if [[ ! "$1" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+    echo "error: key must be alphanumeric (got '$1')" >&2
+    exit 1
+  fi
+}
+
+# ─── Commands ──────────────────────────────────────────────────────
+
+cmd_get() {
+  local key="$1"
+  validate_key "$key"
+  if [[ ! -f "$CONFIG_FILE" ]]; then
+    exit 0
+  fi
+  # Match only uncommented lines, return last match (last wins)
+  grep -E "^${key}:" "$CONFIG_FILE" | tail -1 | sed "s/^${key}: *//" || true
+}
+
+cmd_set() {
+  local key="$1" value="$2"
+  validate_key "$key"
+  mkdir -p "$STATE_DIR"
+
+  if [[ ! -f "$CONFIG_FILE" ]]; then
+    # New file: write header + value
+    printf '%s\n\n%s: %s\n' "$HEADER" "$key" "$value" > "$CONFIG_FILE"
+    return
+  fi
+
+  # Existing file: replace or append using line-by-line to avoid sed issues
+  local tmp found=0
+  tmp=$(mktemp)
+  while IFS= read -r line; do
+    if [[ "$line" =~ ^${key}:\ * ]]; then
+      printf '%s: %s\n' "$key" "$value" >> "$tmp"
+      found=1
+    else
+      printf '%s\n' "$line" >> "$tmp"
+    fi
+  done < "$CONFIG_FILE"
+
+  if [[ "$found" -eq 0 ]]; then
+    printf '%s: %s\n' "$key" "$value" >> "$tmp"
+  fi
+
+  mv "$tmp" "$CONFIG_FILE"
+}
+
+cmd_list() {
+  if [[ ! -f "$CONFIG_FILE" ]]; then
+    exit 0
+  fi
+  grep -v '^#' "$CONFIG_FILE" | grep -v '^$' || true
+}
+
+# ─── Main ──────────────────────────────────────────────────────────
+
+if [[ $# -lt 1 ]]; then
+  echo "Usage: nightcrawl-config <get|set|list> [key] [value]"
+  exit 1
+fi
+
+case "$1" in
+  get)
+    [[ $# -lt 2 ]] && { echo "Usage: nightcrawl-config get <key>" >&2; exit 1; }
+    cmd_get "$2"
+    ;;
+  set)
+    [[ $# -lt 3 ]] && { echo "Usage: nightcrawl-config set <key> <value>" >&2; exit 1; }
+    cmd_set "$2" "$3"
+    ;;
+  list)
+    cmd_list
+    ;;
+  *)
+    echo "Usage: nightcrawl-config <get|set|list> [key] [value]"
+    exit 1
+    ;;
+esac
