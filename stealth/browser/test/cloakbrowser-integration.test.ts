@@ -146,26 +146,6 @@ describe('fingerprint profiles', () => {
 // ─── Engine Selection ──────────────────────────────────────
 
 describe('engine selection', () => {
-  test('buildCloakBrowserArgs includes fingerprint seed', async () => {
-    const { buildCloakBrowserArgs } = await import('../src/cloakbrowser-engine');
-    const args = buildCloakBrowserArgs({ fingerprintSeed: 42567 });
-    expect(args).toContain('--fingerprint=42567');
-  });
-
-  test('buildCloakBrowserArgs omits fingerprint when no seed', async () => {
-    const { buildCloakBrowserArgs } = await import('../src/cloakbrowser-engine');
-    const args = buildCloakBrowserArgs({});
-    const fpArgs = args.filter((a: string) => a.startsWith('--fingerprint='));
-    expect(fpArgs.length).toBe(0);
-  });
-
-  test('buildCloakBrowserArgs includes extension args', async () => {
-    const { buildCloakBrowserArgs } = await import('../src/cloakbrowser-engine');
-    const args = buildCloakBrowserArgs({ extensionsDir: '/path/to/ext' });
-    expect(args).toContain('--disable-extensions-except=/path/to/ext');
-    expect(args).toContain('--load-extension=/path/to/ext');
-  });
-
   test('shouldSkipCdpPatches returns true for cloakbrowser', async () => {
     const { shouldSkipCdpPatches } = await import('../src/cloakbrowser-engine');
     expect(shouldSkipCdpPatches('cloakbrowser')).toBe(true);
@@ -174,5 +154,10 @@ describe('engine selection', () => {
   test('shouldSkipCdpPatches returns false for playwright', async () => {
     const { shouldSkipCdpPatches } = await import('../src/cloakbrowser-engine');
     expect(shouldSkipCdpPatches('playwright')).toBe(false);
+  });
+
+  test('launchCloakBrowser is exported', async () => {
+    const { launchCloakBrowser } = await import('../src/cloakbrowser-engine');
+    expect(launchCloakBrowser).toBeFunction();
   });
 });

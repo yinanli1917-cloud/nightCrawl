@@ -1,11 +1,11 @@
 /**
- * [INPUT]: Depends on cloakbrowser npm package, engine-config, fingerprint-profiles
- * [OUTPUT]: Exports launchCloakBrowser, buildCloakBrowserArgs, shouldSkipCdpPatches
+ * [INPUT]: Depends on cloakbrowser npm package, engine-config
+ * [OUTPUT]: Exports launchCloakBrowser, shouldSkipCdpPatches
  * [POS]: Alternative browser engine using CloakBrowser within browser module
  */
 
 import type { Browser, BrowserContext } from 'playwright';
-import type { BrowserEngine, EngineConfig } from './engine-config';
+import type { BrowserEngine } from './engine-config';
 
 // ─── Types ─────────────────────────────────────────────────
 
@@ -18,29 +18,6 @@ export interface CloakBrowserLaunchOptions {
   humanPreset?: 'default' | 'careful';
   userAgent?: string;
   viewport?: { width: number; height: number };
-}
-
-// ─── Args Builder ──────────────────────────────────────────
-
-/**
- * Build Chrome args for CloakBrowser launch.
- * Fingerprint seed and extensions are passed as CLI flags.
- */
-export function buildCloakBrowserArgs(opts: CloakBrowserLaunchOptions): string[] {
-  const args: string[] = [
-    '--disable-blink-features=AutomationControlled',
-  ];
-
-  if (opts.fingerprintSeed !== undefined) {
-    args.push(`--fingerprint=${opts.fingerprintSeed}`);
-  }
-
-  if (opts.extensionsDir) {
-    args.push(`--disable-extensions-except=${opts.extensionsDir}`);
-    args.push(`--load-extension=${opts.extensionsDir}`);
-  }
-
-  return args;
 }
 
 // ─── CDP Patch Guard ───────────────────────────────────────
@@ -56,18 +33,32 @@ export function shouldSkipCdpPatches(engine: BrowserEngine): boolean {
 // ─── Launch ────────────────────────────────────────────────
 
 /**
- * Launch a browser via CloakBrowser.
+ * Launch a browser via CloakBrowser's native API.
  * Falls back to stock Playwright if CloakBrowser is unavailable.
+ *
+ * CloakBrowser handles stealth args, fingerprinting, and UA internally
+ * via C++ patches — we only pass through config, not manual flags.
  *
  * Returns { browser, context } — caller manages lifecycle.
  */
 export async function launchCloakBrowser(
   opts: CloakBrowserLaunchOptions = {},
 ): Promise<{ browser: Browser | null; context: BrowserContext }> {
-  const args = buildCloakBrowserArgs(opts);
-
   try {
     const cb = await import('cloakbrowser');
+
+    // Extra args: only extension loading (CloakBrowser handles stealth args)
+    const extraArgs: string[] = [];
+    if (opts.extensionsDir) {
+      extraArgs.push(`--disable-extensions-except=${opts.extensionsDir}`);
+      extraArgs.push(`--load-extension=${opts.extensionsDir}`);
+    }
+
+    // If user provides explicit seed, disable default stealth args and pass ours
+    const hasSeed = opts.fingerprintSeed !== undefined;
+    if (hasSeed) {
+      extraArgs.push(`--fingerprint=${opts.fingerprintSeed}`);
+    }
 
     // Persistent context needed for extensions (same as stock Playwright path)
     if (opts.extensionsDir || opts.userDataDir) {
@@ -75,29 +66,26 @@ export async function launchCloakBrowser(
       const context = await cb.launchPersistentContext({
         userDataDir,
         headless: opts.headless ?? true,
-        args,
+        args: extraArgs.length ? extraArgs : undefined,
+        stealthArgs: !hasSeed, // let CloakBrowser handle args unless user overrides seed
         humanize: opts.humanize,
         humanPreset: opts.humanPreset,
-        userAgent: opts.userAgent,
         viewport: opts.viewport ?? { width: 1920, height: 1080 },
       });
       return { browser: context.browser(), context };
     }
 
-    // Standard launch — isolated context
-    const browser = await cb.launch({
+    // Standard launch — use launchContext for single-step browser+context
+    const context = await cb.launchContext({
       headless: opts.headless ?? true,
-      args,
+      args: extraArgs.length ? extraArgs : undefined,
+      stealthArgs: !hasSeed,
       humanize: opts.humanize,
       humanPreset: opts.humanPreset,
-    });
-
-    const context = await browser.newContext({
-      userAgent: opts.userAgent,
       viewport: opts.viewport ?? { width: 1920, height: 1080 },
     });
 
-    return { browser, context };
+    return { browser: context.browser(), context };
   } catch (err) {
     console.warn(`[nightcrawl] CloakBrowser unavailable, falling back to Playwright: ${err}`);
     return launchPlaywrightFallback(opts);

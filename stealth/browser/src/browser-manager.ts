@@ -331,7 +331,7 @@ export class BrowserManager {
         headless: true,
         humanize: engineConfig.humanize,
         humanPreset: engineConfig.humanize ? 'default' : undefined,
-        userAgent: ua,
+        // CloakBrowser handles UA via C++ patches — don't override
         viewport: { width: 1920, height: 1080 },
       });
       this.browser = result.browser;
