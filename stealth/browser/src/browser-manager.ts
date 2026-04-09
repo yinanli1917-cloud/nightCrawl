@@ -1235,10 +1235,25 @@ export class BrowserManager {
       return { detected: true, reason: `Login form detected at ${url}` };
     }
 
-    // Check 3: Page text matches auth barrier patterns (Chinese + English)
+    // Check 3: QR code login (XHS, WeChat, etc. — no form inputs, just a QR image)
+    const hasQrLogin = await page.evaluate(() => {
+      // Look for QR code login containers or images
+      const qrSelectors = [
+        'canvas[class*="qrcode"]', 'img[class*="qrcode"]', 'img[class*="qr-"]',
+        '[class*="qrcode"]', '[class*="login-qrcode"]', '[id*="qrcode"]',
+      ];
+      return qrSelectors.some(sel => document.querySelector(sel) !== null);
+    }).catch(() => false);
+
+    if (hasQrLogin) {
+      return { detected: true, reason: `QR code login detected at ${url}` };
+    }
+
+    // Check 4: Page text matches auth barrier patterns (Chinese + English)
     const hasAuthBarrier = await page.evaluate(() => {
       const text = document.body?.innerText?.slice(0, 2000) || '';
-      return /请登录|请先登录|没有权限|sign\s*in\s*to\s*continue|log\s*in\s*required|authentication\s*required|验证码|captcha/i.test(text);
+      // "登录后" = "after login" (XHS uses this), 扫码登录 = "scan to login"
+      return /请登录|请先登录|登录后|扫码登录|没有权限|sign\s*in\s*to\s*continue|log\s*in\s*required|authentication\s*required|验证码|captcha/i.test(text);
     }).catch(() => false);
 
     if (hasAuthBarrier) {

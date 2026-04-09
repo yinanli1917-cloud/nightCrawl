@@ -795,9 +795,10 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
     });
 
     // Auto-handover: check for login walls after navigation commands.
-    // Runs asynchronously — returns the goto result immediately, then
-    // the handover cycle (headed → user login → headless) runs in background.
+    // Wait briefly for SPA login overlays to render (XHS, WeChat, etc.)
+    // then check. If detected, handover runs in background after response.
     if (['goto', 'click'].includes(command)) {
+      await new Promise(r => setTimeout(r, 2000));
       const detection = await browserManager.detectLoginWall();
       if (detection?.detected) {
         result += `\nLOGIN_WALL_DETECTED: ${detection.reason}`;
