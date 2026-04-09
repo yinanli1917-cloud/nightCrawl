@@ -1112,14 +1112,30 @@ export class BrowserManager {
     const currentUrl = this.getCurrentUrl();
 
     try {
-      // Close headed browser — persistent context must close via context.close(),
-      // not browser.close() (browser may be null for persistent contexts)
+      // Close headed browser — kill all associated processes.
+      // context.close() alone may not terminate the Chromium process tree,
+      // especially with persistent contexts from launchPersistentContext().
       this.intentionalDisconnect = true;
       if (this.browser) this.browser.removeAllListeners('disconnected');
-      await Promise.race([
-        this.context ? this.context.close() : Promise.resolve(),
-        new Promise(resolve => setTimeout(resolve, 5000)),
-      ]).catch(() => {});
+      try {
+        if (this.context) {
+          // Get browser process before closing context
+          const browser = (this.context as any).browser?.();
+          await Promise.race([
+            this.context.close(),
+            new Promise(resolve => setTimeout(resolve, 3000)),
+          ]).catch(() => {});
+          // Force-kill if browser process still alive
+          if (browser) {
+            try { browser.close(); } catch {}
+          }
+        }
+      } catch {}
+      // Nuclear option: kill any orphaned headed Chrome processes from our temp dir
+      try {
+        const { spawnSync } = require('child_process');
+        spawnSync('pkill', ['-f', 'nightcrawl-handoff'], { timeout: 2000 });
+      } catch {}
 
       // Reset state
       this.browser = null;
