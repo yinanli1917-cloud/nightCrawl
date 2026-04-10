@@ -32,6 +32,7 @@ export async function getChromium() {
 }
 import { addConsoleEntry, addNetworkEntry, addDialogEntry, networkBuffer, type DialogEntry } from './buffers';
 import { validateNavigationUrl } from './url-validation';
+import { assertSafeNavigation, filterHostileCookies } from './hostile-domains';
 import { parseEngineConfig } from './engine-config';
 import { launchCloakBrowser, shouldSkipCdpPatches } from './cloakbrowser-engine';
 import { DEFAULT_USER_AGENT, findChromiumExecutable, applyStealthPatches } from './stealth';
@@ -293,7 +294,10 @@ export class BrowserManager {
   // ─── Tab Management ────────────────────────────────────────
   async newTab(url?: string): Promise<number> {
     if (!this.context) throw new Error('Browser not launched');
-    if (url) await validateNavigationUrl(url);
+    if (url) {
+      await validateNavigationUrl(url);
+      assertSafeNavigation(url, process.env);
+    }
 
     const page = await this.context.newPage();
     const id = this.nextTabId++;
@@ -497,16 +501,21 @@ export class BrowserManager {
 
   async restoreCookies(cookies: Cookie[]): Promise<void> {
     if (!this.context) throw new Error('Browser not launched');
-    if (cookies.length > 0) {
-      await this.context.addCookies(cookies);
+    // SAFETY: unconditionally drop cookies for hostile platforms.
+    // See hostile-domains.ts and project_xhs_account_ban_2026_04_09 memory.
+    const safeCookies = filterHostileCookies(cookies);
+    if (safeCookies.length > 0) {
+      await this.context.addCookies(safeCookies);
     }
   }
 
   async restoreState(state: BrowserState): Promise<void> {
     if (!this.context) throw new Error('Browser not launched');
 
-    if (state.cookies.length > 0) {
-      await this.context.addCookies(state.cookies);
+    // SAFETY: filter hostile cookies before any restore (see hostile-domains.ts).
+    const safeCookies = filterHostileCookies(state.cookies);
+    if (safeCookies.length > 0) {
+      await this.context.addCookies(safeCookies);
     }
 
     let activeId: number | null = null;
@@ -517,6 +526,13 @@ export class BrowserManager {
       this.wirePageEvents(page);
 
       if (saved.url) {
+        // SAFETY: refuse to re-navigate to hostile domains during state restore.
+        // If the saved page is hostile and we're not in incognito, skip it.
+        try {
+          assertSafeNavigation(saved.url, process.env);
+        } catch {
+          continue;
+        }
         await page.goto(saved.url, { waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {});
       }
 

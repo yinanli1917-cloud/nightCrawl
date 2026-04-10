@@ -11,6 +11,7 @@
 
 import type { BrowserContext } from 'playwright';
 import { DEFAULT_USER_AGENT, findChromiumExecutable, applyStealthPatches } from './stealth';
+import { isHostile, HostileDomainError } from './hostile-domains';
 
 // Re-exported by browser-manager.ts so getChromium is available without circular dep.
 // The actual getChromium is passed via the setup function below.
@@ -154,6 +155,14 @@ export async function handoff(this: any, message: string): Promise<string> {
 
   const state = await this.saveState();
   const currentUrl = this.getCurrentUrl();
+
+  // SAFETY: refuse handoff to headed mode for hostile platforms.
+  // The headed user-data-dir loads ALL real cookies; this is the
+  // exact path that banned XHS accounts on 2026-04-09.
+  if (currentUrl && isHostile(currentUrl) && process.env.BROWSE_INCOGNITO !== '1') {
+    const err = new HostileDomainError(currentUrl);
+    return `ERROR: ${err.message}`;
+  }
 
   let newContext: BrowserContext;
   try {
@@ -431,6 +440,17 @@ export async function detectLoginWall(
  */
 export async function autoHandover(this: any): Promise<string | null> {
   const loginUrl = this.getCurrentUrl();
+
+  // SAFETY: refuse to open headed mode for hostile platforms.
+  // The headed-mode user-data-dir loads ALL real cookies — this is exactly
+  // the path that banned two real XHS accounts on 2026-04-09.
+  // See hostile-domains.ts and project_xhs_account_ban_2026_04_09 memory.
+  if (loginUrl && isHostile(loginUrl) && process.env.BROWSE_INCOGNITO !== '1') {
+    const err = new HostileDomainError(loginUrl);
+    console.error(`[nightcrawl] ${err.message}`);
+    return `ERROR: ${err.message}`;
+  }
+
   console.log(`[nightcrawl] Switching to headed mode for login at ${loginUrl}...`);
 
   const handoffResult = await this.handoff(
