@@ -166,3 +166,24 @@ export function readVersionHash(execPath: string = process.execPath): string | n
     return null;
   }
 }
+
+/**
+ * Read a single value from ~/.nightcrawl/state/config.yaml.
+ *
+ * Matches the format used by the bash `nightcrawl-config get` script:
+ * one `key: value` per line, comments and blank lines ignored.
+ *
+ * Returns null if the file or key doesn't exist.
+ */
+export function readConfigValue(key: string): string | null {
+  try {
+    const home = process.env.HOME || '/tmp';
+    const cfgPath = path.join(home, '.nightcrawl', 'state', 'config.yaml');
+    const raw = fs.readFileSync(cfgPath, 'utf-8');
+    const re = new RegExp(`^${key.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}:\\s*(.+?)\\s*$`, 'm');
+    const match = raw.match(re);
+    return match ? match[1].trim() : null;
+  } catch {
+    return null;
+  }
+}

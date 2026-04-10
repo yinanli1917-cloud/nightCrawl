@@ -1,151 +1,178 @@
-# HANDOFF -- 2026-04-09 (Session 4 -- overnight run)
+# HANDOFF -- 2026-04-09 (Session 5 -- safety + auto-update)
 
 ## Mission Status
-All three priorities from Session 3 are DONE. nightCrawl's CloakBrowser engine is battle-tested and the codebase is cleaner.
+
+**Critical safety fix shipped + full auto-update infrastructure landed.**
+
+This session pivoted hard mid-stream. The user reported that two of their real Xiaohongshu accounts had been permanently banned -- not from posting, but because a prior nightCrawl session logged in with real cookies on a non-incognito profile. XHS detected the automated Chromium fingerprint and banned both accounts.
+
+The "never load real cookies on hostile platforms" rule had existed only as soft guidance in CLAUDE.md and memory files. Soft rules cannot enforce safety. The fix had to be code that throws errors.
 
 ## What's Done
 
-### Priority 1: CloakBrowser Real-World Verification (DONE)
+### P1: Hostile-Domain Blocklist (the safety fix the ban demanded)
 
-CloakBrowser engine verified against Tier 1-4 bot detection sites. Results:
+Hardcoded blocklist enforced by code in `stealth/browser/src/hostile-domains.ts`. Blocked domains: xiaohongshu.com, xhscdn.com, xhslink.com, douyin.com, iesdouyin.com, douyinpic.com, weibo.com, weibo.cn, weibocdn.com, linkedin.com, licdn.com, instagram.com, cdninstagram.com.
 
-| Site | Tier | Result |
-|------|------|--------|
-| bot-detector.rebrowser.net | 1 | **6/6 green** (Playwright: 4/6) |
-| bot.sannysoft.com | 1 | **100% pass** -- real GPU, plugins=5, chrome object |
-| CreepJS | 1 | Real GPU (Apple M3 Metal), 0% stealth, 0% headless on core metrics |
-| bot.incolumitas.com | 2 | **All modern tests OK**, abuser_score: 0.0002 (Very Low) |
-| Bilibili | 4 | Full content, no bot block |
-| Zhihu | 4 | Normal login wall, no bot detection |
+Wired into every entry path:
+- `browser-manager.ts:newTab()` -- refuses navigation to hostile URL via `assertSafeNavigation()`
+- `browser-manager.ts:restoreCookies()` -- unconditionally filters hostile cookies (no incognito bypass for cookies)
+- `browser-manager.ts:restoreState()` -- filters hostile cookies + skips re-navigation to hostile saved URLs
+- `browser-handoff.ts:handoff()` -- refuses headed mode if current URL is hostile
+- `browser-handoff.ts:autoHandover()` -- refuses to open headed Chrome on hostile login walls (this is the EXACT path that triggered the XHS ban)
 
-**Key improvements over Playwright engine:**
-- `navigator.webdriver`: false (was true)
-- UA: real Chrome 145 (was "Chrome for Testing")
-- WebGL renderer: Apple M3 Metal (was SwiftShader)
-- Plugins: 5 (was 0)
-- Chrome object: present (was missing)
-- `BROWSE_HUMANIZE=1`: working, abuser_score near-zero
+`BROWSE_INCOGNITO=1` is the only escape hatch for navigation, and even then cookies are still filtered.
 
-**Code fix:** Refactored `cloakbrowser-engine.ts` to use CloakBrowser's native `launchContext` API instead of manually building stealth args. Removed UA override -- CloakBrowser handles it via C++ patches.
+**Tests:** 26 unit tests + 6 integration tests, all green.
 
-### Priority 2: Code Consolidation (DONE)
+### P2: Auto-Updater + Self-Verification
 
-Split `browser-manager.ts` from 1459 lines into 4 files, all under 800:
+Replaced detect-only `checkForUpdates()` with `maybeAutoUpdate()` orchestrator. New files:
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `browser-manager.ts` | 704 | Core BrowserManager class |
-| `browser-handoff.ts` | 509 | Headed mode: handoff, resume, autoHandover, detectLoginWall |
-| `stealth.ts` | 178 | Single source of truth for all stealth hardening |
-| `launch-agent.ts` | 46 | macOS LaunchAgent plist generation |
+| `src/hostile-domains.ts` | 121 | Hardcoded blocklist + assertSafeNavigation/filterHostileCookies |
+| `src/auto-updater.ts` | 218 | Orchestrator: gates, plan, execute, verify, rollback |
+| `src/update-snapshot.ts` | 117 | Capture/restore package.json + bun.lock |
+| `src/update-executor.ts` | 112 | Injectable subprocess runner (bun add, playwright install, bun install) |
+| `src/stealth-verifier.ts` | 178 | Smoke test launcher (Tier 1-2 ONLY, never hostile platforms) |
+| `src/stealth-verifier-playwright.ts` | 110 | Production VerifierBrowser using real Playwright |
+| `src/stealth-reinforcement.ts` | 152 | Background loop with escalation ladder |
 
-Architecture: `browser-handoff.ts` exports plain functions assigned to `BrowserManager.prototype`. Gets `getChromium` via dependency injection to avoid circular imports. `declare` fields in the class avoid shadowing prototype methods.
+Modified files:
+- `package.json` -- added `cloakbrowser: "0.3.21"` (was unlisted)
+- `update-checker.ts` -- added `cloakbrowser` to NPM_DEPS, exported `checkRebrowserCompatibility(targetPwVersion)`
+- `config.ts` -- added `readConfigValue(key)` for YAML config
+- `browser-manager.ts` -- safety wiring (see P1)
+- `browser-handoff.ts` -- safety wiring (see P1)
+- `server.ts` -- replaced fire-and-forget `checkForUpdates()` with `maybeAutoUpdate()` + `startReinforcementLoop()`
 
-### Priority 3: Test Failures Fixed (DONE)
+**Update safety chain (do not violate):**
+1. CloakBrowser: always safe to update (independent Chromium + own C++ patches)
+2. Playwright: only when `checkRebrowserCompatibility()` returns compatible. Otherwise warn-and-skip.
+3. rebrowser-patches: NEVER auto-updated (hand-adapted), only warn
 
-- Created `stealth/bin/nightcrawl-update-check` (158 lines) -- bash script for update checking with cache, snooze, --force
-- Created `stealth/bin/nightcrawl-config` (97 lines) -- bash script for config.yaml get/set/list
-- Removed `screencast.js` from stealth.ts patchMap (file was deleted in prior session)
-- **142 tests pass, 0 failures** across all relevant test files
+**Verification scope (strict):** Tier 1-2 ONLY -- bot.sannysoft.com, bot-detector.rebrowser.net. The verifier itself obeys the hostile-domain blocklist and will never hit Tier 4-5 sites.
+
+**Rollback:** snapshot package.json + bun.lock before update; on verification failure, restore files + `bun install` + re-apply CDP patches. Failed snapshots preserved as `update-snapshot-failed-{timestamp}.json` for forensics.
+
+**Activation:** auto-update is opt-in. Set `auto_upgrade: true` in `~/.nightcrawl/state/config.yaml`. Otherwise the server still does detect-only logging on startup as before.
+
+**Tests:** 11 + 6 + 10 + 14 = 41 unit tests across the four orchestration files, all green.
+
+### P3: Autonomous Reinforcement Loop
+
+`stealth-reinforcement.ts` -- background loop while server runs:
+- First check: 1h after startup
+- Subsequent checks: every 6h
+- Calls the same `verifyStealth()` used by the auto-updater
+
+Escalation ladder on consecutive failures:
+1. First fail: re-apply `applyStealthPatches()` as self-heal, re-verify
+2. Second fail: same + log elevated warning
+3. Third fail: write `~/.nightcrawl/stealth-alert.json`. Server does NOT auto-shutdown (would break user session); CLI surfaces the status.
+
+Any successful verification resets the counter and clears the alert file.
+
+Disabled in tests/CI via `BROWSE_REINFORCEMENT=0`.
+
+**Tests:** 6 unit tests, all green.
 
 ---
 
-## ACCOUNT SAFETY -- CRITICAL RULE (ELEVATED)
+## Test Suite
 
-**NEVER load real user cookies when testing hostile platforms.**
+**240 tests pass, 0 failures** across all relevant test files (P1+P2+P3 + existing). Run with:
 
-Protocol for hostile platform testing:
-1. `BROWSE_INCOGNITO=1` -- ALWAYS. No exceptions.
-2. Ask for test account FIRST, get explicit confirmation
-3. Only then navigate to Tier 4-5 sites
-4. Cookie restore happens automatically -- `BROWSE_INCOGNITO=1` is the ONLY way to prevent it
+```bash
+cd stealth/browser
+BROWSE_REINFORCEMENT=0 BROWSE_UPDATE_CHECK=0 bun test \
+  test/hostile-domains.test.ts test/browser-manager-hostile.test.ts \
+  test/update-snapshot.test.ts test/update-executor.test.ts \
+  test/stealth-verifier.test.ts test/auto-updater.test.ts \
+  test/stealth-reinforcement.test.ts test/update-checker.test.ts \
+  test/cloakbrowser-integration.test.ts test/stealth-cdp.test.ts \
+  test/stealth-extensions.test.ts test/cdp-patches-v2.test.ts \
+  test/nightcrawl-update-check.test.ts test/nightcrawl-config.test.ts \
+  --timeout 60000
+```
 
-Hostile platforms (Tier 4-5): Xiaohongshu, Douyin, Weibo, LinkedIn, Instagram
-Safe to test freely (Tier 1-3): bot-detector.rebrowser.net, creepjs, bot.sannysoft.com, bot.incolumitas.com, The Atlantic, Medium, any public page
+**Pre-existing flake:** `test/handoff.test.ts > handoff edge cases > resume without prior handoff works via meta command` was already failing on `main` before this session's changes. Verified by stashing, running on main, getting the same failure, then restoring. Not a regression. Worth investigating but unrelated to P1/P2/P3.
 
 ---
 
-## CloakBrowser Test Results (Full Detail)
+## ACCOUNT SAFETY -- the rule that's now in code, not just markdown
 
-### bot-detector.rebrowser.net (Tier 1)
-```
-runtimeEnableLeak: GREEN -- No leak detected
-navigatorWebdriver: GREEN -- No webdriver presented
-viewport: GREEN -- 1920x1080
-pwInitScripts: GREEN -- No __pwInitScripts
-bypassCsp: GREEN -- CSP enabled
-useragent: GREEN -- Chrome 145.0.7632.109 (real)
-```
+The hostile-domain blocklist in `stealth/browser/src/hostile-domains.ts` is HARDCODED. It is NOT config-driven. It is NOT a YAML key. Editing it requires a code change + commit + review.
 
-### bot.sannysoft.com (Tier 1)
-All checks pass including: WebGL Vendor (Google Inc. Apple), WebGL Renderer (ANGLE Apple M3 Metal), Plugins (5), Chrome object, Permissions (prompt), all PHANTOM/HEADCHR/SELENIUM checks.
+**DO NOT propose making it configurable.** The whole point is that config can be edited in a moment of weakness; code requires deliberate review.
 
-### CreepJS (Tier 1)
-- GPU: ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Max) -- real hardware
-- 0% headless on core metric, 0% stealth
-- 31% on one heuristic (chromium:true flag) -- acceptable, real Chrome also triggers this
-- Fonts: 19/51 detected (realistic for macOS)
+**Tier 5 testing (Xiaohongshu) is DELETED from the roadmap, not deferred.** Do not re-add it. The verifier covers Tier 1-2 only, which is sufficient for nightCrawl's actual use case (read-only research + non-hostile automation).
 
-### bot.incolumitas.com (Tier 2)
-- All modern tests: OK (puppeteerEvaluationScript, webdriverPresent, connectionRTT, overrideTest, etc.)
-- All intoli tests: OK
-- All fpscanner tests: OK (except legacy WEBDRIVER which checks property existence, not value)
-- IP: residential, not datacenter/VPN/proxy
-- Abuser score: 0.0002 (Very Low)
+See `project_xhs_account_ban_2026_04_09` memory for the full incident report.
 
 ---
 
 ## What Needs Doing Next
 
-### Priority 1: Tier 5 Testing (Xiaohongshu)
-- XHS previously detected bot and warned about account ban (see `project_xhs_warning.md`)
-- Must use `BROWSE_ENGINE=cloakbrowser BROWSE_INCOGNITO=1`
-- Test with a dedicated test account (ask user first!)
-- Compare CloakBrowser vs Playwright detection rates
+### Priority 1: Verify auto-updater end-to-end with real subprocess
 
-### Priority 2: CloakBrowser Package Update
-- `cloakbrowser@0.3.22` available (installed: 0.3.21)
-- Add to package.json dependencies (currently unlisted but in node_modules)
-- Run: `cd stealth/browser && bun add cloakbrowser@latest`
+The auto-updater is fully unit-tested but has not been exercised against real `bun add` / `bunx playwright install`. Steps:
+1. Create `~/.nightcrawl/state/config.yaml` with `auto_upgrade: true`
+2. Manually downgrade a non-Playwright dep in `package.json` (e.g. `cloakbrowser: 0.3.20`)
+3. Restart the server
+4. Watch logs: should see detection -> plan -> snapshot -> install -> verify -> success
+5. Confirm `cloakbrowser` is back at 0.3.21 (or whatever latest is)
+6. Repeat with intentionally-broken state to verify rollback fires
 
-### Priority 3: Remaining Code Quality
-- `stealth-cdp.test.ts` snapshot timeout test -- investigate if it's flaky
-- Content-security integration tests need browser launch (slow)
-- Consider adding CloakBrowser real-world tests as integration test suite
+### Priority 2: Verify reinforcement loop fires
 
----
+1. Set a short interval temporarily: in `server.ts`, change `intervalMs: 6 * 60 * 60 * 1000` to `60 * 1000` and `initialDelayMs: 60 * 60 * 1000` to `5 * 1000`
+2. Restart server, wait ~1 min, watch logs for `[reinforcement]` activity
+3. Revert the interval change before committing
 
-## Autonomous Verification Process Used
+### Priority 3: Pre-existing handoff test flake
 
-This session used a reinforcement loop:
-1. **Worker agents** in isolated worktrees implemented Priority 2 and Priority 3
-2. **Independent evaluator agents** reviewed outputs with NO shared context
-3. Priority 3 evaluator: dispatched (result pending at commit time)
-4. Priority 2 evaluator: reported FAIL because worktree was cleaned up before inspection -- manually verified in main repo instead (142 tests pass, line counts confirmed)
-5. Only committed after verification
+`handoff edge cases > resume without prior handoff works via meta command` times out. Was failing on `main` before this session. Worth a TDD-style root-cause investigation: what caused the regression, when, and what was the original intent.
 
-**Lesson learned:** Worktree agents that write to main instead of their isolated worktree can't be independently evaluated after cleanup. Future improvement: force agents to commit in their worktree branch so evaluators can `git diff` the branch.
+### Priority 4: CloakBrowser package update
+
+`cloakbrowser@0.3.22` is available and the auto-updater will now pick it up automatically once `auto_upgrade: true` is set. Or update manually: `cd stealth/browser && bun add cloakbrowser@latest`.
 
 ---
 
-## File Map (Session 4 Changes)
+## File Map (Session 5 Changes)
 
 ```
-MOD:  stealth/browser/src/cloakbrowser-engine.ts    -- use native CloakBrowser API
-MOD:  stealth/browser/src/browser-manager.ts        -- split to 704 lines, imports from stealth/handoff
-NEW:  stealth/browser/src/browser-handoff.ts        -- 509 lines, headed mode lifecycle
-NEW:  stealth/browser/src/launch-agent.ts           -- 46 lines, macOS LaunchAgent plist
-MOD:  stealth/browser/src/stealth.ts                -- 178 lines, single stealth source of truth
-MOD:  stealth/browser/test/cloakbrowser-integration.test.ts -- updated for API changes
-MOD:  stealth/browser/test/stealth-extensions.test.ts       -- reads from both manager + handoff
-NEW:  stealth/bin/nightcrawl-update-check           -- 158 lines, update check script
-NEW:  stealth/bin/nightcrawl-config                 -- 97 lines, config management script
+NEW:  stealth/browser/src/hostile-domains.ts                  -- 121 lines, hardcoded blocklist
+NEW:  stealth/browser/src/auto-updater.ts                     -- 218 lines, orchestrator
+NEW:  stealth/browser/src/update-snapshot.ts                  -- 117 lines, snapshot/restore
+NEW:  stealth/browser/src/update-executor.ts                  -- 112 lines, bun subprocess wrapper
+NEW:  stealth/browser/src/stealth-verifier.ts                 -- 178 lines, smoke test
+NEW:  stealth/browser/src/stealth-verifier-playwright.ts      -- 110 lines, real-browser impl
+NEW:  stealth/browser/src/stealth-reinforcement.ts            -- 152 lines, background loop
+
+NEW:  stealth/browser/test/hostile-domains.test.ts            -- 26 unit tests
+NEW:  stealth/browser/test/browser-manager-hostile.test.ts    -- 6 integration tests
+NEW:  stealth/browser/test/update-snapshot.test.ts            -- 11 unit tests
+NEW:  stealth/browser/test/update-executor.test.ts            -- 6 unit tests
+NEW:  stealth/browser/test/stealth-verifier.test.ts           -- 10 unit tests
+NEW:  stealth/browser/test/auto-updater.test.ts               -- 14 unit tests
+NEW:  stealth/browser/test/stealth-reinforcement.test.ts      -- 6 unit tests
+
+MOD:  stealth/browser/package.json                            -- declared cloakbrowser dep
+MOD:  stealth/browser/src/update-checker.ts                   -- cloakbrowser + checkRebrowserCompatibility
+MOD:  stealth/browser/src/config.ts                           -- readConfigValue
+MOD:  stealth/browser/src/browser-manager.ts                  -- hostile-domain wiring
+MOD:  stealth/browser/src/browser-handoff.ts                  -- hostile-domain wiring on handoff/autoHandover
+MOD:  stealth/browser/src/server.ts                           -- maybeAutoUpdate + startReinforcementLoop wiring
 ```
 
-## Environment Notes
-- CloakBrowser binary: `~/.cloakbrowser/chromium-145.0.7632.109.2/Chromium.app/Contents/MacOS/Chromium`
-- Test with: `BROWSE_ENGINE=cloakbrowser BROWSE_INCOGNITO=1 BROWSE_EXTENSIONS=none BROWSE_EXTENSIONS_DIR= bun run src/cli.ts goto <url>`
-- All tests: `cd stealth/browser && bun test test/cloakbrowser-integration.test.ts test/stealth-cdp.test.ts test/stealth-extensions.test.ts test/cdp-patches-v2.test.ts test/nightcrawl-update-check.test.ts test/nightcrawl-config.test.ts`
+## Memory Updated
+
+- NEW: `project_xhs_account_ban_2026_04_09.md` -- incident record + architectural lesson
+- INDEX: added to `MEMORY.md`
 
 ---
-*Created by Claude Code (overnight autonomous run) -- 2026-04-09*
+
+*Created by Claude Code -- 2026-04-09 (session 5, mid-conversation pivot from auto-updater feature to safety incident response)*

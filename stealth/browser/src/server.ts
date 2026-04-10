@@ -21,9 +21,18 @@ import { handleCookiePickerRoute } from './cookie-picker-routes';
 import { sanitizeExtensionUrl } from './sidebar-utils';
 import { COMMAND_DESCRIPTIONS, PAGE_CONTENT_COMMANDS, wrapUntrustedContent } from './commands';
 import { handleSnapshot, SNAPSHOT_FLAGS } from './snapshot';
-import { resolveConfig, ensureStateDir, readVersionHash } from './config';
+import { resolveConfig, ensureStateDir, readVersionHash, readConfigValue } from './config';
 import { TokenRegistry, checkPermission, type ScopedToken } from './token-registry';
-import { checkForUpdates } from './update-checker';
+import { checkForUpdates, checkRebrowserCompatibility } from './update-checker';
+import { maybeAutoUpdate } from './auto-updater';
+import {
+  installPackage,
+  installPlaywrightChromium,
+  bunInstallAll,
+  defaultRunner,
+} from './update-executor';
+import { applyStealthPatches } from './stealth';
+import { startReinforcementLoop } from './stealth-reinforcement';
 import { emitActivity, subscribe, getActivityAfter, getActivityHistory, getSubscriberCount } from './activity';
 // Bun.spawn used instead of child_process.spawn (compiled bun binaries
 // fail posix_spawn on all executables including /bin/bash)
@@ -1335,12 +1344,111 @@ async function start() {
     })();
   }
 
-  // ─── Dependency update check (non-blocking) ─────────────────────
-  checkForUpdates({
-    stateDir: path.join(process.env.HOME || '/tmp', '.nightcrawl'),
-    packageJsonPath: path.resolve(import.meta.dir, '..', 'package.json'),
-    patchesDir: path.resolve(import.meta.dir, '..', '..', 'patches', 'cdp'),
-  }).catch(() => {}); // Fire-and-forget — never block startup
+  // ─── Dependency update + auto-upgrade (non-blocking) ────────────
+  // Always runs detection. If `auto_upgrade: true` is set in config.yaml,
+  // it actually installs updates, verifies them with stealth-verifier,
+  // and rolls back on failure. Detection-only by default.
+  // See auto-updater.ts and the 2026-04-09 incident memory.
+  (async () => {
+    const stateDir = path.join(process.env.HOME || '/tmp', '.nightcrawl');
+    const packageJsonPath = path.resolve(import.meta.dir, '..', 'package.json');
+    const bunLockPath = path.resolve(import.meta.dir, '..', 'bun.lock');
+    const patchesDir = path.resolve(import.meta.dir, '..', '..', 'patches', 'cdp');
+    const cwd = path.resolve(import.meta.dir, '..');
+
+    // Detect-only path (also fires when auto_upgrade is off)
+    checkForUpdates({ stateDir, packageJsonPath, patchesDir }).catch(() => {});
+
+    // Auto-upgrade path
+    if (readConfigValue('auto_upgrade') !== 'true') return;
+
+    try {
+      const { createPlaywrightVerifierBrowser } = await import('./stealth-verifier-playwright');
+      const { verifyStealth } = await import('./stealth-verifier');
+      const cooldownPath = path.join(stateDir, 'auto-update-last-run.json');
+      const COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
+      await maybeAutoUpdate({
+        stateDir,
+        packageJsonPath,
+        bunLockPath,
+        patchesDir,
+        cwd,
+        readConfigValue,
+        isCooldownActive: () => {
+          try {
+            const raw = fs.readFileSync(cooldownPath, 'utf-8');
+            const { lastRun } = JSON.parse(raw);
+            return typeof lastRun === 'number' && Date.now() - lastRun < COOLDOWN_MS;
+          } catch { return false; }
+        },
+        writeCooldown: () => {
+          try {
+            fs.mkdirSync(stateDir, { recursive: true });
+            fs.writeFileSync(cooldownPath, JSON.stringify({ lastRun: Date.now() }));
+          } catch {}
+        },
+        detectUpdates: async () => {
+          return await checkForUpdates({
+            stateDir,
+            packageJsonPath,
+            patchesDir,
+            cooldownMs: 0, // bypass detector cooldown — auto-updater has its own
+          });
+        },
+        checkRebrowserCompat: (pwVersion) => checkRebrowserCompatibility(pwVersion),
+        runExecutor: async (_op, pkg, version) => {
+          if (pkg === 'playwright-core') {
+            const r1 = await installPackage(pkg, version, { runner: defaultRunner, cwd });
+            if (!r1.success) return r1;
+            return await installPlaywrightChromium({ runner: defaultRunner, cwd });
+          }
+          return await installPackage(pkg, version, { runner: defaultRunner, cwd });
+        },
+        runVerifier: async () => {
+          return await verifyStealth({ browser: createPlaywrightVerifierBrowser() });
+        },
+        applyPatches: async () => { await applyStealthPatches(); },
+        log: (msg) => console.log(msg),
+        onRollback: async (_snap, reason) => {
+          console.error(`[auto-update] ROLLBACK: ${reason}`);
+          // Restore the actual installed packages by re-running bun install
+          await bunInstallAll({ runner: defaultRunner, cwd });
+          await applyStealthPatches();
+        },
+      });
+    } catch (err: any) {
+      console.error(`[auto-update] orchestrator error: ${err?.message || err}`);
+    }
+  })();
+
+  // ─── Reinforcement loop (autonomous stealth validation) ─────────
+  // Every 6h, re-run verifyStealth() to catch posture drift from
+  // outside-nightCrawl updates, new fingerprinting techniques, or
+  // overwritten patches. Self-heals once, escalates after 3 fails.
+  // Disabled by BROWSE_REINFORCEMENT=0 (e.g. for tests/CI).
+  if (process.env.BROWSE_REINFORCEMENT !== '0') {
+    (async () => {
+      try {
+        const { createPlaywrightVerifierBrowser } = await import('./stealth-verifier-playwright');
+        const { verifyStealth } = await import('./stealth-verifier');
+        const stateDir = path.join(process.env.HOME || '/tmp', '.nightcrawl');
+
+        startReinforcementLoop({
+          intervalMs: 6 * 60 * 60 * 1000,    // 6h
+          initialDelayMs: 60 * 60 * 1000,    // 1h after startup
+          stateDir,
+          runVerifier: () => verifyStealth({ browser: createPlaywrightVerifierBrowser() }),
+          reapplyPatches: () => applyStealthPatches(),
+          schedule: (delayMs, cb) => setTimeout(cb, delayMs),
+          cancel: (handle) => clearTimeout(handle),
+          log: (msg) => console.log(msg),
+        });
+      } catch (err: any) {
+        console.error(`[reinforcement] startup error: ${err?.message || err}`);
+      }
+    })();
+  }
 
   // Clean up stale state files (older than 7 days)
   try {

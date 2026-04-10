@@ -43,7 +43,7 @@ const GITHUB_API = 'https://api.github.com/repos';
 const REBROWSER_REPO = 'rebrowser/rebrowser-patches';
 
 // npm packages to check (keys must match package.json dependency names)
-const NPM_DEPS = ['playwright-core'] as const;
+const NPM_DEPS = ['playwright-core', 'cloakbrowser'] as const;
 
 // ─── Version comparison ─────────────────────────────────────────
 
@@ -222,6 +222,81 @@ export async function checkForUpdates(
     return results;
   } catch {
     return null; // Network timeout or other failure — fail silently
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ─── Rebrowser-patches compatibility check ──────────────────────
+
+export interface RebrowserCompatibility {
+  compatible: boolean;
+  latestRebrowser: string | null;
+  targetPwVersion: string;
+  matchedRelease: string | null;
+}
+
+/**
+ * Check if any rebrowser-patches release is compatible with the given
+ * Playwright version. Compatibility is determined by parsing the release
+ * tag and body — rebrowser tags include the targeted Playwright version
+ * (e.g. "v1.0.20" with body mentioning "Playwright 1.59").
+ *
+ * Returns compatible=false if no release matches; the caller MUST then
+ * skip the Playwright update to avoid breaking stealth.
+ *
+ * Never throws — fails closed (compatible=false) on network errors.
+ */
+export async function checkRebrowserCompatibility(
+  targetPwVersion: string,
+  fetchFn: typeof fetch = fetch,
+  timeoutMs: number = TIMEOUT_MS,
+): Promise<RebrowserCompatibility> {
+  const fail = (latest: string | null = null): RebrowserCompatibility => ({
+    compatible: false,
+    latestRebrowser: latest,
+    targetPwVersion,
+    matchedRelease: null,
+  });
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetchFn(
+      `${GITHUB_API}/${REBROWSER_REPO}/releases?per_page=10`,
+      { signal: controller.signal },
+    );
+    if (!res.ok) return fail();
+
+    const releases = await res.json();
+    if (!Array.isArray(releases) || releases.length === 0) return fail();
+
+    const latest = typeof releases[0]?.tag_name === 'string'
+      ? releases[0].tag_name.replace(/^v/, '')
+      : null;
+
+    // Match the major.minor of target PW version (e.g. "1.59" matches "1.59.1")
+    const pwMajorMinor = targetPwVersion.split('.').slice(0, 2).join('.');
+    const pwPattern = new RegExp(`\\b${pwMajorMinor.replace('.', '\\.')}(\\.|\\b)`);
+
+    for (const rel of releases) {
+      const tag = String(rel.tag_name || '');
+      const body = String(rel.body || '');
+      const haystack = `${tag}\n${body}`;
+      if (pwPattern.test(haystack)) {
+        return {
+          compatible: true,
+          latestRebrowser: latest,
+          targetPwVersion,
+          matchedRelease: tag,
+        };
+      }
+    }
+
+    return fail(latest);
+  } catch {
+    return fail();
   } finally {
     clearTimeout(timer);
   }
