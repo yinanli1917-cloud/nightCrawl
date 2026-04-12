@@ -46,7 +46,7 @@ A stateful, headless browser daemon that:
 - Loads Chrome extensions (bypass-paywalls, nightCrawl sidepanel) — controllable via `BROWSE_EXTENSIONS` env var
 - Exposes HTTP API for commands: goto, click, type, screenshot, js eval, network interception
 - Supports headed mode handover (`connect`/`handoff`) for human intervention
-- Auto-detects login walls and switches to headed mode (`BROWSE_AUTO_HANDOVER=1`)
+- Auto-detects login walls and switches to headed mode — opt-in only, set `BROWSE_AUTO_HANDOVER=1` to enable. Default behavior reports login walls without popping a window.
 
 ## CDP Runtime.Enable Bypass (patches/cdp/)
 

@@ -30,3 +30,6 @@ Thumbs.db
 # nightcrawl local state
 .nightcrawl/
 .gstack/
+
+# skill-creator workspaces (eval runs, snapshots — not source)
+.claude/skills/*-workspace/

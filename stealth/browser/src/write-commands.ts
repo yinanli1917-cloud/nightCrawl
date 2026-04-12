@@ -286,7 +286,8 @@ export async function handleWriteCommand(
 
     case 'cookie-import': {
       const filePath = args[0];
-      if (!filePath) throw new Error('Usage: browse cookie-import <json-file>');
+      if (!filePath) throw new Error('Usage: browse cookie-import <json-file> [--force]');
+      const force = args.includes('--force');
       // Path validation — prevent reading arbitrary files
       if (path.isAbsolute(filePath)) {
         const safeDirs = [TEMP_DIR, process.cwd()];
@@ -312,6 +313,41 @@ export async function handleWriteCommand(
         if (!c.name || c.value === undefined) throw new Error('Each cookie must have "name" and "value" fields');
         if (!c.domain) c.domain = defaultDomain;
         if (!c.path) c.path = '/';
+      }
+
+      // ─── document.cookie footgun guard ───────────────────────────
+      // Imports that originate from `document.cookie` silently drop every
+      // httpOnly cookie (auth tokens like __puus, session IDs). If the
+      // existing context has httpOnly cookies for any of the domains being
+      // imported and the import contains *zero* httpOnly cookies for that
+      // same domain, the user almost certainly produced this file by
+      // round-tripping through document.cookie and is about to be confused
+      // when their session "looks fine" but every authenticated call 401s.
+      // Refuse unless --force is passed.
+      if (!force) {
+        const importDomains = new Set(
+          cookies.map((c) => String(c.domain).replace(/^\./, '').toLowerCase())
+        );
+        const existing = await page.context().cookies();
+        for (const bareDomain of importDomains) {
+          const existingForDomain = existing.filter((c) => {
+            const d = c.domain.replace(/^\./, '').toLowerCase();
+            return d === bareDomain || d.endsWith('.' + bareDomain) || bareDomain.endsWith('.' + d);
+          });
+          const importedForDomain = cookies.filter((c) => {
+            const d = String(c.domain).replace(/^\./, '').toLowerCase();
+            return d === bareDomain;
+          });
+          const existingHttpOnly = existingForDomain.filter((c) => c.httpOnly).length;
+          const importedHttpOnly = importedForDomain.filter((c) => c.httpOnly === true).length;
+          if (existingHttpOnly > 0 && importedHttpOnly === 0) {
+            throw new Error(
+              `Refusing partial cookie-import for ${bareDomain}: existing context has ${existingHttpOnly} httpOnly cookie(s) but the import file has none. ` +
+              `This is the document.cookie footgun — JS can never read httpOnly cookies, so re-importing a document.cookie dump silently drops auth tokens like __puus. ` +
+              `If this is intentional (you really do mean to overwrite without httpOnly cookies), pass --force.`
+            );
+          }
+        }
       }
 
       await page.context().addCookies(cookies);

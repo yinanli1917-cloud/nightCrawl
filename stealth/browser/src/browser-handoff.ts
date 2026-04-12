@@ -371,13 +371,17 @@ export function getFailureHint(this: any): string | null {
 /**
  * Detect login walls, captchas, and auth barriers.
  * Returns detection result or null if no login wall found.
- * Called after navigation commands when BROWSE_AUTO_HANDOVER=1.
+ *
+ * Opt-in: only runs when BROWSE_AUTO_HANDOVER=1. Unset or any other value
+ * disables handover so login walls are reported back to the agent instead of
+ * silently popping a Chrome window. The agent can then ask the user for
+ * permission before opting in for the rest of the session.
  */
 export async function detectLoginWall(
   this: any
 ): Promise<{ detected: boolean; reason: string } | null> {
   if (this.isHeaded) return null;
-  if (process.env.BROWSE_AUTO_HANDOVER === '0') return null;
+  if (process.env.BROWSE_AUTO_HANDOVER !== '1') return null;
 
   const page = this.getPage();
   if (!page) return null;
