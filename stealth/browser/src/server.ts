@@ -34,6 +34,7 @@ import {
 import { applyStealthPatches } from './stealth';
 import { startReinforcementLoop } from './stealth-reinforcement';
 import { notify } from './notify';
+import { tryAutoImportForWall } from './handoff-cookie-import';
 import { emitActivity, subscribe, getActivityAfter, getActivityHistory, getSubscriberCount } from './activity';
 // Bun.spawn used instead of child_process.spawn (compiled bun binaries
 // fail posix_spawn on all executables including /bin/bash)
@@ -813,9 +814,41 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
       if (detection?.detected) {
         result += `\nLOGIN_WALL_DETECTED: ${detection.reason}`;
         if (detection.approved) {
-          // Pre-approved domain: run the full polling autoHandover autonomously.
-          // This is what made Canvas (and a thousand other SSO sites) work
-          // pre-520a253. See memory/project_canvas_regression_2026_04_14.md.
+          // STEP 1: Try silent auto-import from the user's default browser
+          // BEFORE opening a window. The user's default browser keeps the
+          // upstream identity provider session alive through normal use;
+          // borrowing those cookies usually satisfies the wall without any
+          // human interaction. See handoff-cookie-import.ts and
+          // memory/feedback_proactive_handoff_ux.md.
+          //
+          // Only runs for consent-approved domains (privacy gate).
+          // No-op if no installed browser, no matching cookies, or import fails.
+          const page = browserManager.getPage();
+          const targetUrl = command === 'goto' ? args[0] : (page?.url() ?? '');
+          const wallUrl = page?.url() ?? targetUrl;
+          if (page) {
+            try {
+              const importResult = await tryAutoImportForWall(targetUrl, wallUrl, page.context());
+              if (importResult.importedCount > 0) {
+                result += `\nAuto-imported ${importResult.importedCount} cookies from ${importResult.browser} for ${importResult.hostKeys.length} host(s). Re-trying navigation...`;
+                // Retry the original navigation with fresh cookies.
+                await page.goto(targetUrl, { waitUntil: 'load', timeout: 30000 }).catch(() => {});
+                await new Promise(r => setTimeout(r, 1500));
+                const detection2 = await browserManager.detectLoginWall();
+                if (!detection2?.detected) {
+                  result += `\nLogin wall cleared after auto-import. No window opened.`;
+                  browserManager.resetFailures();
+                  return new Response(result, { status: 200, headers: { 'Content-Type': 'text/plain' } });
+                }
+                result += `\nAuto-import insufficient (${detection2.reason}). Falling back to headed handover.`;
+              } else if (importResult.attempted) {
+                result += `\nNo matching cookies found in ${importResult.browser ?? 'default browser'} for this domain chain.`;
+              }
+            } catch (err: any) {
+              console.error(`[nightcrawl] Auto-import error: ${err?.message ?? err}`);
+            }
+          }
+          // STEP 2: Fall through to the existing autoHandover (window pop).
           result += `\nAuto-handover starting (approved domain: ${detection.domain}). Headed browser will open for login...`;
           browserManager.autoHandover().then(handoverResult => {
             if (handoverResult) console.log(`[nightcrawl] Auto-handover complete: ${handoverResult}`);

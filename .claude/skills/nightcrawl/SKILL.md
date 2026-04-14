@@ -54,19 +54,24 @@ surprise foreground window is extremely disruptive — that's why opt-in is the 
 These rules are not suggestions. Breaking them disrupts the user's editor or destroys
 the user's saved sessions.
 
-- **Default is fully headless.** Never export `BROWSE_AUTO_HANDOVER=1` without first
-  asking the user. The code defaults to opt-in; don't override it on a hunch.
-- **Never run `cookie-import-browser` in any form.** Not interactively, not with
-  `--domain`, not "just to refresh". It triggers a macOS Keychain permission dialog
-  even when it "works". Cookies are already imported — see the next section.
-- **No silent windows.** `handoff`, `resume`, and exporting `BROWSE_AUTO_HANDOVER=1`
-  all require a two-step dance:
-  1. Hit a login wall (or other reason you need a real user in the loop).
-  2. **Tell the user first:** what wall, which site, why the usual cookies aren't
-     enough, and explicitly ask "want me to open a Chrome window so you can log in,
-     then resume headless?"
-  3. Only if the user says yes in the same turn, export `BROWSE_AUTO_HANDOVER=1`
-     and run `handoff`. Then `resume` after.
+- **Default is fully autonomous via consent-per-domain.** Detection always runs.
+  When a login wall is hit on a domain the user has approved (`grant-handoff <domain>`,
+  stored in `~/.nightcrawl/state/handoff-consent.json` keyed by eTLD+1, 30-day TTL),
+  nightCrawl FIRST tries silent auto-import from the user's default browser (Arc/Chrome),
+  re-tries the navigation, and only falls back to the headed-window handoff if that
+  doesn't satisfy the wall. Unknown domains never auto-act — they surface
+  `CONSENT_REQUIRED: <domain>` so you can ask the user once. The old `BROWSE_AUTO_HANDOVER`
+  env var is gone; consent is the gate.
+- **Auto-import is a feature, not a footgun.** `cookie-import-browser` is fine to run
+  when the consent gate authorizes it. It triggers a one-time macOS Keychain dialog
+  per browser (user clicks "Always Allow" once → silent forever after). After Session 7
+  (2026-04-14), this fires automatically inside the goto handler when a wall is hit on
+  an approved domain — you don't normally call it manually.
+- **No silent windows on UNAPPROVED domains.** Detection on an unapproved domain
+  surfaces `CONSENT_REQUIRED: <domain>` instead of popping a window. Tell the user
+  what wall, which site, and ask "Approve auto-handoff for <domain>?" — if yes, run
+  `grant-handoff <domain>`. After that, all of (auto-import, polling auto-handover,
+  default-browser handoff) fire autonomously for that domain.
 - **Never round-trip cookies through `document.cookie`.** This is a footgun that has
   already destroyed real sessions. `js "document.cookie"` cannot read httpOnly
   cookies — that's the whole point of httpOnly. If you dump `document.cookie` to a
@@ -320,6 +325,9 @@ the API. When the API says no, go to the protocol. There's always a layer undern
 - For sites with SSL cert issues, `BROWSE_IGNORE_HTTPS_ERRORS=1` is already set above.
 - After `screenshot` or `snapshot -a -o`, use the Read tool on the output PNG so the
   user can see it.
-- If you ever find yourself about to run `cookie-import-browser`, `handoff`, export
-  `BROWSE_AUTO_HANDOVER=1`, or pipe `nc js "document.cookie"` into `cookie-import` —
-  stop. That's the rule you're about to break.
+- If you ever find yourself about to pipe `nc js "document.cookie"` into `cookie-import` —
+  stop. That's the httpOnly footgun. Use `nc cookies` instead.
+- Manual `cookie-import-browser`, `handoff`, and `resume` are still available but
+  almost never needed. The consent-gated auto-handover (auto-import → polling
+  resume) handles the common case. Reach for them only when the user explicitly
+  asks or the consent flow is misbehaving — and tell the user before running.

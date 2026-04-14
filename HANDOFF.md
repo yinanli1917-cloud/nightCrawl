@@ -1,3 +1,96 @@
+# HANDOFF -- 2026-04-14 (Session 7 -- auto-import resurrection + Canvas closed end-to-end)
+
+## What this session was
+
+A second, much rougher pass over the same problem. Session 6 (earlier today)
+shipped consent-per-domain handoff + URL-stability polling + macOS notification.
+Live-tested on Canvas, the user got a window pop, logged in, dashboard loaded —
+but on a NEW daemon ~10 min later, Canvas re-bounced.
+
+The user (after staying up all night) pointed out the deeper regression:
+nightCrawl USED to silently auto-import cookies from their default browser
+when hitting a login wall; the current code forced manual `cookie-import-browser`
+calls instead. The "never run cookie-import-browser" rule (from commit 520a253)
+was the bug, not the safety. They were right.
+
+## What landed
+
+**`stealth/browser/src/handoff-cookie-import.ts` (new):**
+- `tryAutoImportForWall(targetUrl, wallUrl, context, browser?)` — silent path
+- Computes candidate eTLD+1 set (target + wall + curated SSO_HELPER_DOMAINS)
+- Discovers actual host_keys in the user's default browser cookie DB matching
+  any candidate eTLD+1 (so dynamic subdomains like
+  `7f032619-fbd5-41ee-ac6c-e629af79ebcd.iad.login.instructure.com` get caught
+  via their `instructure.com` parent)
+- Imports them via the existing `importCookies()` + injects into the live
+  Playwright BrowserContext
+- Returns structured `{ attempted, importedCount, hostKeys, browser, error }`
+- Default browser priority: arc → chrome → brave → edge
+
+**`stealth/browser/src/server.ts`:**
+After `detectLoginWall` returns `{detected:true, approved:true}`:
+1. Call `tryAutoImportForWall` (privacy-gated by approved consent — same
+   trust level as the existing autoHandover window-pop)
+2. If imported > 0: re-navigate the original target URL, re-run detectLoginWall
+3. If wall cleared on retry: return success WITHOUT popping a window
+4. Else: fall through to the existing `autoHandover` polling headed-window flow
+
+**Tests:**
+- `test/handoff-cookie-import.test.ts` (6 unit tests for SSO list + buildCandidateDomains)
+- All prior tests still pass (82 across 8 files at last full check)
+
+**Live verification (the proof the user demanded):**
+With ALL UW/Canvas/Instructure cookies stripped from the persistent store and a
+fresh daemon, `goto canvas.uw.edu` produced:
+```
+Navigated to https://canvas.uw.edu/ (200)
+LOGIN_WALL_DETECTED: Login URL detected: https://idp.u.washington.edu/idp/profile/SAML2/Redirect/SSO?execution=e1s1
+Auto-imported 161 cookies from arc for 63 host(s). Re-trying navigation...
+Login wall cleared after auto-import. No window opened.
+```
+Real Canvas dashboard rendered (COMMLD 515 Advanced User Design / COMMLD 525
+Brand Values / Civil Rights course / archived COMMLD 512). Zero windows popped.
+Generalized — the same flow handles any consent-approved login wall on any site
+where the user has cookies in their default browser.
+
+**SKILL.md updated** to remove the blanket "never run cookie-import-browser"
+rule and document the new auto-import-as-Step-1 of the handoff flow.
+
+**Memory updates:**
+- `feedback_no_windows.md` — clarified that cookie-import-browser is fine when
+  consent-gated; old blanket ban removed
+- `project_auto_import_regression_2026_04_14.md` (new) — incident record so
+  future me doesn't re-introduce the over-correction
+
+## What's still deferred
+
+### P1: Daemon kills its spawned headed Chrome on shutdown
+Current `pkill -f "bun"` doesn't kill Playwright-spawned Chromium. The handoff
+launches a headed Chrome that survives the daemon's death, leading to orphaned
+windows on the user's screen. Fix: `BrowserManager.shutdown()` should track
+the headed PID and kill its process tree (or spawn with `detached: false` so
+Playwright cleans it up automatically).
+
+### P2: Rebuild compiled binary so cross-project usage gets the fix
+`stealth/browser/dist/browse` is from April 7 — predates ALL of today's fixes.
+Other projects use that stale binary and reproduce the original bug.
+```
+cd stealth/browser && bun build src/cli.ts --compile --outfile dist/browse
+```
+
+### P3: Tracked redirect-chain hosts in candidate-domain discovery
+Current `buildCandidateDomains` uses target eTLD+1 + wall eTLD+1 + curated SSO list.
+Better: page.on('framenavigated') during the goto records every host actually
+visited; auto-import uses that exact set. Eliminates the SSO_HELPER_DOMAINS
+heuristic. Small refactor inside server.ts goto handler.
+
+### P4: All deferred items from Session 6's handoff still apply
+CloakBrowser-as-default flip, default-browser-medium handoff (open Arc instead
+of headed Chromium), auto-updater baseline-vs-post comparison, `browse health`
+plain-English status command, re-port CDP patches for PW 1.59.1.
+
+---
+
 # HANDOFF -- 2026-04-14 (Session 6 -- product reframe + consent-based handoff + polling fix)
 
 ## Late-session addendum: URL-stability fix for multi-step IDPs
