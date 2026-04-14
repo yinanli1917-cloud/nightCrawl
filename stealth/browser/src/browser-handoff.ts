@@ -12,6 +12,7 @@
 import type { BrowserContext } from 'playwright';
 import { DEFAULT_USER_AGENT, findChromiumExecutable, applyStealthPatches } from './stealth';
 import { isHostile, HostileDomainError } from './hostile-domains';
+import { eTldPlusOne, readConsent, isApproved, defaultConsentPath } from './handoff-consent';
 
 // Re-exported by browser-manager.ts so getChromium is available without circular dep.
 // The actual getChromium is passed via the setup function below.
@@ -372,23 +373,29 @@ export function getFailureHint(this: any): string | null {
  * Detect login walls, captchas, and auth barriers.
  * Returns detection result or null if no login wall found.
  *
- * Opt-in: only runs when BROWSE_AUTO_HANDOVER=1. Unset or any other value
- * disables handover so login walls are reported back to the agent instead of
- * silently popping a Chrome window. The agent can then ask the user for
- * permission before opting in for the rest of the session.
+ * Always runs (no env-var gate). The gate on *acting* is per-domain
+ * consent — stored in ~/.nightcrawl/state/handoff-consent.json, keyed
+ * by eTLD+1 with a TTL. Callers use `approved` to decide whether to
+ * invoke autoHandover (pop a window) or surface a consent prompt.
+ *
+ * Why this shape: commit 520a253 used an env-var opt-in to prevent
+ * surprise window-pops on quark.cn, but that punished well-behaved
+ * domains (Canvas) by blocking autonomous handling. Consent-per-
+ * domain honors both: unknown domains never pop, approved domains
+ * run the full polling loop that makes SAML timing correct.
+ * See memory/project_canvas_regression_2026_04_14.md.
  */
 export async function detectLoginWall(
   this: any
-): Promise<{ detected: boolean; reason: string } | null> {
+): Promise<{ detected: boolean; reason: string; domain: string; approved: boolean } | null> {
   if (this.isHeaded) return null;
-  if (process.env.BROWSE_AUTO_HANDOVER !== '1') return null;
 
   const page = this.getPage();
   if (!page) return null;
   const url = page.url();
 
   if (/[/=](login|signin|sign-in|auth|captcha|verify|sso)\b/i.test(url)) {
-    return { detected: true, reason: `Login URL detected: ${url}` };
+    return withConsent(url, { detected: true, reason: `Login URL detected: ${url}` });
   }
 
   const hasLoginForm = await page.evaluate(() => {
@@ -408,7 +415,7 @@ export async function detectLoginWall(
   }).catch(() => false);
 
   if (hasLoginForm) {
-    return { detected: true, reason: `Login form detected at ${url}` };
+    return withConsent(url, { detected: true, reason: `Login form detected at ${url}` });
   }
 
   const hasQrLogin = await page.evaluate(() => {
@@ -420,7 +427,7 @@ export async function detectLoginWall(
   }).catch(() => false);
 
   if (hasQrLogin) {
-    return { detected: true, reason: `QR code login detected at ${url}` };
+    return withConsent(url, { detected: true, reason: `QR code login detected at ${url}` });
   }
 
   const hasAuthBarrier = await page.evaluate(() => {
@@ -429,10 +436,24 @@ export async function detectLoginWall(
   }).catch(() => false);
 
   if (hasAuthBarrier) {
-    return { detected: true, reason: `Auth barrier text detected at ${url}` };
+    return withConsent(url, { detected: true, reason: `Auth barrier text detected at ${url}` });
   }
 
   return null;
+}
+
+/**
+ * Decorate a raw detection with the approved/domain fields from the consent store.
+ * Kept as a small helper so the four detection paths above stay symmetric.
+ */
+function withConsent(
+  url: string,
+  base: { detected: boolean; reason: string },
+): { detected: boolean; reason: string; domain: string; approved: boolean } {
+  const domain = eTldPlusOne(url);
+  const store = readConsent(defaultConsentPath());
+  const approved = isApproved(store, url);
+  return { ...base, domain, approved };
 }
 
 // ─── Auto-Handover (fully automatic login cycle) ────────────
@@ -453,6 +474,23 @@ export async function autoHandover(this: any): Promise<string | null> {
     const err = new HostileDomainError(loginUrl);
     console.error(`[nightcrawl] ${err.message}`);
     return `ERROR: ${err.message}`;
+  }
+
+  // CONSENT GATE: never pop a window on a domain the user hasn't approved.
+  // Approval is per-eTLD+1 with TTL; see handoff-consent.ts.
+  // Callers who reached autoHandover via the server's goto-autohandover
+  // wiring already checked consent — this is defense-in-depth for direct
+  // callers (tests, future meta-commands, etc.). See
+  // memory/project_canvas_regression_2026_04_14.md for why the gate lives
+  // here and not in an env var.
+  if (loginUrl) {
+    const store = readConsent(defaultConsentPath());
+    if (!isApproved(store, loginUrl)) {
+      const domain = eTldPlusOne(loginUrl);
+      const msg = `CONSENT_REQUIRED: ${domain} — run 'grant-handoff ${domain}' to approve auto-handover for this domain.`;
+      console.log(`[nightcrawl] ${msg}`);
+      return msg;
+    }
   }
 
   console.log(`[nightcrawl] Switching to headed mode for login at ${loginUrl}...`);

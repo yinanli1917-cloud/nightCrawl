@@ -2,17 +2,28 @@
  * Login Wall Detection tests — integration tests with real browser.
  *
  * Tests detectLoginWall() against HTML fixtures (login form vs open page),
- * URL pattern matching, and gating by env/mode.
+ * URL pattern matching, and the new consent-based gate.
+ *
+ * Design: detectLoginWall ALWAYS runs (no env gate). The returned shape
+ * now includes { domain, approved } so callers can decide whether to
+ * invoke autoHandover (pop a window) or surface CONSENT_REQUIRED.
+ * See memory/feedback_proactive_handoff_ux.md and
+ * memory/project_canvas_regression_2026_04_14.md for why.
  */
 
-import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
+import { describe, test, expect, beforeAll, afterAll, beforeEach, afterEach } from 'bun:test';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 import { startTestServer } from './test-server';
 import { BrowserManager } from '../src/browser-manager';
 import { handleWriteCommand } from '../src/write-commands';
+import { defaultConsentPath, grant, emptyStore, writeConsent } from '../src/handoff-consent';
 
 let testServer: ReturnType<typeof startTestServer>;
 let bm: BrowserManager;
 let baseUrl: string;
+let savedConsent: string | null = null;
 
 beforeAll(async () => {
   testServer = startTestServer(0);
@@ -27,46 +38,46 @@ afterAll(() => {
   setTimeout(() => process.exit(0), 500);
 });
 
-// ─── HTML Fixture Detection ─────────────────────────────────────
+beforeEach(() => {
+  // Snapshot and clear the real consent store so tests never leak approvals
+  // into the user's ~/.nightcrawl/state/ or inherit prior test state.
+  try {
+    savedConsent = fs.readFileSync(defaultConsentPath(), 'utf-8');
+  } catch {
+    savedConsent = null;
+  }
+  try { fs.unlinkSync(defaultConsentPath()); } catch {}
+});
+
+afterEach(() => {
+  if (savedConsent !== null) {
+    fs.mkdirSync(path.dirname(defaultConsentPath()), { recursive: true });
+    fs.writeFileSync(defaultConsentPath(), savedConsent);
+  } else {
+    try { fs.unlinkSync(defaultConsentPath()); } catch {}
+  }
+});
+
+// ─── HTML Fixture Detection (always runs, no env gate) ──────
 
 describe('detectLoginWall with fixtures', () => {
   test('returns detected:true for login-wall.html (password input + Chinese heading)', async () => {
-    // Enable auto-handover for detection to work
-    const prev = process.env.BROWSE_AUTO_HANDOVER;
-    process.env.BROWSE_AUTO_HANDOVER = '1';
-
-    try {
-      await handleWriteCommand('goto', [baseUrl + '/login-wall.html'], bm);
-      const result = await bm.detectLoginWall();
-      expect(result).not.toBeNull();
-      expect(result!.detected).toBe(true);
-    } finally {
-      process.env.BROWSE_AUTO_HANDOVER = prev;
-    }
+    await handleWriteCommand('goto', [baseUrl + '/login-wall.html'], bm);
+    const result = await bm.detectLoginWall();
+    expect(result).not.toBeNull();
+    expect(result!.detected).toBe(true);
   }, 15000);
 
   test('returns null for open-page.html (no login elements)', async () => {
-    const prev = process.env.BROWSE_AUTO_HANDOVER;
-    process.env.BROWSE_AUTO_HANDOVER = '1';
-
-    try {
-      await handleWriteCommand('goto', [baseUrl + '/open-page.html'], bm);
-      const result = await bm.detectLoginWall();
-      expect(result).toBeNull();
-    } finally {
-      process.env.BROWSE_AUTO_HANDOVER = prev;
-    }
+    await handleWriteCommand('goto', [baseUrl + '/open-page.html'], bm);
+    const result = await bm.detectLoginWall();
+    expect(result).toBeNull();
   }, 15000);
 });
 
-// ─── URL Pattern Detection ──────────────────────────────────────
+// ─── URL Pattern Detection ──────────────────────────────────
 
 describe('detectLoginWall URL patterns', () => {
-  // URL pattern detection triggers before page content checks,
-  // so we test by navigating to URLs that match the patterns.
-  // The test server returns 404 for unknown paths, but that's fine —
-  // the URL check happens regardless of page content.
-
   const loginUrls = [
     '/login',
     '/auth/callback',
@@ -78,65 +89,51 @@ describe('detectLoginWall URL patterns', () => {
 
   for (const urlPath of loginUrls) {
     test(`detects login URL: ${urlPath}`, async () => {
-      const prev = process.env.BROWSE_AUTO_HANDOVER;
-      process.env.BROWSE_AUTO_HANDOVER = '1';
-
-      try {
-        await handleWriteCommand('goto', [baseUrl + urlPath], bm);
-        const result = await bm.detectLoginWall();
-        expect(result).not.toBeNull();
-        expect(result!.detected).toBe(true);
-        expect(result!.reason).toContain('Login URL detected');
-      } finally {
-        process.env.BROWSE_AUTO_HANDOVER = prev;
-      }
+      await handleWriteCommand('goto', [baseUrl + urlPath], bm);
+      const result = await bm.detectLoginWall();
+      expect(result).not.toBeNull();
+      expect(result!.detected).toBe(true);
+      expect(result!.reason).toContain('Login URL detected');
     }, 15000);
   }
 });
 
-// ─── Gating: BROWSE_AUTO_HANDOVER ───────────────────────────────
+// ─── Gating: by consent (replaces old env-var gate) ─────────
 
-describe('detectLoginWall gating', () => {
-  test('returns null when BROWSE_AUTO_HANDOVER is not set', async () => {
-    const prev = process.env.BROWSE_AUTO_HANDOVER;
-    delete process.env.BROWSE_AUTO_HANDOVER;
-
-    try {
-      await handleWriteCommand('goto', [baseUrl + '/login-wall.html'], bm);
-      const result = await bm.detectLoginWall();
-      expect(result).toBeNull();
-    } finally {
-      if (prev !== undefined) process.env.BROWSE_AUTO_HANDOVER = prev;
-    }
+describe('detectLoginWall consent gating', () => {
+  test('returns detected:true with approved:false when no consent entry exists', async () => {
+    // No consent file → detected but NOT approved (agent must ask user).
+    await handleWriteCommand('goto', [baseUrl + '/login-wall.html'], bm);
+    const result = await bm.detectLoginWall();
+    expect(result).not.toBeNull();
+    expect(result!.detected).toBe(true);
+    expect(result!.approved).toBe(false);
+    expect(result!.domain).toBeTruthy();
   }, 15000);
 
-  test('returns null when BROWSE_AUTO_HANDOVER is 0', async () => {
-    const prev = process.env.BROWSE_AUTO_HANDOVER;
-    process.env.BROWSE_AUTO_HANDOVER = '0';
+  test('returns detected:true with approved:true after grant', async () => {
+    // Grant consent for the test server's eTLD+1, then re-run.
+    // baseUrl is like http://localhost:PORT — eTLD+1 becomes "localhost".
+    const store = grant(emptyStore(), baseUrl);
+    writeConsent(defaultConsentPath(), store);
 
-    try {
-      await handleWriteCommand('goto', [baseUrl + '/login-wall.html'], bm);
-      const result = await bm.detectLoginWall();
-      expect(result).toBeNull();
-    } finally {
-      process.env.BROWSE_AUTO_HANDOVER = prev;
-    }
+    await handleWriteCommand('goto', [baseUrl + '/login-wall.html'], bm);
+    const result = await bm.detectLoginWall();
+    expect(result).not.toBeNull();
+    expect(result!.detected).toBe(true);
+    expect(result!.approved).toBe(true);
   }, 15000);
 
-  test('returns null when in headed mode', async () => {
-    const prev = process.env.BROWSE_AUTO_HANDOVER;
-    process.env.BROWSE_AUTO_HANDOVER = '1';
-
-    // Simulate headed mode without actually launching headed
+  test('returns null when in headed mode (detection suppressed)', async () => {
+    // The isHeaded short-circuit remains — no point detecting walls when
+    // the user is already driving the browser manually.
     (bm as any).isHeaded = true;
-
     try {
       await handleWriteCommand('goto', [baseUrl + '/login-wall.html'], bm);
       const result = await bm.detectLoginWall();
       expect(result).toBeNull();
     } finally {
       (bm as any).isHeaded = false;
-      process.env.BROWSE_AUTO_HANDOVER = prev;
     }
   }, 15000);
 });

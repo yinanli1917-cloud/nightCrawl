@@ -697,7 +697,7 @@ export class BrowserManager {
   declare handoff: (message: string) => Promise<string>;
   declare resume: () => Promise<string>;
   declare autoHandover: () => Promise<string | null>;
-  declare detectLoginWall: () => Promise<{ detected: boolean; reason: string } | null>;
+  declare detectLoginWall: () => Promise<{ detected: boolean; reason: string; domain: string; approved: boolean } | null>;
   declare getIsHeaded: () => boolean;
   declare incrementFailures: () => void;
   declare resetFailures: () => void;

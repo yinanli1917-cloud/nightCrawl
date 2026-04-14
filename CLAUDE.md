@@ -39,6 +39,7 @@ No existing tool combines: **local CLI + real browser cookies + stealth + persis
 | `research/` | Competitive landscape, anti-bot research |
 | `docs/` | PRD, architecture docs, origin handoff |
 | `docs/PRD.md` | Product Requirements Document (v0.2 — the source of truth) |
+| `docs/product-notes/` | Snapshots of user's Apple Notes about the product (point-in-time, not live) |
 | `subtitles/` | Proof-of-concept artifacts (gitignored) |
 
 ## Stealth Architecture
@@ -47,7 +48,7 @@ No existing tool combines: **local CLI + real browser cookies + stealth + persis
 1. **UA fix** — consistent User-Agent across JS + HTTP levels, removes HeadlessChrome, sets real viewport
 2. **CDP Runtime.Enable fix** — rebrowser-patches v1.0.19, adapted for PW 1.58.2 (5 files, auto-applied with `isPatchCurrent` optimization)
 3. **Extension management** — `BROWSE_EXTENSIONS=none|paywall|all` controls extension loading per mode
-4. **Auto-handover (opt-in)** — detects login walls, opens headed Chrome, user logs in, auto-resumes headless. **Disabled by default**; set `BROWSE_AUTO_HANDOVER=1` to enable. Default behavior reports the login wall back to the agent so it can ask the user before any window pops.
+4. **Auto-handover (consent-per-domain)** — detects login walls, opens headed Chrome, user logs in, auto-resumes headless. Detection ALWAYS runs; the gate is **per-domain consent** stored in `~/.nightcrawl/state/handoff-consent.json` keyed by eTLD+1 with TTL. Approve once per domain (`grant-handoff <domain>`), then nightCrawl auto-handles SSO autonomously for that domain (TTL 30d default). Unknown domains never silent-pop — they surface `CONSENT_REQUIRED` to the agent + macOS notification. Replaces the prior `BROWSE_AUTO_HANDOVER` env-var gate (removed 2026-04-14 after the UW Canvas regression incident).
 5. **bypass-paywalls-chrome v4.3.4.5** — Manifest V3, declarativeNetRequest
 6. **Cookie persistence** + import from Arc/Chrome/Firefox/Safari (AES-128-CBC decrypt via Keychain)
 7. **Scoped token system** — per-agent permissions (read/write/admin/meta scopes), domain restrictions, rate limiting
@@ -88,6 +89,8 @@ behavioral analysis are NOT patched. Switch to `BROWSE_ENGINE=cloakbrowser` for 
 - `BROWSE_EXTENSIONS=none|paywall|all` — control extension loading (default: `all`)
 - Auto-handover off by default — set `BROWSE_AUTO_HANDOVER=1` to opt in. Otherwise login walls are reported back to the agent without popping a window.
 - Cookies auto-persisted after handoff/resume + every 5 min + on shutdown
+- Handoff consent: `grant-handoff <domain>` / `revoke-handoff <domain>` / `list-handoff` — per-eTLD+1 approval with 30-day default TTL
+- macOS notifications: `notify()` in `src/notify.ts` (best-effort, opt-out via `NIGHTCRAWL_NO_NOTIFY=1`)
 
 ## Key References
 

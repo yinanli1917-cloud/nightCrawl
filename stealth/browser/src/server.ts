@@ -33,6 +33,7 @@ import {
 } from './update-executor';
 import { applyStealthPatches } from './stealth';
 import { startReinforcementLoop } from './stealth-reinforcement';
+import { notify } from './notify';
 import { emitActivity, subscribe, getActivityAfter, getActivityHistory, getSubscriberCount } from './activity';
 // Bun.spawn used instead of child_process.spawn (compiled bun binaries
 // fail posix_spawn on all executables including /bin/bash)
@@ -811,15 +812,29 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
       const detection = await browserManager.detectLoginWall();
       if (detection?.detected) {
         result += `\nLOGIN_WALL_DETECTED: ${detection.reason}`;
-        result += '\nAuto-handover starting: headed browser will open for login...';
-        // Fire-and-forget: don't block the HTTP response
-        browserManager.autoHandover().then(handoverResult => {
-          if (handoverResult) {
-            console.log(`[nightcrawl] Auto-handover complete: ${handoverResult}`);
-          }
-        }).catch(err => {
-          console.error(`[nightcrawl] Auto-handover failed: ${err.message}`);
-        });
+        if (detection.approved) {
+          // Pre-approved domain: run the full polling autoHandover autonomously.
+          // This is what made Canvas (and a thousand other SSO sites) work
+          // pre-520a253. See memory/project_canvas_regression_2026_04_14.md.
+          result += `\nAuto-handover starting (approved domain: ${detection.domain}). Headed browser will open for login...`;
+          browserManager.autoHandover().then(handoverResult => {
+            if (handoverResult) console.log(`[nightcrawl] Auto-handover complete: ${handoverResult}`);
+          }).catch(err => {
+            console.error(`[nightcrawl] Auto-handover failed: ${err.message}`);
+          });
+        } else {
+          // Unknown domain: never pop a window. Surface a CONSENT_REQUIRED
+          // signal so the agent can ask the user before taking action.
+          result += `\nCONSENT_REQUIRED: ${detection.domain}`;
+          result += `\nNo window opened. Ask the user "Approve auto-handoff for ${detection.domain}?" — if yes, run 'grant-handoff ${detection.domain}'.`;
+          // Best-effort macOS notification so the user can react even if
+          // they're not watching the chat. Silent on non-macOS / opt-out
+          // via NIGHTCRAWL_NO_NOTIFY=1.
+          notify(
+            'nightCrawl: login wall detected',
+            `${detection.domain} needs your approval to enable auto-handoff.`,
+          );
+        }
       }
     }
 

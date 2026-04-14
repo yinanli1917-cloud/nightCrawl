@@ -32,6 +32,7 @@ export const META_COMMANDS = new Set([
   'chain', 'diff',
   'url', 'snapshot',
   'handoff', 'resume',
+  'grant-handoff', 'revoke-handoff', 'list-handoff',
   'connect', 'disconnect', 'focus',
   'inbox',
   'watch',
@@ -123,6 +124,9 @@ export const COMMAND_DESCRIPTIONS: Record<string, { category: string; descriptio
   // Handoff
   'handoff': { category: 'Server', description: 'Open visible Chrome at current page for user takeover', usage: 'handoff [message]' },
   'resume':  { category: 'Server', description: 'Re-snapshot after user takeover, return control to AI', usage: 'resume' },
+  'grant-handoff':  { category: 'Server', description: 'Approve auto-handoff for a domain (eTLD+1, TTL 30d default)', usage: 'grant-handoff <domain-or-url> [ttl-days]' },
+  'revoke-handoff': { category: 'Server', description: 'Revoke auto-handoff approval for a domain', usage: 'revoke-handoff <domain-or-url>' },
+  'list-handoff':   { category: 'Server', description: 'List domains approved for auto-handoff', usage: 'list-handoff' },
   // Headed mode
   'connect': { category: 'Server', description: 'Launch headed Chromium with Chrome extension', usage: 'connect' },
   'disconnect': { category: 'Server', description: 'Disconnect headed browser, return to headless mode' },

@@ -12,6 +12,15 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { TEMP_DIR, isPathWithin } from './platform';
 import { resolveConfig } from './config';
+import {
+  readConsent,
+  writeConsent,
+  grant,
+  revoke,
+  prune,
+  eTldPlusOne,
+  defaultConsentPath,
+} from './handoff-consent';
 import type { Frame } from 'playwright';
 
 // Security: Path validation to prevent path traversal attacks
@@ -311,6 +320,38 @@ export async function handleMetaCommand(
       // Re-snapshot to capture current page state after human interaction
       const snapshot = await handleSnapshot(['-i'], bm);
       return `RESUMED\n${resumeMsg}\n${wrapUntrustedContent(snapshot, bm.getCurrentUrl())}`;
+    }
+
+    // ─── Handoff consent (per-eTLD+1 approval store) ───────────
+    case 'grant-handoff': {
+      if (args.length < 1) return 'ERROR: grant-handoff <domain-or-url> [ttl-days]';
+      const ttlDays = args[1] ? parseInt(args[1], 10) : 30;
+      if (!Number.isFinite(ttlDays) || ttlDays <= 0) return 'ERROR: ttl-days must be a positive integer';
+      const filePath = defaultConsentPath();
+      const store = prune(readConsent(filePath));
+      const domain = eTldPlusOne(args[0]);
+      const next = grant(store, args[0], ttlDays);
+      writeConsent(filePath, next);
+      return `GRANTED: auto-handover for ${domain} (expires in ${ttlDays} days)`;
+    }
+
+    case 'revoke-handoff': {
+      if (args.length < 1) return 'ERROR: revoke-handoff <domain-or-url>';
+      const filePath = defaultConsentPath();
+      const store = readConsent(filePath);
+      const domain = eTldPlusOne(args[0]);
+      const next = revoke(store, args[0]);
+      writeConsent(filePath, next);
+      return `REVOKED: auto-handover for ${domain}`;
+    }
+
+    case 'list-handoff': {
+      const store = prune(readConsent(defaultConsentPath()));
+      const entries = Object.values(store.entries);
+      if (entries.length === 0) return '(no domains approved for auto-handover)';
+      return entries
+        .map(e => `${e.domain}\tgranted ${e.grantedAt.slice(0, 10)}\texpires ${e.expiresAt.slice(0, 10)}`)
+        .join('\n');
     }
 
     // ─── Headed Mode ──────────────────────────────────────
