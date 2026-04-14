@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+<head><title>Dashboard</title></head>
+<body>
+  <h1>Welcome to your dashboard</h1>
+  <p>You are signed in.</p>
+  <script>
+    // Final landing page. Sets the application session cookie that should
+    // be captured by autoHandover's snapshot. Stays here forever — no more
+    // redirects. Polling MUST wait for stability here, not earlier.
+    document.cookie = 'app_session=complete; path=/; SameSite=Lax';
+  </script>
+</body>
+</html>

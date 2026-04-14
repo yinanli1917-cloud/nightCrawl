@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html>
+<head><title>Step 3: Callback</title></head>
+<body>
+  <p>Processing...</p>
+  <script>
+    // SAML callback hop — would set a session cookie before redirecting.
+    document.cookie = 'sp_session=valid; path=/; SameSite=Lax';
+    setTimeout(() => { location.href = '/multi-step-4-landing.html'; }, 1000);
+  </script>
+</body>
+</html>

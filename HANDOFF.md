@@ -1,3 +1,78 @@
+# HANDOFF -- 2026-04-14 (Session 6 -- product reframe + consent-based handoff + polling fix)
+
+## Late-session addendum: URL-stability fix for multi-step IDPs
+
+Live test on canvas.uw.edu surfaced a second bug in the auto-handover
+flow that the consent fix exposed. The user logged in via Duo, the
+window closed itself "successfully," but the next nav re-bounced to
+Shibboleth — same symptom as the original Canvas regression.
+
+**Root cause (different layer, same shape):** the polling loop at
+the original `browser-handoff.ts:498-525` concluded "login complete"
+the moment URL changed off `/login` + no password form was visible.
+With multi-step IDPs (UW IDP → Duo → SAML callbacks → SP landing)
+that fired DURING the chain — typically when Duo's iframe loaded —
+before the SP set its `_shibsession_*` cookie. Snapshot captured
+mid-flight cookies; next nav re-bounced.
+
+**Cookie-store evidence:** after the failed live test, inspecting
+`~/.nightcrawl/browse-cookies.json` showed UW had:
+- `idp.u.washington.edu` — `__Host-shib_idp_session` ✅ (IDP session)
+- `canvas.uw.edu` — `canvas_session`, `_csrf_token`, `log_session_id` ✅
+- `finance.uw.edu` — `_shibsession_*` ✅ (proves persistence layer works)
+- **`canvas.uw.edu` — NO `_shibsession_*`** ❌
+
+The `_shibsession_*` is the SP-side cookie that prevents bounce-loops
+on every Canvas navigation. We have it for `finance.uw.edu` from a
+prior successful login, proving cookies persist correctly. We don't
+have it for `canvas.uw.edu` because polling resumed before the SP
+callback set it. Same root cause class as the original Canvas
+regression: fix the gate, not the storage.
+
+**Fix (TDD-built, ships with this commit):**
+
+`stealth/browser/src/handoff-poll.ts` (new, ~110 lines):
+  Pure-logic polling decision function. Adds a URL-stability
+  requirement: only resume when (a) URL doesn't match login pattern,
+  (b) wall is gone (if ever seen), AND (c) URL has been unchanged
+  for `stabilityMs` (default 5s). Multi-redirect chains are forced
+  to fully settle before snapshot.
+
+`stealth/browser/src/browser-handoff.ts`:
+  `autoHandover()` polling loop replaced. Same observation surface
+  (URL + wall) but decision delegated to `decidePoll()`.
+
+`stealth/browser/test/handoff-poll.test.ts` (12 unit tests):
+  Covers single-step happy path, multi-step IDP chain (the regression
+  scenario), mid-chain URL changes resetting the timer, wall-still-
+  present check, login URL pattern matching with word boundaries,
+  timeout precedence, default options.
+
+`stealth/browser/test/handoff-poll-integration.test.ts` (1 test):
+  Drives a real headless Chromium through a 4-step redirect chain
+  fixture (`/multi-step-1-login.html` → `/multi-step-2-duo.html` →
+  `/multi-step-3-callback.html` → `/multi-step-4-landing.html`).
+  Verifies polling waits through all hops AND captures the
+  `app_session=complete` cookie set by the landing page (the cookie
+  the buggy polling would have missed — direct analogue of the
+  missing `_shibsession_*` for canvas.uw.edu).
+
+**Test status (post-polling-fix):** 113 pass, 0 fail across 11
+relevant files. Pre-existing PW 1.59.1 / `ariaSnapshot` flakes in
+`handoff.test.ts` and `cnki-login.test.ts` still present, still not
+caused by this work.
+
+**Live Canvas verification:** deferred. The user is asleep, cannot
+complete Duo 2FA, and a 5-min headed window timeout would not
+constitute a useful test signal. Unit + integration tests verify
+the timing logic end-to-end on a real browser. Next session: when
+the user is available, retest canvas.uw.edu with the new polling
+in place — expected behavior is single window pop, full Duo
+completion, autonomous resume after URL stabilizes on Canvas
+dashboard, `_shibsession_*` cookie present on next inspection.
+
+---
+
 # HANDOFF -- 2026-04-14 (Session 6 -- product reframe + consent-based handoff)
 
 ## What this session was

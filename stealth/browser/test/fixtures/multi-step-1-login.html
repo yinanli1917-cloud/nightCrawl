@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<head><title>Step 1: Login</title></head>
+<body>
+  <h1>Sign in</h1>
+  <form id="f">
+    <input type="password" name="pw" placeholder="password" />
+    <button type="submit">Sign in</button>
+  </form>
+  <script>
+    // Auto-progress: simulate user submitting the form, then the chain begins.
+    // Delay slightly so the test can detect the wall first.
+    setTimeout(() => { location.href = '/multi-step-2-duo.html'; }, 800);
+  </script>
+</body>
+</html>

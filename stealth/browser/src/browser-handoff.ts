@@ -13,6 +13,7 @@ import type { BrowserContext } from 'playwright';
 import { DEFAULT_USER_AGENT, findChromiumExecutable, applyStealthPatches } from './stealth';
 import { isHostile, HostileDomainError } from './hostile-domains';
 import { eTldPlusOne, readConsent, isApproved, defaultConsentPath } from './handoff-consent';
+import { decidePoll, initialPollState, defaultPollOptions } from './handoff-poll';
 
 // Re-exported by browser-manager.ts so getChromium is available without circular dep.
 // The actual getChromium is passed via the setup function below.
@@ -533,37 +534,50 @@ export async function autoHandover(this: any): Promise<string | null> {
     console.log('[nightcrawl] Login wall not found in headed mode — page may have changed. Skipping auto-resume polling.');
   }
 
-  while (Date.now() - startTime < maxWaitMs) {
+  // Polling with URL-stability gate. The earlier ad-hoc loop concluded
+  // "login complete" the moment URL changed off /login pattern + no wall.
+  // That fired DURING multi-step IDP chains (Duo, FIDO, SAML callbacks)
+  // before the SP set its session cookie -> snapshot captured incomplete
+  // cookies -> next nav re-bounced. See handoff-poll.ts for the fix.
+  const pollOpts = {
+    ...defaultPollOptions(loginUrl),
+    loginWallSeen,
+    maxWaitMs,
+  };
+  const pollState = initialPollState(loginUrl);
+  let pollAction: 'continue' | 'resume' | 'timeout' = 'continue';
+  let pollReason = '';
+
+  while (pollAction === 'continue' && Date.now() - startTime < maxWaitMs) {
     await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
 
     const page = this.getPage();
     if (!page) continue;
 
     const currentUrl = await page.evaluate(() => location.href).catch(() => loginUrl);
+    const hasWall = loginWallSeen
+      ? await page.evaluate(() => {
+          const qr = document.querySelector('[class*="qrcode"], [class*="qr-"], canvas[class*="qr"]');
+          const text = document.body?.innerText?.slice(0, 2000) || '';
+          const hasLoginText = /请登录|请先登录|登录后|扫码登录/i.test(text);
+          const hasLoginForm = document.querySelectorAll('input[type="password"], input[type="tel"]').length > 0;
+          return !!(qr || hasLoginText || hasLoginForm);
+        }).catch(() => true)
+      : false;
 
-    if (currentUrl !== loginUrl && !/[/=](login|signin|sign-in|auth|captcha|verify|sso)\b/i.test(currentUrl)) {
-      console.log(`[nightcrawl] Login successful! URL changed to ${currentUrl}. Returning to headless...`);
-      break;
-    }
-
-    if (loginWallSeen) {
-      const stillBlocked = await page.evaluate(() => {
-        const qr = document.querySelector('[class*="qrcode"], [class*="qr-"], canvas[class*="qr"]');
-        const text = document.body?.innerText?.slice(0, 2000) || '';
-        const hasLoginText = /请登录|请先登录|登录后|扫码登录/i.test(text);
-        const hasLoginForm = document.querySelectorAll('input[type="password"], input[type="tel"]').length > 0;
-        return qr || hasLoginText || hasLoginForm;
-      }).catch(() => true);
-
-      if (!stillBlocked) {
-        console.log(`[nightcrawl] Login successful! Login wall disappeared. Returning to headless...`);
-        break;
-      }
-    }
+    const decision = decidePoll(
+      { url: currentUrl, hasWall, elapsedMs: Date.now() - startTime },
+      pollOpts,
+      pollState,
+    );
+    pollAction = decision.action;
+    pollReason = decision.reason;
   }
 
-  if (Date.now() - startTime >= maxWaitMs) {
-    console.log('[nightcrawl] Login timeout (5min). Returning to headless with current state.');
+  if (pollAction === 'resume') {
+    console.log(`[nightcrawl] Login complete (${pollReason}). Returning to headless...`);
+  } else {
+    console.log(`[nightcrawl] Login timeout (${maxWaitMs / 1000}s). Returning to headless with current state.`);
   }
 
   const resumeResult = await this.resume();
