@@ -90,6 +90,16 @@ export class BrowserManager {
   // ─── Headed State ────────────────────────────────────────
   /** @internal */ connectionMode: 'launched' | 'headed' = 'launched';
   /** @internal */ intentionalDisconnect = false;
+  // ─── Headed-Chromium tracking (orphan kill on shutdown) ───
+  // ┌────────────────────────────────────────────────────────┐
+  // │ When handoff() spawns a headed Chromium, the user-data │
+  // │ dir is uniquely named (nightcrawl-handoff-XXXXXX) so   │
+  // │ we can pkill -f against it as a belt-and-suspenders    │
+  // │ cleanup if context.close() hangs or shutdown is        │
+  // │ abrupt. Without this the headed window outlives the    │
+  // │ daemon (P1 bug, HANDOFF.md).                            │
+  // └────────────────────────────────────────────────────────┘
+  /** @internal */ headedUserDataDir: string | null = null;
 
   getConnectionMode(): 'launched' | 'headed' { return this.connectionMode; }
 
@@ -273,6 +283,12 @@ export class BrowserManager {
       }
       this.browser = null;
     }
+    // Belt-and-suspenders: kill any orphan Chromium spawned by handoff().
+    // context.close() can hang (open dialogs, slow shutdown) and the 5s
+    // timeout above leaves a live window. The handoff userDataDir is unique
+    // per spawn, so pkill -f against it is safe — only matches OUR process.
+    killHeadedOrphans(this.headedUserDataDir);
+    this.headedUserDataDir = null;
   }
 
   /** Health check -- verifies Chromium is connected AND responsive */
@@ -702,6 +718,24 @@ export class BrowserManager {
   declare incrementFailures: () => void;
   declare resetFailures: () => void;
   declare getFailureHint: () => string | null;
+}
+
+// ─── Headed-Chromium orphan killer ──────────────────────────
+// Used by close() AND by the server's emergencyCleanup() so that
+// crash paths (uncaughtException, OOM, SIGKILL) don't leave a
+// headed Chromium window on the user's screen. pkill -f targets
+// the unique userDataDir path that only our handoff spawns use.
+export function killHeadedOrphans(userDataDir: string | null): void {
+  try {
+    const { spawnSync } = require('child_process');
+    // Always sweep the prefix — covers any leftover from prior runs too.
+    spawnSync('pkill', ['-f', 'nightcrawl-handoff-'], { timeout: 2000 });
+    if (userDataDir) {
+      spawnSync('pkill', ['-f', userDataDir], { timeout: 2000 });
+    }
+  } catch {
+    // Non-fatal — best-effort cleanup
+  }
 }
 
 // ─── Wire handoff methods onto prototype ────────────────────

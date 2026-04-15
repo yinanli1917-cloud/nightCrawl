@@ -197,6 +197,10 @@ export async function handoff(this: any, message: string): Promise<string> {
     const userDataDir = await fs.promises.mkdtemp(
       path.join(require('os').tmpdir(), 'nightcrawl-handoff-')
     );
+    // Record so BrowserManager.close() / emergencyCleanup() can pkill -f it
+    // if context.close() hangs. Without this the headed Chromium outlives
+    // the daemon (P1 orphan-window bug, HANDOFF.md).
+    this.headedUserDataDir = userDataDir;
 
     const chromiumPath = findChromiumExecutable();
     newContext = await (await _getChromium()).launchPersistentContext(userDataDir, {
@@ -308,6 +312,7 @@ export async function resume(this: any): Promise<string> {
     this.connectionMode = 'launched';
     this.isHeaded = false;
     this.intentionalDisconnect = false;
+    this.headedUserDataDir = null;
 
     const chromium = await _getChromium();
     const ua = this.customUserAgent || DEFAULT_USER_AGENT;

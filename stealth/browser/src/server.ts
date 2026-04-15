@@ -13,7 +13,7 @@
  *   Port:       random 10000-60000 (or BROWSE_PORT env for debug override)
  */
 
-import { BrowserManager } from './browser-manager';
+import { BrowserManager, killHeadedOrphans } from './browser-manager';
 import { handleReadCommand } from './read-commands';
 import { handleWriteCommand } from './write-commands';
 import { handleMetaCommand } from './meta-commands';
@@ -991,6 +991,11 @@ function emergencyCleanup() {
   isShuttingDown = true;
   // Kill agent subprocess if running
   try { killAgent(); } catch {}
+  // Kill any orphan headed Chromium spawned by handoff(). browser.close()
+  // can't be awaited from a sync crash handler, so pkill -f the unique
+  // userDataDir prefix that only our handoff spawns use. See
+  // browser-manager.ts killHeadedOrphans() for the rationale.
+  try { killHeadedOrphans((browserManager as any)?.headedUserDataDir ?? null); } catch {}
   // Save session state so chat history persists across crashes
   try { saveSession(); } catch {}
   // Clean Chromium profile locks
