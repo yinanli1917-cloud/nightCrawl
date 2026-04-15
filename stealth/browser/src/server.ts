@@ -809,7 +809,39 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
     // Wait briefly for SPA login overlays to render (XHS, WeChat, etc.)
     // then check. If detected, handover runs in background after response.
     if (['goto', 'click'].includes(command)) {
+      // ─── Observed-host capture for the auto-import flow ──────
+      // Track every host the browser actually navigated to during the
+      // wait window. This captures arbitrary IDP redirect chains
+      // (e.g. canvas.uw.edu → idp.u.washington.edu → duosecurity.com)
+      // without having to hardcode them in SSO_HELPER_DOMAINS.
+      //
+      // The listener is detached after the wait so it does not leak
+      // across commands. Install AFTER the navigation has been issued
+      // (write-commands already returned) so we capture redirects that
+      // happened during the page.goto plus anything still in flight
+      // during the 2s SPA-render wait.
+      const observedHosts = new Set<string>();
+      const navPage = browserManager.getPage();
+      const recordUrl = (u: string | undefined | null) => {
+        if (!u) return;
+        try {
+          const host = new URL(u).hostname;
+          if (host) observedHosts.add(host);
+        } catch {}
+      };
+      // Seed with the current URL (covers the redirect chain that
+      // already completed inside page.goto before we attached).
+      recordUrl(navPage?.url());
+      const onFrameNav = (frame: { url(): string }) => recordUrl(frame.url());
+      try { navPage?.on('framenavigated', onFrameNav); } catch {}
+
       await new Promise(r => setTimeout(r, 2000));
+
+      try { navPage?.off('framenavigated', onFrameNav); } catch {}
+      // Capture once more in case the URL settled after the listener
+      // detached (rare, but cheap).
+      recordUrl(navPage?.url());
+
       const detection = await browserManager.detectLoginWall();
       if (detection?.detected) {
         result += `\nLOGIN_WALL_DETECTED: ${detection.reason}`;
@@ -828,7 +860,13 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
           const wallUrl = page?.url() ?? targetUrl;
           if (page) {
             try {
-              const importResult = await tryAutoImportForWall(targetUrl, wallUrl, page.context());
+              const importResult = await tryAutoImportForWall(
+                targetUrl,
+                wallUrl,
+                page.context(),
+                undefined,
+                observedHosts,
+              );
               if (importResult.importedCount > 0) {
                 result += `\nAuto-imported ${importResult.importedCount} cookies from ${importResult.browser} for ${importResult.hostKeys.length} host(s). Re-trying navigation...`;
                 // Retry the original navigation with fresh cookies.

@@ -92,15 +92,43 @@ export function pickDefaultBrowser(): string | null {
 /**
  * Given the original navigation target + the wall URL we landed on,
  * compute the set of host_keys we should try to import from the user's
- * default browser. Includes:
- *   1. eTLD+1 of the target (e.g. uw.edu)
- *   2. eTLD+1 of the wall URL (e.g. washington.edu — the IdP)
- *   3. SSO helper domains (canvaslms.com, instructure.com, okta.com, etc.)
+ * default browser.
+ *
+ * Strategy (preference order):
+ *   1. **Observed hosts** — when the caller passes the eTLD+1 set
+ *      collected from `page.on('framenavigated')` during the goto, we
+ *      use those EXACT hosts. This catches arbitrary IDP chains
+ *      (Shibboleth → Duo → custom SSO) without hardcoding them.
+ *   2. **Heuristic fallback** — if no observed hosts (caller didn't
+ *      track them, or navigation aborted before any frame committed),
+ *      fall back to: eTLD+1 of target + eTLD+1 of wall URL + the
+ *      `SSO_HELPER_DOMAINS` list. This is the original behavior, kept
+ *      as a safety net.
  *
  * Returned domains are eTLD+1's. The actual host_key matching against
  * the browser's cookie DB is done by `discoverHostKeys`.
  */
-export function buildCandidateDomains(targetUrl: string, wallUrl: string): string[] {
+export function buildCandidateDomains(
+  targetUrl: string,
+  wallUrl: string,
+  observedHosts?: Iterable<string>,
+): string[] {
+  // ─── Path 1: observed hosts (preferred) ──────────────────────
+  if (observedHosts) {
+    const observed = new Set<string>();
+    for (const host of observedHosts) {
+      try { observed.add(eTldPlusOne(host)); } catch {}
+    }
+    if (observed.size > 0) {
+      // Always include the target/wall eTLD+1 too — defensive in case the
+      // framenavigated listener missed the very first commit.
+      try { observed.add(eTldPlusOne(targetUrl)); } catch {}
+      try { observed.add(eTldPlusOne(wallUrl)); } catch {}
+      return [...observed];
+    }
+  }
+
+  // ─── Path 2: heuristic fallback ──────────────────────────────
   const set = new Set<string>();
   try { set.add(eTldPlusOne(targetUrl)); } catch {}
   try { set.add(eTldPlusOne(wallUrl)); } catch {}
@@ -158,12 +186,13 @@ export async function tryAutoImportForWall(
   wallUrl: string,
   context: BrowserContext,
   browser: string | null = pickDefaultBrowser(),
+  observedHosts?: Iterable<string>,
 ): Promise<AutoImportResult> {
   if (!browser) {
     return { attempted: false, importedCount: 0, hostKeys: [], browser: null, error: 'no installed browser found' };
   }
 
-  const candidates = buildCandidateDomains(targetUrl, wallUrl);
+  const candidates = buildCandidateDomains(targetUrl, wallUrl, observedHosts);
   const hostKeys = discoverHostKeys(browser, candidates);
   if (hostKeys.length === 0) {
     return { attempted: true, importedCount: 0, hostKeys: [], browser };
