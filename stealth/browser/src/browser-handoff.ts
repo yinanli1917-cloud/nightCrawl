@@ -14,6 +14,8 @@ import { DEFAULT_USER_AGENT, findChromiumExecutable, applyStealthPatches } from 
 import { isHostile, HostileDomainError } from './hostile-domains';
 import { eTldPlusOne, readConsent, isApproved, defaultConsentPath } from './handoff-consent';
 import { decidePoll, initialPollState, defaultPollOptions } from './handoff-poll';
+import { tryAutoImportForWall } from './handoff-cookie-import';
+import { notify } from './notify';
 
 // Re-exported by browser-manager.ts so getChromium is available without circular dep.
 // The actual getChromium is passed via the setup function below.
@@ -499,6 +501,68 @@ export async function autoHandover(this: any): Promise<string | null> {
     }
   }
 
+  // ─── Default-Browser Path (preferred) ──────────────────────
+  // Open the login URL in the user's actual browser (Arc/Chrome/etc).
+  // Poll their cookie database for auth cookies landing.
+  // If the user logs in their browser, we import cookies silently — no window pop.
+  // Falls through to spawned-Chromium handoff if this doesn't work within 5 min.
+  //
+  // Privacy guarantee: cookies are read from the LOCAL SQLite database on disk.
+  // They never leave the machine. The Keychain dialog (first time only) is macOS
+  // protecting the browser's encryption key — it's the OS asking, not us sending.
+  // See memory/project_privacy_promise.md.
+  if (!process.env.SSH_TTY && process.platform === 'darwin') {
+    const domain = eTldPlusOne(loginUrl);
+    console.log(`[nightcrawl] Opening ${domain} in your default browser for login...`);
+    notify('nightCrawl Login', `Log into ${domain} in your browser. nightCrawl will auto-resume.`);
+
+    try {
+      const { execSync } = await import('child_process');
+      execSync(`open "${loginUrl.replace(/"/g, '\\"')}"`, { timeout: 5000 });
+    } catch (err: any) {
+      console.warn(`[nightcrawl] Failed to open default browser: ${err?.message}`);
+    }
+
+    // Poll cookie database for auth cookies
+    const cookiePollTimeout = 5 * 60 * 1000;
+    const cookiePollInterval = 3000;
+    const cookiePollStart = Date.now();
+    let cookieLoginSucceeded = false;
+
+    while (Date.now() - cookiePollStart < cookiePollTimeout) {
+      await new Promise(resolve => setTimeout(resolve, cookiePollInterval));
+
+      const importResult = await tryAutoImportForWall(
+        loginUrl, loginUrl, this.context!,
+      );
+
+      if (importResult.importedCount > 0) {
+        console.log(`[nightcrawl] Imported ${importResult.importedCount} cookies from ${importResult.browser}. Testing login...`);
+
+        // Re-navigate to test if cookies clear the wall
+        const page = this.getPage();
+        if (page) {
+          try {
+            await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+            const detection = await detectLoginWall.call(this, page.url());
+            if (!detection.detected) {
+              cookieLoginSucceeded = true;
+              console.log(`[nightcrawl] Login wall cleared via default browser cookies. No window popped.`);
+              break;
+            }
+          } catch {}
+        }
+      }
+    }
+
+    if (cookieLoginSucceeded) {
+      return `Login completed via default browser cookie import for ${domain}. Zero windows opened.`;
+    }
+
+    console.log(`[nightcrawl] Default browser cookie import did not clear login wall. Falling back to headed Chromium...`);
+  }
+
+  // ─── Fallback: Spawned Headed Chromium ─────────────────────
   console.log(`[nightcrawl] Switching to headed mode for login at ${loginUrl}...`);
 
   const handoffResult = await this.handoff(
