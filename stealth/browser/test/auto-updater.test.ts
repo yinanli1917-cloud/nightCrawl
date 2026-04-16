@@ -63,11 +63,13 @@ interface FakeDeps {
   rebrowserCompatible?: boolean;
   installResult?: ExecutorResult;
   verifyResult?: VerifyResult;
+  preVerifyResult?: VerifyResult;  // baseline (first runVerifier call)
   cooldownActive?: boolean;
 }
 
 function makeOpts(deps: FakeDeps = {}): AutoUpdateOptions {
   const recordedCalls: string[] = [];
+  let verifierCallCount = 0;
   const opts: AutoUpdateOptions = {
     stateDir,
     packageJsonPath: pkgPath,
@@ -91,10 +93,17 @@ function makeOpts(deps: FakeDeps = {}): AutoUpdateOptions {
       recordedCalls.push(cmd);
       return deps.installResult ?? { success: true, exitCode: 0, stdout: '', stderr: '' };
     },
-    runVerifier: async () => deps.verifyResult ?? {
-      passed: true,
-      checks: [{ name: 'launch', passed: true, detail: 'ok' }],
-      durationMs: 1,
+    runVerifier: async () => {
+      verifierCallCount++;
+      // Pre-update baseline (first call) uses preVerifyResult if provided
+      if (verifierCallCount === 1 && deps.preVerifyResult) {
+        return deps.preVerifyResult;
+      }
+      return deps.verifyResult ?? {
+        passed: true,
+        checks: [{ name: 'launch', passed: true, detail: 'ok' }],
+        durationMs: 1,
+      };
     },
     applyPatches: async () => {},
     log: () => {},
@@ -200,28 +209,65 @@ describe('maybeAutoUpdate snapshot and verification', () => {
     expect(snapshotted).toBe(true);
   });
 
-  test('triggers verification after update', async () => {
-    let verified = false;
+  test('triggers verification twice (pre + post update)', async () => {
+    let verifyCount = 0;
     const opts = makeOpts({ configEnabled: true, outdated: safeOutdated() });
     opts.runVerifier = async () => {
-      verified = true;
-      return { passed: true, checks: [], durationMs: 1 };
+      verifyCount++;
+      return { passed: true, checks: [{ name: 'launch', passed: true, detail: 'ok' }], durationMs: 1 };
     };
     await maybeAutoUpdate(opts);
-    expect(verified).toBe(true);
+    expect(verifyCount).toBe(2);
   });
 
-  test('rolls back on verification failure', async () => {
+  test('rolls back when post-update is WORSE than pre-update', async () => {
     let rolledBack = false;
     const opts = makeOpts({
       configEnabled: true,
       outdated: safeOutdated(),
-      verifyResult: { passed: false, checks: [{ name: 'webdriver', passed: false, detail: 'leaked' }], durationMs: 1 },
+      preVerifyResult: {
+        passed: true,
+        checks: [
+          { name: 'launch', passed: true, detail: 'ok' },
+          { name: 'webdriver', passed: true, detail: 'ok' },
+        ],
+        durationMs: 1,
+      },
+      verifyResult: {
+        passed: false,
+        checks: [
+          { name: 'launch', passed: true, detail: 'ok' },
+          { name: 'webdriver', passed: false, detail: 'leaked' },
+        ],
+        durationMs: 1,
+      },
     });
     opts.onRollback = () => { rolledBack = true; };
     const result = await maybeAutoUpdate(opts);
     expect(rolledBack).toBe(true);
     expect(result.rolledBack).toBe(true);
+  });
+
+  test('does NOT rollback when both pre and post fail same checks', async () => {
+    let rolledBack = false;
+    const failResult: VerifyResult = {
+      passed: false,
+      checks: [
+        { name: 'launch', passed: true, detail: 'ok' },
+        { name: 'webdriver', passed: false, detail: 'leaked' },
+      ],
+      durationMs: 1,
+    };
+    const opts = makeOpts({
+      configEnabled: true,
+      outdated: safeOutdated(),
+      preVerifyResult: failResult,
+      verifyResult: failResult,
+    });
+    opts.onRollback = () => { rolledBack = true; };
+    const result = await maybeAutoUpdate(opts);
+    expect(rolledBack).toBe(false);
+    expect(result.rolledBack).toBeFalsy();
   });
 
   test('does NOT rollback on verification success', async () => {
@@ -231,6 +277,34 @@ describe('maybeAutoUpdate snapshot and verification', () => {
     const result = await maybeAutoUpdate(opts);
     expect(rolledBack).toBe(false);
     expect(result.rolledBack).toBeFalsy();
+  });
+
+  test('does NOT rollback when post is BETTER than pre', async () => {
+    let rolledBack = false;
+    const opts = makeOpts({
+      configEnabled: true,
+      outdated: safeOutdated(),
+      preVerifyResult: {
+        passed: false,
+        checks: [
+          { name: 'launch', passed: true, detail: 'ok' },
+          { name: 'webdriver', passed: false, detail: 'leaked' },
+        ],
+        durationMs: 1,
+      },
+      verifyResult: {
+        passed: true,
+        checks: [
+          { name: 'launch', passed: true, detail: 'ok' },
+          { name: 'webdriver', passed: true, detail: 'hidden' },
+        ],
+        durationMs: 1,
+      },
+    });
+    opts.onRollback = () => { rolledBack = true; };
+    const result = await maybeAutoUpdate(opts);
+    expect(rolledBack).toBe(false);
+    expect(result.verified).toBe(true);
   });
 
   test('rolls back when install itself fails', async () => {

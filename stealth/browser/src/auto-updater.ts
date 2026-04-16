@@ -196,6 +196,11 @@ export async function maybeAutoUpdate(
     return { skipped: false, updated: [] };
   }
 
+  // Baseline: capture pre-update stealth score for comparison
+  const preResult = await opts.runVerifier();
+  const prePassCount = preResult.checks.filter((c) => c.passed).length;
+  log(`[auto-update] Baseline stealth: ${prePassCount}/${preResult.checks.length} checks pass`);
+
   // Snapshot before any mutation
   const snapshot = createUpdateSnapshot({
     packageJsonPath: opts.packageJsonPath,
@@ -221,18 +226,21 @@ export async function maybeAutoUpdate(
     }
   }
 
-  // Verify
-  const verifyResult = await opts.runVerifier();
-  if (!verifyResult.passed) {
-    const failedChecks = verifyResult.checks.filter((c) => !c.passed).map((c) => c.name).join(',');
-    await rollback(snapshot, opts, `verification failed: ${failedChecks}`);
+  // Verify: compare post-update against pre-update baseline
+  const postResult = await opts.runVerifier();
+  const postPassCount = postResult.checks.filter((c) => c.passed).length;
+  log(`[auto-update] Stealth: pre=${prePassCount}/${preResult.checks.length}, post=${postPassCount}/${postResult.checks.length}`);
+
+  if (postPassCount < prePassCount) {
+    const failedChecks = postResult.checks.filter((c) => !c.passed).map((c) => c.name).join(',');
+    await rollback(snapshot, opts, `stealth regression: ${failedChecks} (was ${prePassCount}/${preResult.checks.length}, now ${postPassCount}/${postResult.checks.length})`);
     return { skipped: false, updated: exec.updated, verified: false, rolledBack: true };
   }
 
   // Success — clean up snapshot, write cooldown
   deleteSnapshot(opts.stateDir);
   opts.writeCooldown();
-  log(`[auto-update] Success: updated ${exec.updated.join(', ')}, verification passed`);
+  log(`[auto-update] Success: updated ${exec.updated.join(', ')}, stealth ${postPassCount}/${postResult.checks.length}`);
 
   return { skipped: false, updated: exec.updated, verified: true };
 }
