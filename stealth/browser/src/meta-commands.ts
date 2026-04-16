@@ -101,6 +101,32 @@ export async function handleMetaCommand(
       ].join('\n');
     }
 
+    case 'health': {
+      const { verifyStealth } = await import('./stealth-verifier');
+      const { parseEngineConfig } = await import('./engine-config');
+      const engine = parseEngineConfig(process.env);
+      // Use the SAME engine as the daemon — stock PW verifier misses CloakBrowser's stealth
+      let verifierBrowser;
+      if (engine.engine === 'cloakbrowser') {
+        const { createCloakVerifierBrowser } = await import('./stealth-verifier-cloakbrowser');
+        verifierBrowser = createCloakVerifierBrowser();
+      } else {
+        const { createPlaywrightVerifierBrowser } = await import('./stealth-verifier-playwright');
+        verifierBrowser = createPlaywrightVerifierBrowser();
+      }
+      const result = await verifyStealth({ browser: verifierBrowser });
+      const lines: string[] = [`nightCrawl Health Check`, `Engine: ${engine.engine}`, ``];
+      for (const check of result.checks) {
+        const icon = check.passed ? (check.warning ? '⚠️' : '✅') : '❌';
+        lines.push(`${icon} ${check.name} — ${check.detail}`);
+      }
+      lines.push(``);
+      const allPass = result.checks.every(c => c.passed);
+      lines.push(allPass ? `Status: HEALTHY` : `Status: DEGRADED`);
+      lines.push(`Completed in ${(result.durationMs / 1000).toFixed(1)}s`);
+      return lines.join('\n');
+    }
+
     case 'url': {
       return bm.getCurrentUrl();
     }

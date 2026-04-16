@@ -88,10 +88,13 @@ export function createPlaywrightVerifierBrowser(): VerifierBrowser {
       // We look for any element marked red/failed for the CDP test.
       const passed = await page.evaluate(() => {
         const text = document.body?.innerText || '';
-        // The page reports "Detected" or specific test names with red text.
-        // We treat any "Detected" / "leaked" mention as failure.
-        if (/runtimeEnableLeak.*RED|runtimeEnableLeak.*detected/i.test(text)) return false;
-        if (/navigator\.webdriver.*RED|navigator\.webdriver.*detected/i.test(text)) return false;
+        // Look for red circle (U+1F534) on critical tests — means detection
+        // Green circle (U+1F7E2) or white circle (U+26AA) = pass/not triggered
+        const lines = text.split('\n');
+        for (const line of lines) {
+          if (/runtimeEnableLeak/i.test(line) && line.startsWith('\u{1F534}')) return false;
+          if (/navigatorWebdriver/i.test(line) && line.startsWith('\u{1F534}')) return false;
+        }
         return true;
       });
       return passed;

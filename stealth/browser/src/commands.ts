@@ -38,6 +38,7 @@ export const META_COMMANDS = new Set([
   'watch',
   'state',
   'frame',
+  'health',
 ]);
 
 export const ALL_COMMANDS = new Set([...READ_COMMANDS, ...WRITE_COMMANDS, ...META_COMMANDS]);
@@ -139,6 +140,8 @@ export const COMMAND_DESCRIPTIONS: Record<string, { category: string; descriptio
   'state':   { category: 'Server', description: 'Save/load browser state (cookies + URLs)', usage: 'state save|load <name>' },
   // Frame
   'frame':   { category: 'Meta', description: 'Switch to iframe context (or main to return)', usage: 'frame <sel|@ref|--name n|--url pattern|main>' },
+  // Health
+  'health':  { category: 'Server', description: 'Run stealth verification against Tier 1-2 bot detection sites (~25s)', usage: 'health' },
 };
 
 // Load-time validation: descriptions must cover exactly the command sets
