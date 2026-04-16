@@ -23,10 +23,10 @@ const VALID_ENGINES: ReadonlySet<string> = new Set(['playwright', 'cloakbrowser'
 export function parseEngineConfig(
   env: Record<string, string | undefined> = process.env,
 ): EngineConfig {
-  const rawEngine = env.BROWSE_ENGINE || 'playwright';
+  const rawEngine = env.BROWSE_ENGINE || 'cloakbrowser';
   const engine: BrowserEngine = VALID_ENGINES.has(rawEngine)
     ? (rawEngine as BrowserEngine)
-    : 'playwright';
+    : 'cloakbrowser';
 
   const rawSeed = env.BROWSE_FINGERPRINT_SEED;
   const parsedSeed = rawSeed ? parseInt(rawSeed, 10) : NaN;

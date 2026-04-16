@@ -36,10 +36,10 @@ describe('cloakbrowser package', () => {
 // ─── Config Parsing ────────────────────────────────────────
 
 describe('engine config', () => {
-  test('parseEngineConfig defaults to playwright', async () => {
+  test('parseEngineConfig defaults to cloakbrowser', async () => {
     const { parseEngineConfig } = await import('../src/engine-config');
     const cfg = parseEngineConfig({});
-    expect(cfg.engine).toBe('playwright');
+    expect(cfg.engine).toBe('cloakbrowser');
     expect(cfg.fingerprintSeed).toBeUndefined();
     expect(cfg.humanize).toBe(false);
   });
@@ -65,7 +65,7 @@ describe('engine config', () => {
   test('parseEngineConfig ignores invalid BROWSE_ENGINE', async () => {
     const { parseEngineConfig } = await import('../src/engine-config');
     const cfg = parseEngineConfig({ BROWSE_ENGINE: 'firefox' });
-    expect(cfg.engine).toBe('playwright');
+    expect(cfg.engine).toBe('cloakbrowser');
   });
 
   test('parseEngineConfig ignores non-numeric seed', async () => {
@@ -140,6 +140,36 @@ describe('fingerprint profiles', () => {
   test('listIdentities returns empty array for empty dir', async () => {
     const { listIdentities } = await import('../src/fingerprint-profiles');
     expect(listIdentities(tmpDir)).toEqual([]);
+  });
+});
+
+// ─── Screencast Compat ────────────────────────────────────
+
+describe('screencast compat patch', () => {
+  test('patchScreencast adds stub when missing', async () => {
+    const { patchScreencast } = await import('../src/cloakbrowser-engine');
+    const fakePage: any = {};
+    patchScreencast(fakePage);
+    expect(fakePage.screencast).toBeDefined();
+    expect(fakePage.screencast.handlePageOrContextClose).toBeFunction();
+    // Must not throw
+    await fakePage.screencast.handlePageOrContextClose();
+  });
+
+  test('patchScreencast preserves existing screencast', async () => {
+    const { patchScreencast } = await import('../src/cloakbrowser-engine');
+    const original = { handlePageOrContextClose: async () => 'original' };
+    const fakePage: any = { screencast: original };
+    patchScreencast(fakePage);
+    expect(fakePage.screencast).toBe(original);
+  });
+
+  test('patchScreencast stub is no-op (returns undefined)', async () => {
+    const { patchScreencast } = await import('../src/cloakbrowser-engine');
+    const fakePage: any = {};
+    patchScreencast(fakePage);
+    const result = await fakePage.screencast.handlePageOrContextClose();
+    expect(result).toBeUndefined();
   });
 });
 
