@@ -34,6 +34,7 @@ import {
 import { applyStealthPatches } from './stealth';
 import { startReinforcementLoop } from './stealth-reinforcement';
 import { notify } from './notify';
+import { isAuthenticated, markAuthenticated, invalidate } from './auth-cache';
 import { tryAutoImportForWall } from './handoff-cookie-import';
 import { emitActivity, subscribe, getActivityAfter, getActivityHistory, getSubscriberCount } from './activity';
 // Bun.spawn used instead of child_process.spawn (compiled bun binaries
@@ -809,6 +810,21 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
     // Wait briefly for SPA login overlays to render (XHS, WeChat, etc.)
     // then check. If detected, handover runs in background after response.
     if (['goto', 'click'].includes(command)) {
+      const currentUrl = browserManager.getCurrentUrl();
+
+      // ─── Auth-cache fast path ────────────────────────────────
+      // Skip the 2s wait + 4 DOM evaluations for domains we already
+      // know are authenticated. This saves ~2.5s per navigation on
+      // high-frequency sites (Zhihu, Canvas, YouTube, etc.).
+      // Cache is in-memory, 30-min TTL, auto-rebuilds as user browses.
+      if (isAuthenticated(currentUrl)) {
+        browserManager.resetFailures();
+        return new Response(result, {
+          status: 200,
+          headers: { 'Content-Type': 'text/plain' },
+        });
+      }
+
       // ─── Observed-host capture for the auto-import flow ──────
       // Track every host the browser actually navigated to during the
       // wait window. This captures arbitrary IDP redirect chains
@@ -844,6 +860,8 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
 
       const detection = await browserManager.detectLoginWall();
       if (detection?.detected) {
+        // Invalidate auth cache — this domain has a login wall
+        invalidate(currentUrl);
         result += `\nLOGIN_WALL_DETECTED: ${detection.reason}`;
         if (detection.approved) {
           // STEP 1: Try silent auto-import from the user's default browser
@@ -906,6 +924,9 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
             `${detection.domain} needs your approval to enable auto-handoff.`,
           );
         }
+      } else {
+        // No login wall — mark domain as authenticated for fast-path
+        markAuthenticated(currentUrl);
       }
     }
 
