@@ -315,8 +315,17 @@ export async function importCookies(
 
   try {
     const now = chromiumNow();
+    // Expand domains to include dot-prefixed variants (Chromium stores
+    // ".zhihu.com" for domain-wide cookies vs "www.zhihu.com" for host-only).
+    // Without this, `--domain zhihu.com` misses the auth cookies.
+    const expandedDomains = new Set<string>();
+    for (const d of domains) {
+      expandedDomains.add(d);
+      if (!d.startsWith('.')) expandedDomains.add('.' + d);
+    }
+    const allDomains = [...expandedDomains];
     // Parameterized query — no SQL injection
-    const placeholders = domains.map(() => '?').join(',');
+    const placeholders = allDomains.map(() => '?').join(',');
     const rows = db.query(
       `SELECT host_key, name, value, encrypted_value, path, expires_utc,
               is_secure, is_httponly, has_expires, samesite
@@ -324,7 +333,7 @@ export async function importCookies(
        WHERE host_key IN (${placeholders})
          AND (has_expires = 0 OR expires_utc > ?)
        ORDER BY host_key, name`
-    ).all(...domains, now) as RawCookie[];
+    ).all(...allDomains, now) as RawCookie[];
 
     const cookies: PlaywrightCookie[] = [];
     let failed = 0;
