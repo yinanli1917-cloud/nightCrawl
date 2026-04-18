@@ -18,6 +18,7 @@ import { handleReadCommand } from './read-commands';
 import { handleWriteCommand } from './write-commands';
 import { handleMetaCommand } from './meta-commands';
 import { handleCookiePickerRoute } from './cookie-picker-routes';
+import { handleOnboardingRoute } from './onboarding-routes';
 import { sanitizeExtensionUrl } from './sidebar-utils';
 import { COMMAND_DESCRIPTIONS, PAGE_CONTENT_COMMANDS, wrapUntrustedContent } from './commands';
 import { handleSnapshot, SNAPSHOT_FLAGS } from './snapshot';
@@ -1068,6 +1069,12 @@ async function start() {
     ...serverOptions,
     fetch: async (req) => {
       const url = new URL(req.url);
+
+      // Onboarding routes — permission chooser page, no auth (localhost-only)
+      if (url.pathname.startsWith('/onboarding')) {
+        const onboardingRes = await handleOnboardingRoute(req);
+        if (onboardingRes) return onboardingRes;
+      }
 
       // Cookie picker routes — HTML page unauthenticated, data/action routes require auth
       if (url.pathname.startsWith('/cookie-picker')) {
