@@ -36,6 +36,7 @@ import { startReinforcementLoop } from './stealth-reinforcement';
 import { notify } from './notify';
 import { isAuthenticated, markAuthenticated, invalidate } from './auth-cache';
 import { tryAutoImportForWall } from './handoff-cookie-import';
+import { isFirstRun, runOnboarding } from './onboarding';
 import { emitActivity, subscribe, getActivityAfter, getActivityHistory, getSubscriberCount } from './activity';
 // Bun.spawn used instead of child_process.spawn (compiled bun binaries
 // fail posix_spawn on all executables including /bin/bash)
@@ -1444,6 +1445,19 @@ async function start() {
             }
           } catch {
             // No storage file or parse error — start fresh
+          }
+        }
+
+        // First-run onboarding: detect browsers, welcome, import cookies
+        if (process.env.BROWSE_INCOGNITO !== '1' && isFirstRun(config.storageFile)) {
+          try {
+            const context = browserManager.getPage()?.context();
+            if (context) {
+              const onboardingResult = await runOnboarding(context);
+              console.log(`[browse] Onboarding complete: mode=${onboardingResult.mode}, imported=${onboardingResult.imported}`);
+            }
+          } catch (err: any) {
+            console.error(`[browse] Onboarding error (non-fatal): ${err?.message ?? err}`);
           }
         }
 
