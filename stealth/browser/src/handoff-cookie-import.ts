@@ -162,6 +162,91 @@ export function discoverHostKeys(
   return matches;
 }
 
+// ─── Atomic cookie swap (Stale Request prevention) ──────────
+
+/**
+ * Clear cookies in the given context for every eTLD+1 in `etldPlusOnes`,
+ * matching both the apex and any subdomain.
+ *
+ * Why: the headless browser may have walked partway through a SAML/
+ * Shibboleth handshake and left behind half-written SP-side state
+ * (_shibsession_*, JSESSIONID, RelayState). When we then import fresh
+ * cookies from the user's real browser — which completed its OWN
+ * handshake with a different RelayState — the SP sees two sessions at
+ * once and aborts with "Stale Request" (UW Canvas 2026-04-20).
+ *
+ * The fix is to clear before import so the swap is atomic: headless
+ * discards its stale state, inherits the real browser's state, nothing
+ * mixed. Callers should invoke this with the SAME eTLD+1 set they pass
+ * to `addCookies`, immediately before the add.
+ *
+ * Errors from `clearCookies` are swallowed per-domain so a transient
+ * CDP hiccup on one domain can't abort the entire swap.
+ */
+export async function clearCookiesForDomains(
+  context: { clearCookies: (filter?: { domain?: string | RegExp }) => Promise<void> },
+  etldPlusOnes: string[],
+): Promise<void> {
+  for (const etld of etldPlusOnes) {
+    // Escape regex metachars (dots especially), then match either the
+    // apex or anything ending in ".<etld>". Anchored so "uw.edu" does
+    // NOT match "uw.edu.evil.com" or "notuw.edu".
+    const escaped = etld.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const matcher = new RegExp(`(^|\\.)${escaped}$`);
+    try {
+      await context.clearCookies({ domain: matcher });
+    } catch {
+      // Intentionally swallow — one bad domain must not abort the swap.
+    }
+  }
+}
+
+/**
+ * Generalized atomic cookie swap — the single chokepoint all imports
+ * that MIGHT collide with partial SAML/OIDC/SSO state must go through.
+ *
+ * `replaceCookiesFor` derives its clear-domain set directly from the
+ * cookies being imported, so it cannot silently miss a new IdP. No
+ * whitelist, no heuristic fallback, no pre-computed candidate list to
+ * drift out of sync with reality.
+ *
+ * Contract:
+ *   1. For every distinct eTLD+1 present in `cookies`, clear matching
+ *      cookies in `context` (apex + all subdomains, anchored regex).
+ *   2. Then addCookies(cookies) in one call.
+ *   3. Errors from per-domain clears are swallowed so one failure
+ *      cannot abort the swap.
+ *
+ * Any future cookie-merging path (manual CLI import, picker, handoff
+ * auto-import, late-redirect re-import, etc.) should call this instead
+ * of `context.addCookies` directly. That is the invariant.
+ */
+export async function replaceCookiesFor(
+  context: {
+    clearCookies: (filter?: { domain?: string | RegExp }) => Promise<void>;
+    addCookies: (cookies: any[]) => Promise<void>;
+  },
+  cookies: any[],
+): Promise<void> {
+  if (!cookies || cookies.length === 0) return;
+
+  const etlds = new Set<string>();
+  for (const c of cookies) {
+    const raw = typeof c?.domain === 'string' ? c.domain : '';
+    if (!raw) continue;
+    const host = raw.startsWith('.') ? raw.slice(1) : raw;
+    try {
+      etlds.add(eTldPlusOne(host));
+    } catch {
+      // Malformed domain on the cookie — skip the clear for this one,
+      // Playwright will reject the bad cookie on addCookies if needed.
+    }
+  }
+
+  await clearCookiesForDomains(context, [...etlds]);
+  await context.addCookies(cookies);
+}
+
 // ─── The main entry point ───────────────────────────────────
 
 export interface AutoImportResult {
@@ -201,7 +286,10 @@ export async function tryAutoImportForWall(
   try {
     const result = await importCookies(browser, hostKeys);
     if (result.cookies.length > 0) {
-      await context.addCookies(result.cookies);
+      // Single chokepoint: derives clear-targets from the cookies
+      // themselves. No whitelist, no way for a new IdP to slip past.
+      // See replaceCookiesFor for the full contract.
+      await replaceCookiesFor(context, result.cookies);
     }
     return {
       attempted: true,

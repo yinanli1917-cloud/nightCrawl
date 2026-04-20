@@ -12,7 +12,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { BrowserContext } from 'playwright';
 import { findInstalledBrowsers, importCookies, listDomains } from './cookie-import-browser';
-import { pickDefaultBrowser } from './handoff-cookie-import';
+import { pickDefaultBrowser, replaceCookiesFor } from './handoff-cookie-import';
 
 // ─── Types ──────────────────────────────────────────────────────
 
@@ -130,7 +130,10 @@ async function importAllFromBrowser(
   const hostKeys = domains.map(d => d.domain);
   const result = await importCookies(browserName, hostKeys);
   if (result.cookies.length > 0) {
-    await context.addCookies(result.cookies);
+    // Atomic swap chokepoint — onboarding full-import must overwrite
+    // per-domain, not append, or any pre-existing headless cookies
+    // poison the imported session.
+    await replaceCookiesFor(context, result.cookies);
   }
   return result.count;
 }

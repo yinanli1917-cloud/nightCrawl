@@ -7,6 +7,7 @@
 
 import type { BrowserManager } from './browser-manager';
 import { findInstalledBrowsers, importCookies, listSupportedBrowserNames } from './cookie-import-browser';
+import { replaceCookiesFor } from './handoff-cookie-import';
 import { validateNavigationUrl } from './url-validation';
 import { cleanup, formatCleanupResult } from './cleanup';
 import * as fs from 'fs';
@@ -350,6 +351,13 @@ export async function handleWriteCommand(
         }
       }
 
+      // `cookie-import <file>` keeps upsert-preserve semantics: the user
+      // explicitly chose a JSON file, they don't expect untouched cookies
+      // on the same domain to vanish. Atomic swap (replaceCookiesFor)
+      // belongs in BROWSER-SNAPSHOT imports — picker, cookie-import-browser,
+      // handoff auto-import — where we're replicating another browser's
+      // full state and stale state must be purged. See cookie-import-merge
+      // tests that pin the upsert contract here.
       await page.context().addCookies(cookies);
       return `Loaded ${cookies.length} cookies from ${filePath}`;
     }
@@ -374,7 +382,7 @@ export async function handleWriteCommand(
         const browser = browserArg || 'comet';
         const result = await importCookies(browser, [domain], profile);
         if (result.cookies.length > 0) {
-          await page.context().addCookies(result.cookies);
+          await replaceCookiesFor(page.context(), result.cookies);
         }
         const msg = [`Imported ${result.count} cookies for ${domain} from ${browser}`];
         if (result.failed > 0) msg.push(`(${result.failed} failed to decrypt)`);

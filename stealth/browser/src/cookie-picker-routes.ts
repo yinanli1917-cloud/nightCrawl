@@ -16,6 +16,7 @@
 import type { BrowserManager } from './browser-manager';
 import { findInstalledBrowsers, listProfiles, listDomains, importCookies, CookieImportError, type PlaywrightCookie } from './cookie-import-browser';
 import { getCookiePickerHTML } from './cookie-picker-ui';
+import { replaceCookiesFor } from './handoff-cookie-import';
 
 // ─── State ──────────────────────────────────────────────────────
 // Tracks which domains were imported via the picker.
@@ -155,9 +156,10 @@ export async function handleCookiePickerRoute(
         }, { port });
       }
 
-      // Add to Playwright context
+      // Add to Playwright context via the single atomic-swap chokepoint.
+      // Never additive — that path caused UW Canvas "Stale Request" on 2026-04-20.
       const page = bm.getPage();
-      await page.context().addCookies(result.cookies);
+      await replaceCookiesFor(page.context(), result.cookies);
 
       // Track what was imported
       for (const domain of Object.keys(result.domainCounts)) {

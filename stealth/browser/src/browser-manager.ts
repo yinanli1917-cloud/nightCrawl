@@ -33,9 +33,11 @@ export async function getChromium() {
 import { addConsoleEntry, addNetworkEntry, addDialogEntry, networkBuffer, type DialogEntry } from './buffers';
 import { validateNavigationUrl } from './url-validation';
 import { assertSafeNavigation, filterHostileCookies } from './hostile-domains';
+import { replaceCookiesFor } from './handoff-cookie-import';
 import { parseEngineConfig } from './engine-config';
 import { launchCloakBrowser, shouldSkipCdpPatches } from './cloakbrowser-engine';
 import { DEFAULT_USER_AGENT, findChromiumExecutable, applyStealthPatches } from './stealth';
+import { markPinnedFromHeaders } from './fingerprint-pinned';
 
 export { DEFAULT_USER_AGENT } from './stealth';
 export { isPatchCurrent } from './stealth';
@@ -521,7 +523,9 @@ export class BrowserManager {
     // See hostile-domains.ts and project_xhs_account_ban_2026_04_09 memory.
     const safeCookies = filterHostileCookies(cookies);
     if (safeCookies.length > 0) {
-      await this.context.addCookies(safeCookies);
+      // Atomic swap chokepoint (safe no-op on fresh contexts; load-bearing
+      // when restoring after handoff where transient cookies may exist).
+      await replaceCookiesFor(this.context, safeCookies);
     }
   }
 
@@ -531,7 +535,7 @@ export class BrowserManager {
     // SAFETY: filter hostile cookies before any restore (see hostile-domains.ts).
     const safeCookies = filterHostileCookies(state.cookies);
     if (safeCookies.length > 0) {
-      await this.context.addCookies(safeCookies);
+      await replaceCookiesFor(this.context, safeCookies);
     }
 
     let activeId: number | null = null;
@@ -685,6 +689,15 @@ export class BrowserManager {
           break;
         }
       }
+      // Vendor-sniff for fingerprint-pinned hosts (Cloudflare/Akamai/etc).
+      // Only look at top-level document + navigation responses — subresources
+      // from a CDN don't tell us the origin is pinned.
+      try {
+        const rtype = (res.request().resourceType?.() ?? '');
+        if (rtype === 'document') {
+          markPinnedFromHeaders(url, res.headers());
+        }
+      } catch {}
     });
 
     page.on('requestfinished', async (req) => {
