@@ -35,6 +35,7 @@ import {
 import { applyStealthPatches } from './stealth';
 import { startReinforcementLoop } from './stealth-reinforcement';
 import { notify } from './notify';
+import { markPinnedObserved } from './fingerprint-pinned';
 import { isAuthenticated, markAuthenticated, invalidate } from './auth-cache';
 import { tryAutoImportForWall } from './handoff-cookie-import';
 import { isFirstRun, runOnboarding } from './onboarding';
@@ -853,7 +854,31 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
       const onFrameNav = (frame: { url(): string }) => recordUrl(frame.url());
       try { navPage?.on('framenavigated', onFrameNav); } catch {}
 
-      await new Promise(r => setTimeout(r, 2000));
+      // Wait for the page to settle. Minimum 2s so SPA login overlays
+      // still have time to mount, maximum 8s so slow client-side redirects
+      // (Cloudflare Dashboard takes ~10s to route `/` → `/login`; we
+      // can't wait that long on every goto without killing latency).
+      // Exit early if the URL has been stable for 1.5s past the 2s floor.
+      {
+        const started = Date.now();
+        const maxWait = 8000;
+        const minWait = 2000;
+        const stableFor = 1500;
+        let lastUrl = navPage?.url() ?? '';
+        let stableSince = started;
+        while (Date.now() - started < maxWait) {
+          await new Promise(r => setTimeout(r, 300));
+          const cur = navPage?.url() ?? '';
+          if (cur !== lastUrl) {
+            lastUrl = cur;
+            stableSince = Date.now();
+          }
+          if (
+            Date.now() - stableSince >= stableFor &&
+            Date.now() - started >= minWait
+          ) break;
+        }
+      }
 
       try { navPage?.off('framenavigated', onFrameNav); } catch {}
       // Capture once more in case the URL settled after the listener
@@ -929,6 +954,57 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
       } else {
         // No login wall — mark domain as authenticated for fast-path
         markAuthenticated(currentUrl);
+
+        // Deferred redirect watcher: some sites (Cloudflare Dashboard,
+        // certain SAML providers) issue a client-side redirect to /login
+        // 5–15 s after the initial load completes. The stabilization
+        // window above can't wait that long without wrecking latency on
+        // every normal navigation, so we run a short background watcher
+        // after returning the response. If the URL settles on a login
+        // path within the watch window, we invalidate the auth-cache,
+        // mark the domain as fingerprint-pinned (consistent with
+        // autoHandover's observational signal), and fire a notification
+        // so the user isn't left silently stuck on /login.
+        (async () => {
+          const watchStart = Date.now();
+          const watchMs = 20000;
+          const loginRe = /(^|\/)(login|signin|sign-in|signon|sign-on|auth|sso|session|logon|log-in)(\/|$|\?)/i;
+          const page = browserManager.getPage();
+          if (!page) return;
+          const origUrl = currentUrl;
+          while (Date.now() - watchStart < watchMs) {
+            await new Promise(r => setTimeout(r, 500));
+            let url = '';
+            try { url = page.url(); } catch { return; }
+            if (url === origUrl) continue;
+            let pathname = '';
+            try { pathname = new URL(url).pathname; } catch {}
+            if (!loginRe.test(pathname)) {
+              // Page moved but not to a login path — user is browsing,
+              // stop watching.
+              return;
+            }
+            invalidate(origUrl);
+            const detection = await browserManager.detectLoginWall();
+            if (!detection?.detected) return;
+            const domain = detection.domain;
+            markPinnedObserved(origUrl, 'cloudflare');
+            if (detection.approved) {
+              console.log(`[nightcrawl] Late redirect to ${url}. Auto-handover starting for ${domain}.`);
+              // Let autoHandover emit its own (now correctly gated) notifications.
+              browserManager.autoHandover().catch(err => {
+                console.error(`[nightcrawl] Auto-handover failed: ${err?.message ?? err}`);
+              });
+            } else {
+              console.log(`[nightcrawl] Late redirect to login detected on ${domain} (unapproved). Surfacing notification.`);
+              notify(
+                'nightCrawl: login wall detected',
+                `${domain} redirected to a login page. Run 'grant-handoff ${domain}' to enable auto-handoff.`,
+              );
+            }
+            return;
+          }
+        })().catch(() => {});
       }
     }
 
@@ -1402,10 +1478,55 @@ async function start() {
   if (useUds) {
     try { fs.chmodSync(config.socketPath, 0o600); } catch {}
   }
+  browserManager.serverPort = port;
+
+  // ─── TCP sidecar for browser-reachable routes (UDS mode only) ─────
+  // The primary server runs on a Unix socket for lower latency. But the
+  // cookie picker and onboarding pages MUST be reachable from a normal
+  // browser, which cannot speak UDS. Start a minimal TCP listener on a
+  // random localhost port that handles ONLY those routes, sharing the
+  // same BrowserManager and auth token. Every other request (/command,
+  // /health, etc.) returns 404 here so the surface stays tiny.
+  //
+  // Without this, `cookie-import-browser` in UDS mode prints a TCP URL
+  // that nothing listens on and users get "refused to connect" — the
+  // exact failure mode reported on 2026-04-20.
+  let tcpSidecarPort = 0;
+  if (useUds) {
+    try {
+      const sidecar = Bun.serve({
+        port: 0,
+        hostname: '127.0.0.1',
+        fetch: async (req) => {
+          const url = new URL(req.url);
+          if (url.pathname.startsWith('/onboarding')) {
+            const res = await handleOnboardingRoute(req);
+            if (res) return res;
+          }
+          if (url.pathname.startsWith('/cookie-picker')) {
+            return handleCookiePickerRoute(url, req, browserManager, AUTH_TOKEN);
+          }
+          return new Response('Not found (sidecar serves /cookie-picker and /onboarding only)', { status: 404 });
+        },
+      });
+      tcpSidecarPort = sidecar.port;
+      // Expose the browser-reachable port so CLI write-commands can
+      // advertise a URL that actually works.
+      browserManager.serverPort = tcpSidecarPort;
+      console.log(`[browse] TCP sidecar (cookie-picker + onboarding) on http://127.0.0.1:${tcpSidecarPort}`);
+    } catch (err: any) {
+      console.warn(`[browse] TCP sidecar failed to start: ${err?.message}. Cookie picker / onboarding UI will be unreachable.`);
+    }
+  }
+
+  // Write state file AFTER sidecar has its port so clients get the
+  // browser-reachable URL, not a bogus placeholder. CLI read latency is
+  // unaffected (sidecar Bun.serve with port 0 is near-instant).
   const state: Record<string, unknown> = {
     pid: process.pid,
     port: useUds ? 0 : port,
     socket: useUds ? config.socketPath : '',
+    webPort: useUds ? tcpSidecarPort : port,
     token: AUTH_TOKEN,
     startedAt: new Date().toISOString(),
     serverPath: path.resolve(import.meta.dir, 'server.ts'),
@@ -1415,8 +1536,6 @@ async function start() {
   const tmpFile = config.stateFile + '.tmp';
   fs.writeFileSync(tmpFile, JSON.stringify(state, null, 2), { mode: 0o600 });
   fs.renameSync(tmpFile, config.stateFile);
-
-  browserManager.serverPort = port;
 
   console.log(`[browse] Server running on ${useUds ? `unix:${config.socketPath}` : `http://127.0.0.1:${port}`} (PID: ${process.pid})`);
   console.log(`[browse] State file: ${config.stateFile}`);
