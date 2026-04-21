@@ -1246,7 +1246,9 @@ async function start() {
           uptime: Math.floor((Date.now() - startTime) / 1000),
           tabs: browserManager.getTabCount(),
           currentUrl: browserManager.getCurrentUrl(),
-          // token removed — see .auth.json for extension bootstrap
+          // stateFile path exposed so CLI can adopt orphan daemons.
+          // The file itself is 0o600 (owner-only) so this leaks no secret.
+          stateFile: config.stateFile,
           chatEnabled: true,
           agent: {
             status: agentStatus,

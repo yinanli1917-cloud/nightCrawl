@@ -117,6 +117,73 @@ function readState(): ServerState | null {
   }
 }
 
+/**
+ * Scan /tmp for nightcrawl socket files belonging to daemons that were NOT
+ * started by this CLI invocation (i.e. have a different socket hash).
+ *
+ * If a healthy orphan is found, the CLI adopts it by writing its state to
+ * our stateFile. This prevents duplicate daemons when the server was started
+ * manually from a different directory (different git root → different socket).
+ *
+ * Discovery protocol:
+ *   1. GET /health (unauthenticated) → includes stateFile path
+ *   2. Read that stateFile (0o600, owner-only) → contains token
+ *   3. Adopt: write state to our config.stateFile for future CLI invocations
+ */
+async function findAndAdoptOrphan(): Promise<ServerState | null> {
+  if (IS_WINDOWS) return null; // no UDS sockets on Windows
+  const ourSocket = config.socketPath;
+  let tmpFiles: string[];
+  try {
+    tmpFiles = fs.readdirSync('/tmp');
+  } catch {
+    return null;
+  }
+  const sockets = tmpFiles
+    .filter(f => f.startsWith('nightcrawl-') && f.endsWith('.sock'))
+    .map(f => `/tmp/${f}`)
+    .filter(s => s !== ourSocket);
+
+  for (const sock of sockets) {
+    try {
+      const resp = await fetch('http://localhost/health', {
+        unix: sock,
+        signal: AbortSignal.timeout(2000),
+      } as any);
+      if (!resp.ok) continue;
+      const health = await resp.json() as any;
+      if (health.status !== 'healthy' || !health.stateFile) continue;
+
+      // Read the orphan's stateFile (0o600 — only our user can read it)
+      let orphanState: ServerState;
+      try {
+        orphanState = JSON.parse(fs.readFileSync(health.stateFile, 'utf-8'));
+      } catch {
+        continue; // Different user or missing file — skip
+      }
+      if (!orphanState.token || !orphanState.socket) continue;
+
+      console.error(
+        `[browse] Adopting existing daemon (PID ${orphanState.pid}) at ${sock}` +
+        ` — was started outside the project directory.`,
+      );
+      // Persist adoption so future CLI calls find it without scanning
+      try {
+        fs.mkdirSync(path.dirname(config.stateFile), { recursive: true });
+        const tmpFile = config.stateFile + '.tmp';
+        fs.writeFileSync(tmpFile, JSON.stringify(orphanState, null, 2), { mode: 0o600 });
+        fs.renameSync(tmpFile, config.stateFile);
+      } catch {
+        // Best effort — we can still use the adopted state in-memory
+      }
+      return orphanState;
+    } catch {
+      // Dead socket or connection refused — skip
+    }
+  }
+  return null;
+}
+
 function isProcessAlive(pid: number): boolean {
   if (IS_WINDOWS) {
     // Bun's compiled binary can't signal Windows PIDs (always throws ESRCH).
@@ -349,6 +416,14 @@ async function ensureServer(): Promise<ServerState> {
     console.error(`[browse] Run '$B connect' to restart.`);
     process.exit(1);
   }
+
+  // Orphan detection: before spawning a brand-new daemon, check whether a
+  // healthy nightcrawl process is already running under a different socket
+  // (i.e. started from a directory with a different git root, or started
+  // manually outside the CLI). Adopting it avoids duplicate daemons and
+  // preserves any authenticated sessions (cookies, doubao login, etc.).
+  const orphan = await findAndAdoptOrphan();
+  if (orphan) return orphan;
 
   // Ensure state directory exists before lock acquisition (lock file lives there)
   ensureStateDir(config);

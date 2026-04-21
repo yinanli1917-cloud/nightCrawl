@@ -60,8 +60,19 @@ export function resolveConfig(
     stateDir = path.dirname(stateFile);
     projectDir = path.dirname(stateDir); // parent of .nightcrawl/
   } else {
-    projectDir = getGitRoot() || process.cwd();
-    stateDir = path.join(projectDir, '.nightcrawl');
+    const gitRoot = getGitRoot();
+    if (gitRoot) {
+      projectDir = gitRoot;
+      stateDir = path.join(gitRoot, '.nightcrawl');
+    } else {
+      // No git repo found (e.g. server launched from /tmp or a scratch dir).
+      // Fall back to the global ~/.nightcrawl/ so the daemon is always
+      // discoverable by the CLI regardless of the launch directory.
+      // Without this, cwd/.nightcrawl/ gets a different socket hash than the
+      // project-local stateDir → CLI spawns a duplicate daemon.
+      projectDir = process.cwd();
+      stateDir = path.join(env.HOME || process.env.HOME || '/tmp', '.nightcrawl');
+    }
     stateFile = path.join(stateDir, 'browse.json');
   }
 
