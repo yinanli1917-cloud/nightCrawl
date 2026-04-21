@@ -33,12 +33,25 @@ interface AuthEntry {
 
 const cache = new Map<string, AuthEntry>();
 
+// Path patterns that signal a login wall even on an "authenticated" eTLD+1.
+// A stale session can redirect dash.cloudflare.com/foo → dash.cloudflare.com/login
+// (same eTLD+1). Without this guard the fast path hides the wall from the agent.
+const LOGIN_PATH_RE = /(^|\/)(login|signin|sign-in|signon|sign-on|auth|sso|session|logon|log-in)(\/|$|\?)/i;
+
 /**
  * Check if a URL's domain is cached as authenticated.
- * Returns true only if the entry exists and hasn't expired.
+ * Returns true only if the entry exists, hasn't expired, AND the URL path
+ * doesn't look like a login page (which would indicate a stale session).
  */
 export function isAuthenticated(url: string): boolean {
   try {
+    const parsed = new URL(url);
+    if (LOGIN_PATH_RE.test(parsed.pathname)) {
+      // Redirect to a login path invalidates the cached auth for this eTLD+1 —
+      // the session we thought was good clearly isn't.
+      cache.delete(eTldPlusOne(url));
+      return false;
+    }
     const domain = eTldPlusOne(url);
     const entry = cache.get(domain);
     if (!entry) return false;

@@ -371,6 +371,25 @@ export async function handleMetaCommand(
       return `REVOKED: auto-handover for ${domain}`;
     }
 
+    case 'open-handoff': {
+      // Explicit user-triggered handoff pop. Used by the notification
+      // action button and by `nc open-handoff [url]` on the CLI. No
+      // env-var gate — invoking this IS the consent.
+      const target = args[0] || bm.getCurrentUrl() || 'about:blank';
+      try {
+        if (target && target !== 'about:blank') {
+          const page = bm.getPage();
+          if (page) {
+            await page.goto(target, { waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {});
+          }
+        }
+      } catch {}
+      const result = await bm.handoff(
+        `Login wall detected. Please log in in this window. Run 'resume' when done.`
+      );
+      return result;
+    }
+
     case 'list-handoff': {
       const store = prune(readConsent(defaultConsentPath()));
       const entries = Object.values(store.entries);
