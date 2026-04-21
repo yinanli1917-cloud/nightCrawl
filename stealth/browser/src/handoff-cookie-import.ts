@@ -309,6 +309,107 @@ export async function replaceCookiesFor(
   await context.addCookies(cookies);
 }
 
+// ─── Body-text SSO brand detection ───────────────────────────
+
+/**
+ * Map of SSO brand patterns (as they appear in page body text) to the
+ * canonical auth domains we need to import from the user's default browser.
+ *
+ * Why this map exists: after clicking a gate button (登录), the SSO modal
+ * often has NO iframes — providers like Douyin authenticate via JavaScript
+ * click handlers with no detectable domain in the DOM structure.
+ * collectLoginHostsFromPage returns nothing, so we fall back to reading the
+ * visible TEXT for brand hints and mapping them to domains.
+ *
+ * Extend as new one-click ecosystems surface. Brands are the EXACT labels
+ * the sites display, so the mapping is stable and reviewable.
+ */
+const SSO_BRAND_DOMAINS: Array<[RegExp, string[]]> = [
+  [/抖音|TikTok/i,         ['douyin.com', 'snssdk.com']],
+  [/微信|WeChat/i,          ['wx.qq.com', 'weixin.qq.com']],
+  [/微博|Weibo/i,           ['weibo.com']],
+  [/\bQQ\b/i,              ['qq.com']],
+  [/百度|Baidu/i,           ['baidu.com']],
+  [/支付宝|Alipay/i,        ['alipay.com']],
+  [/GitHub/i,              ['github.com']],
+  [/\bApple\b/i,           ['appleid.apple.com']],
+  [/\bGoogle\b/i,          ['google.com']],
+  [/\bFacebook\b/i,        ['facebook.com']],
+  [/\bTwitter\b|X\.com/i,  ['x.com', 'twitter.com']],
+];
+
+/**
+ * Scan page body text for SSO provider brand names (抖音, WeChat, etc.)
+ * that appear in one-click login options. Returns the canonical auth
+ * domains for every brand found.
+ *
+ * Supplements collectLoginHostsFromPage when the SSO modal has no iframes
+ * or form actions — the brand name in visible text is the only signal.
+ * Safe to combine with collectLoginHostsFromPage results; dedup happens
+ * at the import step via discoverHostKeys.
+ */
+export async function collectSSOBrandDomains(page: any): Promise<string[]> {
+  try {
+    const bodyText: string = await page.evaluate(() => (document.body?.innerText) || '');
+    const domains = new Set<string>();
+    for (const [brandRe, brandDomains] of SSO_BRAND_DOMAINS) {
+      if (brandRe.test(bodyText)) {
+        for (const d of brandDomains) domains.add(d);
+      }
+    }
+    return [...domains];
+  } catch {
+    return [];
+  }
+}
+
+// ─── One-tap SSO button clicker ───────────────────────────────
+
+/**
+ * After the gate button is clicked (登录), find and click the first SSO
+ * one-click login element ("抖音一键登录", "Sign in with Google", etc.).
+ *
+ * These are often SPAN/DIV elements, NOT <button> — clickLoginButton
+ * would miss them. We search all common container types and click the
+ * first near-leaf element whose text matches the one-click pattern.
+ *
+ * Uses the same Playwright-locator-primary / evaluate-fallback structure
+ * as clickLoginButton. Returns the element text or null on failure.
+ */
+export async function clickOnetapButton(
+  page: any,
+  timeoutMs = 5000,
+): Promise<string | null> {
+  const onetapRe = /一键登录|Sign in with|Continue with|Log in with/i;
+
+  // Evaluate path: walk the DOM and click the first near-leaf matching element.
+  // Near-leaf = children.length ≤ 2 so we click the label, not its parent container.
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const clicked: string | null = await page.evaluate(() => {
+        const re = /一键登录|Sign in with|Continue with|Log in with/i;
+        const sels = ['button', '[role="button"]', 'span', 'div', 'li', 'a'];
+        for (const sel of sels) {
+          for (const el of Array.from(document.querySelectorAll(sel))) {
+            const text = (el.textContent || '').trim();
+            if (re.test(text) && (el as HTMLElement).children.length <= 2 && text.length < 40) {
+              (el as HTMLElement).click();
+              return text;
+            }
+          }
+        }
+        return null;
+      });
+      if (clicked) return clicked;
+    } catch {
+      return null; // page gone — bail
+    }
+    await new Promise(r => setTimeout(r, 500));
+  }
+  return null;
+}
+
 // ─── Click-through login button ──────────────────────────────
 
 /**

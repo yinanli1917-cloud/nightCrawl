@@ -14,6 +14,8 @@ import {
   replaceCookiesFor,
   collectLoginHostsFromPage,
   clickLoginButton,
+  collectSSOBrandDomains,
+  clickOnetapButton,
 } from '../src/handoff-cookie-import';
 
 describe('SSO_HELPER_DOMAINS', () => {
@@ -618,5 +620,116 @@ describe('clickLoginButton — click-through to surface hidden SSO providers', (
     const btns = [{ text: 'Login to continue', clickCalled: false }];
     expect(await clickLoginButton(makePage(btns), 0)).toBeNull();
     expect(btns[0].clickCalled).toBeFalsy();
+  });
+});
+
+// ─── Body-text SSO brand detection ───────────────────────────
+//
+// After clicking the gate button (登录), the SSO provider modal appears
+// but may have NO iframes (collectLoginHostsFromPage finds nothing) —
+// it uses plain SPAN/DIV elements with JavaScript click handlers.
+// Example: doubao shows "抖音一键登录" as a SPAN with no douyin.com iframe.
+//
+// collectSSOBrandDomains reads the page body text and maps known SSO
+// brand names (抖音, WeChat, etc.) to their auth domains so we can
+// proactively import the right cookies from Arc.
+describe('collectSSOBrandDomains — body-text SSO brand detection', () => {
+  const makePageWithText = (bodyText: string) => ({
+    evaluate: async (fn: any) => {
+      const orig = (globalThis as any).document;
+      (globalThis as any).document = {
+        body: { innerText: bodyText },
+      };
+      try { return fn(); } finally { (globalThis as any).document = orig; }
+    },
+  });
+
+  test('抖音 in body text → returns douyin.com + snssdk.com', async () => {
+    const page = makePageWithText('抖音一键登录\n打开豆包App');
+    const domains = await collectSSOBrandDomains(page);
+    expect(domains).toContain('douyin.com');
+    expect(domains).toContain('snssdk.com');
+  });
+
+  test('WeChat/微信 → wx.qq.com', async () => {
+    const page = makePageWithText('微信一键登录');
+    const domains = await collectSSOBrandDomains(page);
+    expect(domains).toContain('wx.qq.com');
+  });
+
+  test('multiple brands in same body text → all domains returned', async () => {
+    const page = makePageWithText('抖音一键登录\n微博一键登录\nQQ登录');
+    const domains = await collectSSOBrandDomains(page);
+    expect(domains).toContain('douyin.com');
+    expect(domains).toContain('weibo.com');
+    expect(domains).toContain('qq.com');
+  });
+
+  test('no known brand in body text → empty array', async () => {
+    const page = makePageWithText('请输入手机号码\n下一步\n隐私政策');
+    const domains = await collectSSOBrandDomains(page);
+    expect(domains).toEqual([]);
+  });
+
+  test('swallows errors and returns empty array (fail-safe)', async () => {
+    const page = { evaluate: async () => { throw new Error('page gone'); } };
+    expect(await collectSSOBrandDomains(page)).toEqual([]);
+  });
+});
+
+// ─── One-tap SSO button clicker ───────────────────────────────
+//
+// "抖音一键登录" is a SPAN element, not a <button>. clickLoginButton
+// only searches button/[role=button]. clickOnetapButton searches
+// button, [role=button], span, div, li — anything that might host a
+// one-click SSO label — and clicks the first match for /一键登录/
+// or "Sign in with X".
+describe('clickOnetapButton — one-tap SSO element clicker', () => {
+  const makePageWithSpan = (spans: Array<{ text: string; clickCalled?: boolean }>) => {
+    const elements = spans.map(s => ({
+      textContent: s.text,
+      children: { length: 0 },
+      click() { s.clickCalled = true; },
+    }));
+    return {
+      evaluate: async (fn: any) => {
+        const orig = (globalThis as any).document;
+        (globalThis as any).document = {
+          querySelectorAll: (sel: string) => {
+            // Return elements for the span/button/div query
+            if (sel.includes('button') || sel.includes('span') || sel.includes('div')) return elements;
+            return [];
+          },
+        };
+        try { return fn(); } finally { (globalThis as any).document = orig; }
+      },
+    };
+  };
+
+  test('clicks SPAN with 抖音一键登录 text', async () => {
+    const spans = [
+      { text: '用户协议', clickCalled: false },
+      { text: '抖音一键登录', clickCalled: false },
+    ];
+    const result = await clickOnetapButton(makePageWithSpan(spans));
+    expect(result).toBe('抖音一键登录');
+    expect(spans[1].clickCalled).toBe(true);
+    expect(spans[0].clickCalled).toBe(false);
+  });
+
+  test('clicks "Sign in with Google" English variant', async () => {
+    const spans = [{ text: 'Sign in with Google', clickCalled: false }];
+    expect(await clickOnetapButton(makePageWithSpan(spans))).toBe('Sign in with Google');
+    expect(spans[0].clickCalled).toBe(true);
+  });
+
+  test('returns null when no onetap element present', async () => {
+    const spans = [{ text: '下一步' }, { text: '忘记密码' }];
+    expect(await clickOnetapButton(makePageWithSpan(spans), 0)).toBeNull();
+  });
+
+  test('swallows errors and returns null (fail-safe)', async () => {
+    const page = { evaluate: async () => { throw new Error('crash'); } };
+    expect(await clickOnetapButton(page)).toBeNull();
   });
 });

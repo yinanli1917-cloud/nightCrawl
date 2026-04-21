@@ -37,7 +37,13 @@ import { startReinforcementLoop } from './stealth-reinforcement';
 import { notify } from './notify';
 import { markPinnedObserved, isPinned } from './fingerprint-pinned';
 import { isAuthenticated, markAuthenticated, invalidate } from './auth-cache';
-import { tryAutoImportForWall, clickLoginButton, collectLoginHostsFromPage } from './handoff-cookie-import';
+import {
+  tryAutoImportForWall,
+  clickLoginButton,
+  collectLoginHostsFromPage,
+  collectSSOBrandDomains,
+  clickOnetapButton,
+} from './handoff-cookie-import';
 import { isFirstRun, runOnboarding } from './onboarding';
 import { emitActivity, subscribe, getActivityAfter, getActivityHistory, getSubscriberCount } from './activity';
 // Bun.spawn used instead of child_process.spawn (compiled bun binaries
@@ -905,7 +911,8 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
           // No-op if no installed browser, no matching cookies, or import fails.
           const siteIsPinned = isPinned(wallUrl);
           if (siteIsPinned) {
-            result += `\nFingerprint-pinned domain — skipping Arc import (session tokens are tied to CloakBrowser fingerprint). Use 'nc open-handoff' to log in.`;
+            result += `\nFINGERPRINT_PINNED: ${detection.domain} — your Arc session is tied to Arc's browser fingerprint. Importing those cookies cannot authenticate in a different browser.`;
+            result += `\nACTION REQUIRED: run 'nc open-handoff ${targetUrl}' to log in once via CloakBrowser. After that first login, all future visits work headlessly with no window.`;
           }
           if (page && !siteIsPinned) {
             try {
@@ -932,25 +939,46 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
                 result += `\nNo matching cookies found in ${importResult.browser ?? 'default browser'} for this domain chain.`;
               }
 
-              // STEP 1b: Click-through retry — some pages (ByteDance doubao
-              // region-ban, Weibo gates, etc.) hide their SSO provider behind
-              // a 登录 button. The SSO iframe only appears AFTER that click,
-              // so collectLoginHostsFromPage sees nothing on the initial load
-              // and we import only site-own cookies (not enough to clear the
-              // wall). Click the button, let the modal open, re-discover hosts,
-              // re-import.
+              // STEP 1b: Click-through + one-tap retry.
+              //
+              // Some pages (doubao region-ban, Weibo gates, etc.) hide their
+              // SSO provider behind a gate button (登录). After clicking it:
+              //   • collectLoginHostsFromPage scans iframes/forms/links for
+              //     provider domains (works for iframe-based SSO).
+              //   • collectSSOBrandDomains scans body TEXT for brand names
+              //     (抖音, WeChat, etc.) and maps them to auth domains — handles
+              //     SPAN/DIV based one-click buttons with no iframe.
+              //   • clickOnetapButton clicks the SSO provider button itself
+              //     (e.g. "抖音一键登录" SPAN) to trigger the OAuth flow with
+              //     the now-imported cookies.
               const clickedLabel = await clickLoginButton(page);
               if (clickedLabel) {
                 result += `\nClicked "${clickedLabel}" to surface SSO providers...`;
                 await new Promise(r => setTimeout(r, 2000));
-                const postClickHosts = await collectLoginHostsFromPage(page);
+
+                // Combine DOM-derived hosts AND body-text brand domains.
+                const postClickDomHosts = await collectLoginHostsFromPage(page);
+                const postClickBrandHosts = await collectSSOBrandDomains(page);
+                const postClickHosts = [...new Set([...postClickDomHosts, ...postClickBrandHosts])];
+
                 if (postClickHosts.length > 0) {
                   result += ` Discovered: ${postClickHosts.join(', ')}.`;
                   const importResult2 = await tryAutoImportForWall(
                     targetUrl, page.url(), page.context(), undefined, postClickHosts,
                   );
                   if (importResult2.importedCount > 0) {
-                    result += `\nPost-click import: ${importResult2.importedCount} cookies from ${importResult2.browser}. Re-trying navigation...`;
+                    result += `\nPost-click import: ${importResult2.importedCount} cookies from ${importResult2.browser}.`;
+
+                    // Click the SSO one-tap button (e.g. "抖音一键登录") to
+                    // trigger the OAuth flow with the just-imported cookies.
+                    const onetapClicked = await clickOnetapButton(page, 3000);
+                    if (onetapClicked) {
+                      result += ` Clicked one-tap: "${onetapClicked}". Waiting for auth...`;
+                      // OAuth redirect takes ~2-4 seconds
+                      await new Promise(r => setTimeout(r, 4000));
+                    }
+
+                    // Navigate to target and check if the wall is gone
                     await page.goto(targetUrl, { waitUntil: 'load', timeout: 30000 }).catch(() => {});
                     await new Promise(r => setTimeout(r, 1500));
                     const detection3 = await browserManager.detectLoginWall();
@@ -960,23 +988,31 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
                       return new Response(result, { status: 200, headers: { 'Content-Type': 'text/plain' } });
                     }
                     result += `\nClick-through import insufficient (${detection3.reason}).`;
-                    // Both Arc imports failed — the site fingerprint-pins its
-                    // sessions (ByteDance ttwid, Cloudflare tokens, etc.).
-                    // Mark immediately so autoHandover skips the 5-minute Arc
-                    // poll and routes straight to the CloakBrowser prompt.
+                    // Cookies were imported but wall persisted — empirical
+                    // fingerprint-pinning signal. Mark now so autoHandover
+                    // routes straight to CloakBrowser instead of wasting 5 min.
                     markPinnedObserved(targetUrl, 'cloudflare');
                     result += ` Site marked fingerprint-pinned — use 'nc open-handoff' to log in via CloakBrowser.`;
                   }
                 }
               } else {
-                result += `\nFalling back to headed handover.`;
+                result += `\nNo gate button found on wall page.`;
               }
             } catch (err: any) {
               console.error(`[nightcrawl] Auto-import error: ${err?.message ?? err}`);
             }
           }
-          // STEP 2: Fall through to the existing autoHandover (window pop).
-          result += `\nAuto-handover starting (approved domain: ${detection.domain}). Headed browser will open for login...`;
+          // STEP 2: Fall through to autoHandover. If we haven't already
+          // explained the fingerprint-pinned situation (STEP 1 gate), add the
+          // actionable message now. Otherwise stay silent to avoid duplicates.
+          const stepTwoPinned = isPinned(wallUrl);
+          if (stepTwoPinned && !siteIsPinned) {
+            // Was marked pinned by STEP 1b just now — add the instruction.
+            result += `\nFINGERPRINT_PINNED: ${detection.domain} session tokens are tied to the CloakBrowser fingerprint — Arc/Chrome cookies cannot authenticate here.`;
+            result += `\nACTION REQUIRED: run 'nc open-handoff ${targetUrl}' to open a CloakBrowser window and log in once. All future headless visits will use those session cookies automatically.`;
+          } else if (!stepTwoPinned) {
+            result += `\nOpening ${detection.domain} in your default browser for login. Will auto-resume when cookies are imported.`;
+          }
           browserManager.autoHandover().then(handoverResult => {
             if (handoverResult) console.log(`[nightcrawl] Auto-handover complete: ${handoverResult}`);
           }).catch(err => {
