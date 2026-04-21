@@ -606,6 +606,14 @@ export async function autoHandover(this: any): Promise<string | null> {
     const cookiePollInterval = 3000;
     const cookiePollStart = Date.now();
     let cookieLoginSucceeded = false;
+    // Track whether any cookies were ever actually imported during the poll.
+    // Only mark a domain as fingerprint-pinned when cookies WERE imported
+    // but the wall persisted — that's the empirical signature of pinning.
+    // If no cookies were ever imported (user not logged in to Arc, or no
+    // matching domain cookies), that's "not logged in" not "fingerprint-pinned".
+    // Canvas was falsely marked pinned because its Stale Request bug
+    // looked like a failed import — we must not repeat that mistake.
+    let cookiesWereEverImported = false;
 
     while (Date.now() - cookiePollStart < cookiePollTimeout) {
       await new Promise(resolve => setTimeout(resolve, cookiePollInterval));
@@ -622,6 +630,7 @@ export async function autoHandover(this: any): Promise<string | null> {
       );
 
       if (importResult.importedCount > 0) {
+        cookiesWereEverImported = true;
         console.log(`[nightcrawl] Imported ${importResult.importedCount} cookies from ${importResult.browser}. Testing login...`);
 
         // Re-navigate to test if cookies clear the wall
@@ -644,12 +653,15 @@ export async function autoHandover(this: any): Promise<string | null> {
       return `Login completed via default browser cookie import for ${domain}. Zero windows opened.`;
     }
 
-    if (!pinned) {
-      // Observational pinning: we polled + imported but the wall didn't
-      // clear. That's the empirical signature of fingerprint pinning.
-      // Mark so subsequent visits skip the doomed poll entirely.
+    if (!pinned && cookiesWereEverImported) {
+      // Observational pinning: we imported cookies but the wall persisted
+      // on re-navigation. That's the empirical signature of fingerprint
+      // pinning (ttwid/cf_clearance bound to the issuing browser's
+      // fingerprint). Mark so future visits skip the doomed Arc poll.
+      // NOT triggered when no cookies were imported — that just means the
+      // user isn't logged into the domain on their default browser.
       markPinnedObserved(loginUrl, 'cloudflare');
-      console.log(`[nightcrawl] Default browser cookie import did not clear login wall for ${domain}. Marking as fingerprint-pinned. Falling back to headed CloakBrowser...`);
+      console.log(`[nightcrawl] Imported cookies but wall persisted for ${domain} — marking as fingerprint-pinned.`);
     }
   }
 

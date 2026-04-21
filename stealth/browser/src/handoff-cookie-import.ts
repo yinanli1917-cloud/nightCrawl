@@ -309,6 +309,80 @@ export async function replaceCookiesFor(
   await context.addCookies(cookies);
 }
 
+// ─── Click-through login button ──────────────────────────────
+
+/**
+ * Find the first prominent login button on the page and click it.
+ *
+ * Why this exists: some sites (ByteDance doubao, regional gates, etc.)
+ * sit behind a "region-ban" or "enter site" page. The real SSO provider
+ * iframe (Douyin one-click, WeChat, etc.) only becomes visible in the
+ * DOM AFTER the user clicks that page's 登录 button. Until that click,
+ * collectLoginHostsFromPage sees no SSO domains and tryAutoImportForWall
+ * imports only the site's own cookies — which aren't enough to clear
+ * the wall.
+ *
+ * Callers should:
+ *   1. Call tryAutoImportForWall → still wall
+ *   2. Call clickLoginButton(page) → returns text or null
+ *   3. If non-null: await ~2s, re-run collectLoginHostsFromPage(page)
+ *   4. Call tryAutoImportForWall again with the new observed hosts
+ *
+ * Uses page.evaluate so the click is synchronous in the page's event
+ * loop — no fragile CSS selector strings, works across any framework.
+ * Returns the clicked button's trimmed textContent, or null if nothing
+ * was found / clicked / evaluate threw.
+ */
+export async function clickLoginButton(
+  page: any,
+  timeoutMs = 5000,
+): Promise<string | null> {
+  // Exact-match labels — short plain strings only.
+  // Avoids clicking "Login to continue", "Sign in with 30-day trial", etc.
+  const loginRe = /^(登录|login|sign\s*in|log\s*in|继续|continue)$/i;
+
+  // Primary path: Playwright locator — designed for React/Vue SPAs.
+  // It polls internally and waits for the element to be visible,
+  // solving the "React hasn't rendered yet" race condition that
+  // page.evaluate hits when called right after waitUntil:'load'.
+  if (typeof page.locator === 'function') {
+    try {
+      const btn = page.locator('button, [role="button"]').filter({ hasText: loginRe });
+      await btn.first().waitFor({ state: 'visible', timeout: timeoutMs });
+      const text = await btn.first().textContent({ timeout: 1000 });
+      await btn.first().click({ timeout: 2000 });
+      return (text ?? '').trim() || null;
+    } catch {
+      // timed out or click failed — fall through to evaluate fallback
+    }
+  }
+
+  // Fallback path: page.evaluate polling (for non-Playwright wrappers
+  // like mock pages in unit tests, or future engine adapters).
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const clicked: string | null = await page.evaluate(() => {
+        const re = /^(登录|login|sign\s*in|log\s*in|继续|continue)$/i;
+        const candidates: Element[] = [
+          ...Array.from(document.querySelectorAll('button')),
+          ...Array.from(document.querySelectorAll('[role="button"]')),
+        ];
+        for (const el of candidates) {
+          const text = (el.textContent || '').trim();
+          if (re.test(text)) { (el as HTMLElement).click(); return text; }
+        }
+        return null;
+      });
+      if (clicked) return clicked;
+    } catch {
+      return null; // page crashed/navigated away — bail
+    }
+    await new Promise(r => setTimeout(r, 500));
+  }
+  return null;
+}
+
 // ─── The main entry point ───────────────────────────────────
 
 export interface AutoImportResult {

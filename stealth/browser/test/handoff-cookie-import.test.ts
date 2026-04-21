@@ -13,6 +13,7 @@ import {
   clearCookiesForDomains,
   replaceCookiesFor,
   collectLoginHostsFromPage,
+  clickLoginButton,
 } from '../src/handoff-cookie-import';
 
 describe('SSO_HELPER_DOMAINS', () => {
@@ -515,5 +516,107 @@ describe('collectLoginHostsFromPage — DOM-derived candidates', () => {
     } finally {
       (globalThis as any).document = orig;
     }
+  });
+});
+
+// ─── Click-through login button ──────────────────────────────
+//
+// Some sites (ByteDance doubao, Weibo, etc.) put their login behind a
+// region-ban page or "enter site" gate. The actual SSO iframe (Douyin,
+// WeChat, etc.) only appears AFTER clicking that gate's 登录 button.
+// collectLoginHostsFromPage can't discover those domains because they're
+// not in the initial DOM.
+//
+// clickLoginButton solves this: it finds the first prominent login
+// button on the page and clicks it (via page.evaluate so it's fast and
+// doesn't require a stable CSS selector). The caller then waits ~2s for
+// the modal to open and re-runs collectLoginHostsFromPage to discover
+// the now-visible SSO providers.
+describe('clickLoginButton — click-through to surface hidden SSO providers', () => {
+  // Build a fake page whose evaluate calls the function with a fake document.
+  const makePage = (buttons: Array<{ text: string; clickCalled?: boolean }>) => {
+    const elements = buttons.map(b => ({
+      textContent: b.text,
+      click() { b.clickCalled = true; },
+    }));
+    return {
+      evaluate: async (fn: any) => {
+        const orig = (globalThis as any).document;
+        (globalThis as any).document = {
+          querySelectorAll: (sel: string) => {
+            if (sel === 'button' || sel === '[role="button"]') return elements;
+            return [];
+          },
+        };
+        try { return fn(); } finally { (globalThis as any).document = orig; }
+      },
+    };
+  };
+
+  test('finds and clicks 登录 button, returns button text', async () => {
+    const btns = [
+      { text: '帮助', clickCalled: false },
+      { text: '登录', clickCalled: false },
+      { text: '注册', clickCalled: false },
+    ];
+    const result = await clickLoginButton(makePage(btns));
+    expect(result).toBe('登录');
+    expect(btns[1].clickCalled).toBe(true);
+    // Surrounding buttons must NOT have been clicked
+    expect(btns[0].clickCalled).toBe(false);
+    expect(btns[2].clickCalled).toBe(false);
+  });
+
+  test('finds and clicks "Login" (English)', async () => {
+    const btns = [{ text: 'Login', clickCalled: false }];
+    expect(await clickLoginButton(makePage(btns))).toBe('Login');
+    expect(btns[0].clickCalled).toBe(true);
+  });
+
+  test('finds "Sign In" (two words with space)', async () => {
+    const btns = [{ text: 'Sign In', clickCalled: false }];
+    const result = await clickLoginButton(makePage(btns));
+    expect(result).toBe('Sign In');
+    expect(btns[0].clickCalled).toBe(true);
+  });
+
+  test('returns null when no login button exists on the page', async () => {
+    const btns = [{ text: 'Download' }, { text: 'Help' }, { text: 'About' }];
+    // Pass 0ms timeout so the retry loop exits immediately in tests.
+    expect(await clickLoginButton(makePage(btns), 0)).toBeNull();
+  });
+
+  test('swallows page.evaluate errors and returns null (fail-safe)', async () => {
+    const page = { evaluate: async () => { throw new Error('page crashed'); } };
+    expect(await clickLoginButton(page)).toBeNull();
+  });
+
+  test('role=button elements are candidates too', async () => {
+    // role="button" divs are common in React/Vue login UIs
+    const elements = [{ textContent: 'Login', clickCalled: false, click() { (this as any).clickCalled = true; } }];
+    const page = {
+      evaluate: async (fn: any) => {
+        const orig = (globalThis as any).document;
+        (globalThis as any).document = {
+          querySelectorAll: (sel: string) => {
+            if (sel === 'button') return [];
+            if (sel === '[role="button"]') return elements;
+            return [];
+          },
+        };
+        try { return fn(); } finally { (globalThis as any).document = orig; }
+      },
+    };
+    const result = await clickLoginButton(page);
+    expect(result).toBe('Login');
+    expect(elements[0].clickCalled).toBe(true);
+  });
+
+  test('does NOT click buttons whose text only partially matches (e.g. "Login to continue")', async () => {
+    // Exact-match guard prevents clicking innocuous buttons that
+    // happen to contain the word "login" in a longer sentence.
+    const btns = [{ text: 'Login to continue', clickCalled: false }];
+    expect(await clickLoginButton(makePage(btns), 0)).toBeNull();
+    expect(btns[0].clickCalled).toBeFalsy();
   });
 });

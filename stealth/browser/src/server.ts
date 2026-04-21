@@ -35,9 +35,9 @@ import {
 import { applyStealthPatches } from './stealth';
 import { startReinforcementLoop } from './stealth-reinforcement';
 import { notify } from './notify';
-import { markPinnedObserved } from './fingerprint-pinned';
+import { markPinnedObserved, isPinned } from './fingerprint-pinned';
 import { isAuthenticated, markAuthenticated, invalidate } from './auth-cache';
-import { tryAutoImportForWall } from './handoff-cookie-import';
+import { tryAutoImportForWall, clickLoginButton, collectLoginHostsFromPage } from './handoff-cookie-import';
 import { isFirstRun, runOnboarding } from './onboarding';
 import { emitActivity, subscribe, getActivityAfter, getActivityHistory, getSubscriberCount } from './activity';
 // Bun.spawn used instead of child_process.spawn (compiled bun binaries
@@ -891,19 +891,23 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
         invalidate(currentUrl);
         result += `\nLOGIN_WALL_DETECTED: ${detection.reason}`;
         if (detection.approved) {
-          // STEP 1: Try silent auto-import from the user's default browser
-          // BEFORE opening a window. The user's default browser keeps the
-          // upstream identity provider session alive through normal use;
-          // borrowing those cookies usually satisfies the wall without any
-          // human interaction. See handoff-cookie-import.ts and
-          // memory/feedback_proactive_handoff_ux.md.
-          //
-          // Only runs for consent-approved domains (privacy gate).
-          // No-op if no installed browser, no matching cookies, or import fails.
           const page = browserManager.getPage();
           const targetUrl = command === 'goto' ? args[0] : (page?.url() ?? '');
           const wallUrl = page?.url() ?? targetUrl;
-          if (page) {
+
+          // STEP 1: Try silent auto-import from the user's default browser
+          // BEFORE opening a window. Skip for fingerprint-pinned domains —
+          // their session tokens (ttwid, cf_clearance, etc.) are bound to the
+          // issuing browser's fingerprint. Importing Arc's cookies into
+          // CloakBrowser would always fail, so we go straight to autoHandover.
+          //
+          // Only runs for consent-approved domains (privacy gate).
+          // No-op if no installed browser, no matching cookies, or import fails.
+          const siteIsPinned = isPinned(wallUrl);
+          if (siteIsPinned) {
+            result += `\nFingerprint-pinned domain — skipping Arc import (session tokens are tied to CloakBrowser fingerprint). Use 'nc open-handoff' to log in.`;
+          }
+          if (page && !siteIsPinned) {
             try {
               const importResult = await tryAutoImportForWall(
                 targetUrl,
@@ -923,9 +927,49 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
                   browserManager.resetFailures();
                   return new Response(result, { status: 200, headers: { 'Content-Type': 'text/plain' } });
                 }
-                result += `\nAuto-import insufficient (${detection2.reason}). Falling back to headed handover.`;
+                result += `\nAuto-import insufficient (${detection2.reason}).`;
               } else if (importResult.attempted) {
                 result += `\nNo matching cookies found in ${importResult.browser ?? 'default browser'} for this domain chain.`;
+              }
+
+              // STEP 1b: Click-through retry — some pages (ByteDance doubao
+              // region-ban, Weibo gates, etc.) hide their SSO provider behind
+              // a 登录 button. The SSO iframe only appears AFTER that click,
+              // so collectLoginHostsFromPage sees nothing on the initial load
+              // and we import only site-own cookies (not enough to clear the
+              // wall). Click the button, let the modal open, re-discover hosts,
+              // re-import.
+              const clickedLabel = await clickLoginButton(page);
+              if (clickedLabel) {
+                result += `\nClicked "${clickedLabel}" to surface SSO providers...`;
+                await new Promise(r => setTimeout(r, 2000));
+                const postClickHosts = await collectLoginHostsFromPage(page);
+                if (postClickHosts.length > 0) {
+                  result += ` Discovered: ${postClickHosts.join(', ')}.`;
+                  const importResult2 = await tryAutoImportForWall(
+                    targetUrl, page.url(), page.context(), undefined, postClickHosts,
+                  );
+                  if (importResult2.importedCount > 0) {
+                    result += `\nPost-click import: ${importResult2.importedCount} cookies from ${importResult2.browser}. Re-trying navigation...`;
+                    await page.goto(targetUrl, { waitUntil: 'load', timeout: 30000 }).catch(() => {});
+                    await new Promise(r => setTimeout(r, 1500));
+                    const detection3 = await browserManager.detectLoginWall();
+                    if (!detection3?.detected) {
+                      result += `\nLogin wall cleared after click-through import. No window opened.`;
+                      browserManager.resetFailures();
+                      return new Response(result, { status: 200, headers: { 'Content-Type': 'text/plain' } });
+                    }
+                    result += `\nClick-through import insufficient (${detection3.reason}).`;
+                    // Both Arc imports failed — the site fingerprint-pins its
+                    // sessions (ByteDance ttwid, Cloudflare tokens, etc.).
+                    // Mark immediately so autoHandover skips the 5-minute Arc
+                    // poll and routes straight to the CloakBrowser prompt.
+                    markPinnedObserved(targetUrl, 'cloudflare');
+                    result += ` Site marked fingerprint-pinned — use 'nc open-handoff' to log in via CloakBrowser.`;
+                  }
+                }
+              } else {
+                result += `\nFalling back to headed handover.`;
               }
             } catch (err: any) {
               console.error(`[nightcrawl] Auto-import error: ${err?.message ?? err}`);
