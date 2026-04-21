@@ -34,6 +34,7 @@ import { addConsoleEntry, addNetworkEntry, addDialogEntry, networkBuffer, type D
 import { validateNavigationUrl } from './url-validation';
 import { assertSafeNavigation, filterHostileCookies } from './hostile-domains';
 import { replaceCookiesFor } from './handoff-cookie-import';
+import { applyLocale, buildAcceptLanguage } from './locale';
 import { parseEngineConfig } from './engine-config';
 import { launchCloakBrowser, shouldSkipCdpPatches } from './cloakbrowser-engine';
 import { DEFAULT_USER_AGENT, findChromiumExecutable, applyStealthPatches } from './stealth';
@@ -194,6 +195,7 @@ export class BrowserManager {
         humanize: engineConfig.humanize,
         humanPreset: engineConfig.humanize ? 'default' : undefined,
         viewport: { width: 1920, height: 1080 },
+        locale: process.env.BROWSE_LOCALE,
       });
       this.browser = result.browser;
       this.context = result.context;
@@ -250,6 +252,11 @@ export class BrowserManager {
       }
     }
 
+    // Locale override (BROWSE_LOCALE env) — patches navigator.language,
+    // navigator.languages, and Accept-Language header. Applied to both
+    // engines after context creation so sites that region-gate on client
+    // locale (e.g. doubao.com's region-ban redirect) can be unlocked by
+    // telling the site the user's real locale instead of engine default.
     // Chromium crash -> exit with clear message
     this.browser!.on('disconnected', () => {
       console.error('[nightcrawl] FATAL: Chromium process crashed or was killed. Server exiting.');
@@ -262,6 +269,20 @@ export class BrowserManager {
       ...this.extraHeaders,
       'User-Agent': ua,
     });
+
+    // Locale override (BROWSE_LOCALE env). Layered on AFTER the UA
+    // header is set so applyLocale can merge Accept-Language without
+    // clobbering User-Agent. Patches navigator.language, .languages,
+    // and Accept-Language — unlocks sites that region-gate on client
+    // locale (e.g. doubao.com's region-ban redirect).
+    const envLocale = process.env.BROWSE_LOCALE;
+    if (envLocale) {
+      await applyLocale(this.context!, envLocale, {
+        ...this.extraHeaders,
+        'User-Agent': ua,
+      });
+      console.log(`[nightcrawl] Locale: ${envLocale}`);
+    }
 
     // Create first tab
     await this.newTab();
