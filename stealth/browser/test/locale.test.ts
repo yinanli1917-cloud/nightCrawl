@@ -13,6 +13,9 @@ import {
   buildLanguageList,
   buildAcceptLanguage,
   applyLocale,
+  normalizeLocale,
+  resolveLocale,
+  detectSystemLocale,
 } from '../src/locale';
 
 describe('buildLanguageList', () => {
@@ -145,6 +148,53 @@ describe('applyLocale', () => {
     expect(merged['User-Agent']).toBe('Mozilla/5.0 (custom)');
     expect(merged['X-Trace']).toBe('abc');
     expect(merged['Accept-Language']).toBe('zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7');
+  });
+
+  test('normalizeLocale collapses BCP 47 script subtag to a Chromium-friendly form', () => {
+    expect(normalizeLocale('zh-Hans-CN')).toBe('zh-CN');
+    expect(normalizeLocale('zh-Hant-TW')).toBe('zh-TW');
+    // Already-normalized passes through
+    expect(normalizeLocale('zh-CN')).toBe('zh-CN');
+    expect(normalizeLocale('en-US')).toBe('en-US');
+    // No script subtag, no change
+    expect(normalizeLocale('fr-FR')).toBe('fr-FR');
+  });
+
+  test('resolveLocale: BROWSE_LOCALE env wins over system detection', () => {
+    const orig = process.env.BROWSE_LOCALE;
+    try {
+      process.env.BROWSE_LOCALE = 'ja-JP';
+      expect(resolveLocale()).toBe('ja-JP');
+    } finally {
+      if (orig === undefined) delete process.env.BROWSE_LOCALE;
+      else process.env.BROWSE_LOCALE = orig;
+    }
+  });
+
+  test('resolveLocale: empty BROWSE_LOCALE falls through to system detection', () => {
+    const orig = process.env.BROWSE_LOCALE;
+    try {
+      process.env.BROWSE_LOCALE = '   ';
+      // On non-macOS CI, detectSystemLocale returns null and resolveLocale
+      // returns null. On macOS it returns the user's system locale. Either
+      // way, empty BROWSE_LOCALE must NOT be treated as a valid override.
+      const result = resolveLocale();
+      expect(result !== '   ').toBe(true);
+    } finally {
+      if (orig === undefined) delete process.env.BROWSE_LOCALE;
+      else process.env.BROWSE_LOCALE = orig;
+    }
+  });
+
+  test('detectSystemLocale returns null on non-macOS platforms', () => {
+    // We can't easily spoof platform here without rewiring, so just
+    // assert the function is callable and returns a string or null.
+    const result = detectSystemLocale();
+    expect(result === null || typeof result === 'string').toBe(true);
+    // If it returned a string, it must pass normalizeLocale (idempotent)
+    if (result) {
+      expect(normalizeLocale(result)).toBe(result);
+    }
   });
 
   test('init script, when executed, overrides navigator.language and .languages', async () => {

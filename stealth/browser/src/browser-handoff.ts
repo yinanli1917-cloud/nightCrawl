@@ -14,8 +14,11 @@ import { DEFAULT_USER_AGENT, findChromiumExecutable, applyStealthPatches } from 
 import { isHostile, HostileDomainError } from './hostile-domains';
 import { eTldPlusOne, readConsent, isApproved, defaultConsentPath } from './handoff-consent';
 import { decidePoll, initialPollState, defaultPollOptions } from './handoff-poll';
-import { tryAutoImportForWall } from './handoff-cookie-import';
-import { notify } from './notify';
+import { tryAutoImportForWall, collectLoginHostsFromPage } from './handoff-cookie-import';
+import { notify, notifyWithAction, focusAppAction } from './notify';
+import { isPinned, pinnedVendor, markPinnedObserved } from './fingerprint-pinned';
+import { parseEngineConfig } from './engine-config';
+import { launchCloakBrowser } from './cloakbrowser-engine';
 
 // Re-exported by browser-manager.ts so getChromium is available without circular dep.
 // The actual getChromium is passed via the setup function below.
@@ -58,17 +61,37 @@ export async function launchHeaded(this: any, authToken?: string): Promise<void>
   const userDataDir = path.join(process.env.HOME || '/tmp', '.nightcrawl', 'chromium-profile');
   fs.mkdirSync(userDataDir, { recursive: true });
 
-  const chromiumPath = findChromiumExecutable();
-  this.context = await (await _getChromium()).launchPersistentContext(userDataDir, {
-    headless: false,
-    ...(chromiumPath ? { executablePath: chromiumPath } : {}),
-    args: launchArgs,
-    viewport: null,
-    ignoreDefaultArgs: [
-      '--disable-extensions',
-      '--disable-component-extensions-with-background-pages',
-    ],
-  });
+  // Engine selection: use the SAME engine as the headless session so
+  // cookies minted here stay valid when CloakBrowser resumes headless.
+  // Bot-managed sites pin sessions to browser fingerprint, so launching
+  // headed mode in Chrome-for-Testing while headless runs CloakBrowser
+  // means every headed login is wasted — the cookies die on replay.
+  const engineConfig = parseEngineConfig();
+
+  if (engineConfig.engine === 'cloakbrowser') {
+    const { context } = await launchCloakBrowser({
+      headless: false,
+      userDataDir,
+      extensionsDir: extensionPath ?? undefined,
+      fingerprintSeed: engineConfig.fingerprintSeed,
+      humanize: engineConfig.humanize,
+      viewport: undefined,
+    });
+    this.context = context;
+    console.log(`[nightcrawl] Headed engine: CloakBrowser (seed: ${engineConfig.fingerprintSeed ?? 'random'})`);
+  } else {
+    const chromiumPath = findChromiumExecutable();
+    this.context = await (await _getChromium()).launchPersistentContext(userDataDir, {
+      headless: false,
+      ...(chromiumPath ? { executablePath: chromiumPath } : {}),
+      args: launchArgs,
+      viewport: null,
+      ignoreDefaultArgs: [
+        '--disable-extensions',
+        '--disable-component-extensions-with-background-pages',
+      ],
+    });
+  }
   this.browser = this.context.browser();
   this.connectionMode = 'headed';
   this.intentionalDisconnect = false;
@@ -204,20 +227,38 @@ export async function handoff(this: any, message: string): Promise<string> {
     // the daemon (P1 orphan-window bug, HANDOFF.md).
     this.headedUserDataDir = userDataDir;
 
-    const chromiumPath = findChromiumExecutable();
-    newContext = await (await _getChromium()).launchPersistentContext(userDataDir, {
-      headless: false,
-      ...(chromiumPath ? { executablePath: chromiumPath } : {}),
-      chromiumSandbox: process.platform !== 'win32',
-      args: launchArgs,
-      viewport: null,
-      ignoreDefaultArgs: [
-        '--disable-extensions',
-        '--disable-component-extensions-with-background-pages',
-        '--enable-automation',
-      ],
-      timeout: 30000,
-    });
+    // Engine selection: the handoff MUST use the same engine as the
+    // headless daemon. Mixing engines means the login cookies are minted
+    // against Chrome-for-Testing's fingerprint but replayed by CloakBrowser
+    // — bot-managed edges reject them and the user gets stuck re-logging
+    // every session. See memory/project_cloakbrowser_default_decision.md.
+    const engineConfig = parseEngineConfig();
+    if (engineConfig.engine === 'cloakbrowser') {
+      const { context: cbContext } = await launchCloakBrowser({
+        headless: false,
+        userDataDir,
+        extensionsDir: extensionPath ?? undefined,
+        fingerprintSeed: engineConfig.fingerprintSeed,
+        humanize: engineConfig.humanize,
+      });
+      newContext = cbContext;
+      console.log(`[nightcrawl] Handoff engine: CloakBrowser (seed: ${engineConfig.fingerprintSeed ?? 'random'})`);
+    } else {
+      const chromiumPath = findChromiumExecutable();
+      newContext = await (await _getChromium()).launchPersistentContext(userDataDir, {
+        headless: false,
+        ...(chromiumPath ? { executablePath: chromiumPath } : {}),
+        chromiumSandbox: process.platform !== 'win32',
+        args: launchArgs,
+        viewport: null,
+        ignoreDefaultArgs: [
+          '--disable-extensions',
+          '--disable-component-extensions-with-background-pages',
+          '--enable-automation',
+        ],
+        timeout: 30000,
+      });
+    }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     return `ERROR: Cannot open headed browser — ${msg}. Headless browser still running.`;
@@ -513,18 +554,55 @@ export async function autoHandover(this: any): Promise<string | null> {
   // See memory/project_privacy_promise.md.
   if (!process.env.SSH_TTY && process.platform === 'darwin') {
     const domain = eTldPlusOne(loginUrl);
-    console.log(`[nightcrawl] Opening ${domain} in your default browser for login...`);
-    notify('nightCrawl Login', `Log into ${domain} in your browser. nightCrawl will auto-resume.`);
+    const pinned = isPinned(loginUrl);
+    const vendor = pinnedVendor(loginUrl);
 
-    try {
-      const { execSync } = await import('child_process');
-      execSync(`open "${loginUrl.replace(/"/g, '\\"')}"`, { timeout: 5000 });
-    } catch (err: any) {
-      console.warn(`[nightcrawl] Failed to open default browser: ${err?.message}`);
+    // Pinned domain: cookie import from default browser is ARCHITECTURALLY
+    // useless (cookies are minted against the default browser's fingerprint,
+    // CloakBrowser replays with a different one, edge rejects). Skip the
+    // Arc-poll entirely and go straight to headed CloakBrowser — the only
+    // path that mints cookies the headless engine can actually reuse.
+    if (pinned) {
+      console.log(
+        `[nightcrawl] ${domain} is ${vendor}-protected (fingerprint-pinned). Skipping default-browser cookie import (cookies from another browser cannot authenticate here). Opening headed CloakBrowser directly.`,
+      );
+      notifyWithAction(
+        'nightCrawl: login required',
+        `${domain} is ${vendor}-protected — opening CloakBrowser so you can log in. The login must happen here so CloakBrowser can replay the session.`,
+        focusAppAction('Chromium', 'Focus CloakBrowser'),
+      );
+      // Fall through to the spawned-CloakBrowser block below.
+    } else {
+      console.log(`[nightcrawl] Opening ${domain} in your default browser for login...`);
+
+      // Gate vs auto-open: if BROWSE_NOTIFY_GATE=1, only notify; user clicks
+      // "Open browser" to trigger. Default (unset/0) behaves as before —
+      // open immediately and also notify. Gate mode is the less-intrusive
+      // UX but requires terminal-notifier to be present; otherwise the
+      // passive notification can't be clicked.
+      const gated = process.env.BROWSE_NOTIFY_GATE === '1';
+
+      notifyWithAction(
+        'nightCrawl: log in',
+        gated
+          ? `${domain} needs a login. Click "Open browser" to start.`
+          : `Opening ${domain} in your browser. Auto-resume when done.`,
+        { label: 'Open browser', onClick: `open "${loginUrl.replace(/"/g, '\\"')}"` },
+      );
+
+      if (!gated) {
+        try {
+          const { execSync } = await import('child_process');
+          execSync(`open "${loginUrl.replace(/"/g, '\\"')}"`, { timeout: 5000 });
+        } catch (err: any) {
+          console.warn(`[nightcrawl] Failed to open default browser: ${err?.message}`);
+        }
+      }
     }
 
-    // Poll cookie database for auth cookies
-    const cookiePollTimeout = 5 * 60 * 1000;
+    // Poll cookie database for auth cookies — ONLY for non-pinned domains.
+    // Pinned domains short-circuit straight to headed-CloakBrowser below.
+    const cookiePollTimeout = pinned ? 0 : 5 * 60 * 1000;
     const cookiePollInterval = 3000;
     const cookiePollStart = Date.now();
     let cookieLoginSucceeded = false;
@@ -532,8 +610,15 @@ export async function autoHandover(this: any): Promise<string | null> {
     while (Date.now() - cookiePollStart < cookiePollTimeout) {
       await new Promise(resolve => setTimeout(resolve, cookiePollInterval));
 
+      // Derive candidate hosts from the CURRENT page's DOM (iframes,
+      // forms, scripts, login-ish anchors) — generalizes to any SSO
+      // ecosystem, not just the hardcoded Western-IdP list. Catches
+      // doubao → douyin, weibo → qq.com, etc. without a whitelist.
+      // Empty on failure — tryAutoImportForWall falls back to the
+      // heuristic list, same as before.
+      const observedHosts = await collectLoginHostsFromPage(this.getPage());
       const importResult = await tryAutoImportForWall(
-        loginUrl, loginUrl, this.context!,
+        loginUrl, loginUrl, this.context!, undefined, observedHosts,
       );
 
       if (importResult.importedCount > 0) {
@@ -559,11 +644,65 @@ export async function autoHandover(this: any): Promise<string | null> {
       return `Login completed via default browser cookie import for ${domain}. Zero windows opened.`;
     }
 
-    console.log(`[nightcrawl] Default browser cookie import did not clear login wall. Falling back to headed Chromium...`);
+    if (!pinned) {
+      // Observational pinning: we polled + imported but the wall didn't
+      // clear. That's the empirical signature of fingerprint pinning.
+      // Mark so subsequent visits skip the doomed poll entirely.
+      markPinnedObserved(loginUrl, 'cloudflare');
+      console.log(`[nightcrawl] Default browser cookie import did not clear login wall for ${domain}. Marking as fingerprint-pinned. Falling back to headed CloakBrowser...`);
+    }
   }
 
   // ─── Fallback: Spawned Headed Chromium ─────────────────────
-  console.log(`[nightcrawl] Switching to headed mode for login at ${loginUrl}...`);
+  // HARD GATE: do NOT pop a headed window silently. The user must
+  // opt in via `nc open-handoff` (explicit CLI command) or by setting
+  // BROWSE_AUTO_POP_HEADED=1 for this flow. Default is to return a
+  // structured message the agent can relay so the user sees what's
+  // about to happen BEFORE it happens.
+  //
+  // This replaces the previous behavior where autoHandover would pop
+  // a CloakBrowser window as soon as the agent's goto resolved. That
+  // UX was "windows jumping in front of your work without consent" —
+  // the exact thing the no-silent-pops rule forbids.
+  const autoPop = process.env.BROWSE_AUTO_POP_HEADED === '1';
+  if (!autoPop) {
+    const domain = loginUrl ? eTldPlusOne(loginUrl) : 'site';
+    const vendor = loginUrl ? pinnedVendor(loginUrl) : null;
+    const body = vendor
+      ? `${domain} is ${vendor}-protected — your default browser's session can't authenticate here. Run 'open-handoff' to launch a headed CloakBrowser window where you can log in. Cookies minted there will replay correctly in headless.`
+      : `Default-browser cookies didn't clear ${domain}. Run 'open-handoff' to launch a headed CloakBrowser window for direct login.`;
+
+    // Notification button runs the `open-handoff` meta-command via the
+    // CLI. That connects back to this daemon over its unix socket and
+    // triggers the headed-CloakBrowser launch exactly the same way the
+    // env-var path does. One-click from notification to logged-in
+    // window, no windows popping without user consent.
+    const cliPath = `${__dirname}/cli.ts`;
+    const bunPath = process.execPath; // the bun binary running this daemon
+    const safeUrl = loginUrl.replace(/"/g, '\\"');
+    notifyWithAction(
+      'nightCrawl: headed login needed',
+      body,
+      {
+        label: 'Open CloakBrowser',
+        onClick: `"${bunPath}" run "${cliPath}" open-handoff "${safeUrl}"`,
+      },
+    );
+
+    return [
+      `HANDOFF_PENDING: ${domain} needs a headed login in CloakBrowser.`,
+      `Click the notification's "Open CloakBrowser" button, or run:`,
+      `  nc open-handoff ${loginUrl}`,
+      `(Or set BROWSE_AUTO_POP_HEADED=1 to allow automatic pops.)`,
+    ].join('\n');
+  }
+
+  console.log(`[nightcrawl] BROWSE_AUTO_POP_HEADED=1 set — popping headed CloakBrowser for ${loginUrl}...`);
+  notifyWithAction(
+    'nightCrawl: opening CloakBrowser',
+    `Headed CloakBrowser opening for login at ${eTldPlusOne(loginUrl)}.`,
+    focusAppAction('Chromium', 'Focus CloakBrowser'),
+  );
 
   const handoffResult = await this.handoff(
     `Login wall detected. Please log in. Will auto-resume when done.`

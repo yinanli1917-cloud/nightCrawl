@@ -19,6 +19,68 @@
  */
 
 import type { BrowserContext } from 'playwright';
+import { spawnSync } from 'child_process';
+
+// ─── System locale detection ─────────────────────────────────
+
+/**
+ * Read the user's macOS preferred languages (NSGlobalDomain
+ * AppleLanguages) and return a BCP 47 primary locale. Returns null
+ * on non-macOS, missing defaults binary, or parse failure.
+ *
+ * Normalizes zh-Hans-CN → zh-CN, zh-Hant-TW → zh-TW so the string
+ * works as a Chromium --lang value (Chromium doesn't recognize the
+ * BCP 47 script subtag for its lang flag).
+ *
+ * Example:
+ *   AppleLanguages = ("en-CN", "zh-Hans-CN") → "en-CN"
+ *   AppleLanguages = ("zh-Hans-CN", "en-US") → "zh-CN"
+ *   AppleLanguages = ("zh-Hant-TW",)         → "zh-TW"
+ */
+export function detectSystemLocale(): string | null {
+  if (process.platform !== 'darwin') return null;
+  try {
+    const r = spawnSync('defaults', ['read', '-g', 'AppleLanguages'], {
+      encoding: 'utf-8',
+      timeout: 2000,
+    });
+    if (r.status !== 0 || !r.stdout) return null;
+    // Output looks like:
+    //   (
+    //       "en-CN",
+    //       "zh-Hans-CN"
+    //   )
+    const match = r.stdout.match(/"([a-zA-Z-]+)"/);
+    if (!match) return null;
+    return normalizeLocale(match[1]);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Collapse BCP 47 script subtags that Chromium's --lang flag rejects.
+ *   zh-Hans-CN → zh-CN (Simplified)
+ *   zh-Hant-TW → zh-TW (Traditional)
+ * Other locales pass through unchanged.
+ */
+export function normalizeLocale(locale: string): string {
+  const m = locale.match(/^([a-z]{2,3})-(Hans|Hant)-([A-Z]{2})$/);
+  if (m) return `${m[1]}-${m[3]}`;
+  return locale;
+}
+
+/**
+ * Resolve the locale to apply. Priority:
+ *   1. BROWSE_LOCALE env var (explicit user override).
+ *   2. macOS AppleLanguages first entry (system preference).
+ *   3. null (engine keeps its default, currently en-US).
+ */
+export function resolveLocale(): string | null {
+  const envLocale = process.env.BROWSE_LOCALE?.trim();
+  if (envLocale) return envLocale;
+  return detectSystemLocale();
+}
 
 /**
  * Build a descending-q-value Accept-Language header from a locale.

@@ -162,6 +162,68 @@ export function discoverHostKeys(
   return matches;
 }
 
+// ─── DOM-based login-host discovery ──────────────────────────
+
+/**
+ * Read the current page's DOM to discover which external domains are
+ * involved in its login flow. Catches any SSO provider the page
+ * actually references — no whitelist, no guessing.
+ *
+ * Sources (in order of specificity):
+ *   - iframe[src]           — most SSO providers embed via iframe
+ *   - form[action]          — classic POST-based auth
+ *   - a[href] for any link that looks login/account related
+ *   - script[src]           — the provider CDN (fallback signal)
+ *
+ * Returns eTLD+1 strings. Safe to pass straight into
+ * `tryAutoImportForWall`'s observedHosts parameter. Returns an empty
+ * array on any failure — the caller falls back to the heuristic
+ * SSO_HELPER_DOMAINS list as a backstop.
+ *
+ * Why this is the right generalization: a prior version used a hand-
+ * maintained SSO_HELPER_DOMAINS whitelist, which missed ByteDance
+ * (doubao → douyin SSO), WeChat, Line, and any new IdP ecosystem.
+ * Any site whose login flow we can see in the DOM now gets its
+ * cookies imported correctly without code changes.
+ */
+export async function collectLoginHostsFromPage(page: any): Promise<string[]> {
+  try {
+    const urls: string[] = await page.evaluate(() => {
+      const out = new Set<string>();
+      const add = (s: string | null | undefined) => {
+        if (s && /^https?:/.test(s)) out.add(s);
+      };
+      for (const el of Array.from(document.querySelectorAll('iframe'))) {
+        add((el as HTMLIFrameElement).src);
+      }
+      for (const el of Array.from(document.querySelectorAll('form'))) {
+        add((el as HTMLFormElement).action);
+      }
+      for (const el of Array.from(document.querySelectorAll('a[href]'))) {
+        const href = (el as HTMLAnchorElement).href;
+        // Only links with login-ish hints — avoid broadcast-adding
+        // every footer link as a candidate.
+        if (/login|signin|oauth|sso|auth|account|passport/i.test(href)) add(href);
+      }
+      for (const el of Array.from(document.querySelectorAll('script[src]'))) {
+        add((el as HTMLScriptElement).src);
+      }
+      return [...out];
+    });
+
+    const etlds = new Set<string>();
+    for (const u of urls) {
+      try {
+        const host = new URL(u).hostname;
+        etlds.add(eTldPlusOne(host));
+      } catch {}
+    }
+    return [...etlds];
+  } catch {
+    return [];
+  }
+}
+
 // ─── Atomic cookie swap (Stale Request prevention) ──────────
 
 /**

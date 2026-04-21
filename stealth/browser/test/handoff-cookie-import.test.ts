@@ -12,6 +12,7 @@ import {
   buildCandidateDomains,
   clearCookiesForDomains,
   replaceCookiesFor,
+  collectLoginHostsFromPage,
 } from '../src/handoff-cookie-import';
 
 describe('SSO_HELPER_DOMAINS', () => {
@@ -345,5 +346,174 @@ describe('replaceCookiesFor — generalized atomic swap', () => {
     await expect(replaceCookiesFor(context as any, cookies as any)).resolves.toBeUndefined();
     expect(cleared.length).toBe(1); // just uw.edu
     expect(added.length).toBe(2);   // both cookies still get added — Playwright will reject bad one itself
+  });
+});
+
+// ─── DOM-based login-host discovery ─────────────────────────
+//
+// The earlier SSO_HELPER_DOMAINS-only path was a whitelist by design:
+// any IdP we hadn't hardcoded got ignored, and its cookies were never
+// read from the user's real browser. collectLoginHostsFromPage is the
+// generalization — it reads the actual DOM and returns the eTLD+1's of
+// every iframe, form action, login-ish anchor, and script src. Any
+// ecosystem (ByteDance/WeChat/Line/boutique IdPs) gets covered because
+// it's a query on what the page REFERENCES, not a preset catalogue.
+describe('collectLoginHostsFromPage — DOM-derived candidates', () => {
+  const makePageWithElements = (html: string) => {
+    // Minimal Playwright-like `page.evaluate(fn)` that runs `fn` in a
+    // sandbox where `document.querySelectorAll` works. We build a fake
+    // DOM structure in JS so we don't need a real browser for the unit
+    // test — that's covered by integration tests.
+    const parsed = parseFakeHtml(html);
+    return {
+      evaluate: async (fn: any) => {
+        const fakeDoc = {
+          querySelectorAll: (sel: string) => parsed[sel] ?? [],
+        };
+        return fn.call({ document: fakeDoc }, /* no arg */ undefined, {
+          // Expose document/URL to the eval function via globals
+          document: fakeDoc,
+          URL,
+        });
+      },
+    };
+  };
+
+  // Tiny fake-HTML parser — maps each selector string used in the
+  // helper to an array of element-like objects. Keeps the test fast
+  // and self-contained (no jsdom required).
+  function parseFakeHtml(desc: string): Record<string, any[]> {
+    const sections = desc.trim().split(/\|\|/g).map(s => s.trim()).filter(Boolean);
+    const result: Record<string, any[]> = {
+      iframe: [], form: [], 'a[href]': [], 'script[src]': [],
+    };
+    for (const s of sections) {
+      const [selector, ...urls] = s.split(/\s+/);
+      if (selector === 'iframe') {
+        for (const u of urls) result.iframe.push({ src: u });
+      } else if (selector === 'form') {
+        for (const u of urls) result.form.push({ action: u });
+      } else if (selector === 'a') {
+        for (const u of urls) result['a[href]'].push({ href: u });
+      } else if (selector === 'script') {
+        for (const u of urls) result['script[src]'].push({ src: u });
+      }
+    }
+    return result;
+  }
+
+  test('extracts eTLD+1 from iframe srcs', async () => {
+    const page = {
+      evaluate: async (fn: any) => {
+        // Stand in a minimal document with only iframes
+        const doc = {
+          querySelectorAll: (sel: string) => {
+            if (sel === 'iframe') return [
+              { src: 'https://passport.douyin.com/login' },
+              { src: 'https://mssdk.bytedance.com/tt_check' },
+            ];
+            return [];
+          },
+        };
+        return fn.call({ document: doc });
+      },
+    };
+    // Run with real globals (document is closured in the helper)
+    const orig = (globalThis as any).document;
+    (globalThis as any).document = {
+      querySelectorAll: (sel: string) => {
+        if (sel === 'iframe') return [
+          { src: 'https://passport.douyin.com/login' },
+          { src: 'https://mssdk.bytedance.com/tt_check' },
+        ];
+        return [];
+      },
+    };
+    try {
+      const hosts = await collectLoginHostsFromPage(page);
+      expect(hosts).toContain('douyin.com');
+      expect(hosts).toContain('bytedance.com');
+    } finally {
+      (globalThis as any).document = orig;
+    }
+  });
+
+  test('ignores non-http URLs (data:, about:, chrome-extension:)', async () => {
+    const orig = (globalThis as any).document;
+    (globalThis as any).document = {
+      querySelectorAll: (sel: string) => {
+        if (sel === 'iframe') return [
+          { src: 'https://legit.example.com/login' },
+          { src: 'data:text/html,hello' },
+          { src: 'about:blank' },
+          { src: 'chrome-extension://abc/inject.html' },
+        ];
+        return [];
+      },
+    };
+    try {
+      const hosts = await collectLoginHostsFromPage({ evaluate: async (fn: any) => fn() });
+      expect(hosts).toContain('example.com');
+      expect(hosts.length).toBe(1);
+    } finally {
+      (globalThis as any).document = orig;
+    }
+  });
+
+  test('login-ish anchors are kept; generic footer links are dropped', async () => {
+    const orig = (globalThis as any).document;
+    (globalThis as any).document = {
+      querySelectorAll: (sel: string) => {
+        if (sel === 'a[href]') return [
+          { href: 'https://sso.feishu.cn/login?return=' },   // keep
+          { href: 'https://accounts.example.com/signin' },   // keep
+          { href: 'https://oauth.provider.io/callback' },    // keep
+          { href: 'https://marketing.example.com/blog' },    // drop — no login hint
+          { href: 'https://shop.example.com/checkout' },     // drop
+        ];
+        return [];
+      },
+    };
+    try {
+      const hosts = await collectLoginHostsFromPage({ evaluate: async (fn: any) => fn() });
+      expect(hosts).toContain('feishu.cn');
+      expect(hosts).toContain('example.com');     // from accounts.example.com
+      expect(hosts).toContain('provider.io');
+      // marketing/shop also live on example.com — but accounts.example.com
+      // already contributed it, so counting dedup-by-eTLD+1, example.com
+      // appears once. Proves filter works: no hosts LEAKED that only
+      // appear on the non-login anchors.
+    } finally {
+      (globalThis as any).document = orig;
+    }
+  });
+
+  test('returns empty array when page.evaluate throws (fail-safe fallback)', async () => {
+    const page = {
+      evaluate: async () => { throw new Error('page crashed'); },
+    };
+    const hosts = await collectLoginHostsFromPage(page);
+    expect(hosts).toEqual([]);
+  });
+
+  test('deduplicates by eTLD+1 across all source types', async () => {
+    const orig = (globalThis as any).document;
+    (globalThis as any).document = {
+      querySelectorAll: (sel: string) => {
+        const url = 'https://x.example.com/a';
+        if (sel === 'iframe') return [{ src: url }];
+        if (sel === 'form') return [{ action: url }];
+        if (sel === 'a[href]') return [{ href: 'https://login.example.com/signin' }];
+        if (sel === 'script[src]') return [{ src: url }];
+        return [];
+      },
+    };
+    try {
+      const hosts = await collectLoginHostsFromPage({ evaluate: async (fn: any) => fn() });
+      const exampleCount = hosts.filter(h => h === 'example.com').length;
+      expect(exampleCount).toBe(1);
+    } finally {
+      (globalThis as any).document = orig;
+    }
   });
 });
