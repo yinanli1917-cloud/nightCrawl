@@ -1013,8 +1013,13 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
           } else if (!stepTwoPinned) {
             result += `\nOpening ${detection.domain} in your default browser for login. Will auto-resume when cookies are imported.`;
           }
-          browserManager.autoHandover(targetUrl).then(handoverResult => {
+          browserManager.autoHandover(targetUrl).then(async handoverResult => {
             if (handoverResult) console.log(`[nightcrawl] Auto-handover complete: ${handoverResult}`);
+            // If cookies resolved the wall without opening a window, persist them
+            // immediately so a daemon restart doesn't re-trigger the SSO flow.
+            if (handoverResult?.includes('Zero windows')) {
+              await persistStorage();
+            }
           }).catch(err => {
             console.error(`[nightcrawl] Auto-handover failed: ${err.message}`);
           });

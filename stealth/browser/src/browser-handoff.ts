@@ -20,6 +20,32 @@ import { isPinned, pinnedVendor, markPinnedObserved } from './fingerprint-pinned
 import { parseEngineConfig } from './engine-config';
 import { launchCloakBrowser } from './cloakbrowser-engine';
 
+// ─── SSO Redirect Stripper ──────────────────────────────────
+// SSO redirect URLs carry one-time query tokens (SAML execution keys,
+// OAuth state/code pairs, Shibboleth SAMLRequest nonces).  Re-navigating
+// to them after a cookie import always starts a fresh login form — even
+// when the server-side session is fully valid.  Strip the query so
+// the redirect host becomes the test destination, which allows the IdP
+// to complete the flow via the existing session cookie.
+//
+// Patterns stripped:
+//   SAML / Shibboleth:  execution=eXsX
+//   OAuth 2 / OIDC:     state=, code=, id_token=, access_token=
+//   Generic SSO:        SAMLRequest=, RelayState=, SAMLResponse=
+//   Microsoft / ADFS:   wctx=, wtrealm=, wreply=
+const SSO_QUERY_PARAMS = /\b(execution|SAMLRequest|SAMLResponse|RelayState|state|code|id_token|access_token|wctx|wtrealm|wreply)=/i;
+
+function stripSSORedirect(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (SSO_QUERY_PARAMS.test(parsed.search)) {
+      // Return just the origin + path — strip all SSO query tokens.
+      return `${parsed.origin}${parsed.pathname}`;
+    }
+  } catch {}
+  return url;
+}
+
 // Re-exported by browser-manager.ts so getChromium is available without circular dep.
 // The actual getChromium is passed via the setup function below.
 let _getChromium: () => Promise<typeof import('playwright').chromium>;
@@ -357,27 +383,46 @@ export async function resume(this: any): Promise<string> {
     this.intentionalDisconnect = false;
     this.headedUserDataDir = null;
 
-    const chromium = await _getChromium();
+    // Resume MUST use the same engine as the headed session.
+    // Cookies minted by CloakBrowser's fingerprint become invalid if replayed
+    // by a different Chromium binary — bot-managed edges reject them and the
+    // login is wasted. Match engines: CloakBrowser headed → CloakBrowser headless.
+    const engineConfig = parseEngineConfig();
     const ua = this.customUserAgent || DEFAULT_USER_AGENT;
-    this.browser = await chromium.launch({
-      headless: true,
-      chromiumSandbox: process.platform !== 'win32',
-      args: ['--disable-blink-features=AutomationControlled'],
-    });
-    this.context = await this.browser.newContext({
-      viewport: { width: 1920, height: 1080 },
-      userAgent: ua,
-    });
-    await this.context.setExtraHTTPHeaders({
-      ...this.extraHeaders,
-      'User-Agent': ua,
-    });
 
-    this.browser.on('disconnected', () => {
-      if (this.intentionalDisconnect) return;
-      console.error('[nightcrawl] FATAL: Chromium process crashed or was killed. Server exiting.');
-      process.exit(1);
-    });
+    if (engineConfig.engine === 'cloakbrowser') {
+      const { context } = await launchCloakBrowser({
+        headless: true,
+        fingerprintSeed: engineConfig.fingerprintSeed,
+        humanize: false,
+      });
+      this.context = context;
+      this.browser = (context as any).browser?.() ?? null;
+      console.log(`[nightcrawl] Resumed headless via CloakBrowser (seed: ${engineConfig.fingerprintSeed ?? 'random'})`);
+    } else {
+      const chromium = await _getChromium();
+      this.browser = await chromium.launch({
+        headless: true,
+        chromiumSandbox: process.platform !== 'win32',
+        args: ['--disable-blink-features=AutomationControlled'],
+      });
+      this.context = await this.browser.newContext({
+        viewport: { width: 1920, height: 1080 },
+        userAgent: ua,
+      });
+      await this.context.setExtraHTTPHeaders({
+        ...this.extraHeaders,
+        'User-Agent': ua,
+      });
+    }
+
+    if (this.browser) {
+      this.browser.on('disconnected', () => {
+        if (this.intentionalDisconnect) return;
+        console.error('[nightcrawl] FATAL: Chromium process crashed or was killed. Server exiting.');
+        process.exit(1);
+      });
+    }
 
     await this.restoreState(state);
 
@@ -515,11 +560,13 @@ function withConsent(
 export async function autoHandover(this: any, targetUrl?: string): Promise<string | null> {
   const loginUrl = this.getCurrentUrl();
   // The URL the user originally wanted to reach (e.g. canvas.uw.edu).
-  // loginUrl is the SSO redirect URL — its `execution=eXsX` token is
-  // one-time-use, so re-navigating TO it always triggers a fresh login
-  // prompt even when the Shibboleth session is perfectly valid.
-  // We must test cookies by navigating to the TARGET, not the redirect.
-  const testUrl = targetUrl || loginUrl;
+  // loginUrl is typically a SSO redirect URL whose tokens are one-time-use
+  // (SAML: execution=eXsX, OAuth: state=&code=, Shibboleth: SAMLRequest=).
+  // Re-navigating to these always triggers a fresh login form even when
+  // the IdP session is valid. We must test cookies against the TARGET.
+  // If the caller didn't supply targetUrl, derive it by stripping the SSO
+  // query string — this generalises to Okta, ADFS, PingFederate, Shibboleth.
+  const testUrl = targetUrl || stripSSORedirect(loginUrl);
 
   // SAFETY: refuse to open headed mode for hostile platforms.
   // The headed-mode user-data-dir loads ALL real cookies — this is exactly
@@ -581,6 +628,13 @@ export async function autoHandover(this: any, targetUrl?: string): Promise<strin
     } else {
       console.log(`[nightcrawl] Opening ${domain} in your default browser for login...`);
 
+      // Open testUrl (the user's intended destination), NOT loginUrl.
+      // loginUrl is a stale SSO redirect URL with a one-time execution token —
+      // opening it in Arc starts a NEW competing SAML flow that can invalidate
+      // the user's existing Arc session. Opening the target lets Arc handle
+      // SSO silently if the session is still live, or prompt MFA if expired.
+      const openUrl = testUrl !== loginUrl ? testUrl : loginUrl;
+
       // Gate vs auto-open: if BROWSE_NOTIFY_GATE=1, only notify; user clicks
       // "Open browser" to trigger. Default (unset/0) behaves as before —
       // open immediately and also notify. Gate mode is the less-intrusive
@@ -593,13 +647,13 @@ export async function autoHandover(this: any, targetUrl?: string): Promise<strin
         gated
           ? `${domain} needs a login. Click "Open browser" to start.`
           : `Opening ${domain} in your browser. Auto-resume when done.`,
-        { label: 'Open browser', onClick: `open "${loginUrl.replace(/"/g, '\\"')}"` },
+        { label: 'Open browser', onClick: `open "${openUrl.replace(/"/g, '\\"')}"` },
       );
 
       if (!gated) {
         try {
           const { execSync } = await import('child_process');
-          execSync(`open "${loginUrl.replace(/"/g, '\\"')}"`, { timeout: 5000 });
+          execSync(`open "${openUrl.replace(/"/g, '\\"')}"`, { timeout: 5000 });
         } catch (err: any) {
           console.warn(`[nightcrawl] Failed to open default browser: ${err?.message}`);
         }
@@ -632,7 +686,7 @@ export async function autoHandover(this: any, targetUrl?: string): Promise<strin
       // heuristic list, same as before.
       const observedHosts = await collectLoginHostsFromPage(this.getPage());
       const importResult = await tryAutoImportForWall(
-        loginUrl, loginUrl, this.context!, undefined, observedHosts,
+        loginUrl, testUrl, this.context!, undefined, observedHosts,
       );
 
       if (importResult.importedCount > 0) {
