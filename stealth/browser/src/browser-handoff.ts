@@ -512,8 +512,14 @@ function withConsent(
  * 3. Save cookies -> switch back to headless
  * No manual 'resume' needed.
  */
-export async function autoHandover(this: any): Promise<string | null> {
+export async function autoHandover(this: any, targetUrl?: string): Promise<string | null> {
   const loginUrl = this.getCurrentUrl();
+  // The URL the user originally wanted to reach (e.g. canvas.uw.edu).
+  // loginUrl is the SSO redirect URL — its `execution=eXsX` token is
+  // one-time-use, so re-navigating TO it always triggers a fresh login
+  // prompt even when the Shibboleth session is perfectly valid.
+  // We must test cookies by navigating to the TARGET, not the redirect.
+  const testUrl = targetUrl || loginUrl;
 
   // SAFETY: refuse to open headed mode for hostile platforms.
   // The headed-mode user-data-dir loads ALL real cookies — this is exactly
@@ -633,11 +639,15 @@ export async function autoHandover(this: any): Promise<string | null> {
         cookiesWereEverImported = true;
         console.log(`[nightcrawl] Imported ${importResult.importedCount} cookies from ${importResult.browser}. Testing login...`);
 
-        // Re-navigate to test if cookies clear the wall
+        // Re-navigate to the TARGET (not the SSO redirect).
+        // SSO redirect URLs contain a one-time execution=eXsX token —
+        // re-navigating to them always starts a fresh login flow even with
+        // valid session cookies. Navigating to the target lets the IdP
+        // complete the SAML assertion using the fresh shib_idp_session.
         const page = this.getPage();
         if (page) {
           try {
-            await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+            await page.goto(testUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
             const detection = await detectLoginWall.call(this, page.url());
             if (!detection.detected) {
               cookieLoginSucceeded = true;

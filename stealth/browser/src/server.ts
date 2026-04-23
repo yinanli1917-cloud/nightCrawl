@@ -1013,7 +1013,7 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
           } else if (!stepTwoPinned) {
             result += `\nOpening ${detection.domain} in your default browser for login. Will auto-resume when cookies are imported.`;
           }
-          browserManager.autoHandover().then(handoverResult => {
+          browserManager.autoHandover(targetUrl).then(handoverResult => {
             if (handoverResult) console.log(`[nightcrawl] Auto-handover complete: ${handoverResult}`);
           }).catch(err => {
             console.error(`[nightcrawl] Auto-handover failed: ${err.message}`);
@@ -1072,7 +1072,7 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
             if (detection.approved) {
               console.log(`[nightcrawl] Late redirect to ${url}. Auto-handover starting for ${domain}.`);
               // Let autoHandover emit its own (now correctly gated) notifications.
-              browserManager.autoHandover().catch(err => {
+              browserManager.autoHandover(origUrl).catch(err => {
                 console.error(`[nightcrawl] Auto-handover failed: ${err?.message ?? err}`);
               });
             } else {
