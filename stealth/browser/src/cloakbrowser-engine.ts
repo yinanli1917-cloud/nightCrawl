@@ -86,19 +86,33 @@ function patchContextClose(context: BrowserContext): void {
 
 /**
  * Launch a browser via CloakBrowser's native API.
- * Falls back to stock Playwright if CloakBrowser is unavailable.
  *
  * CloakBrowser handles stealth args, fingerprinting, and UA internally
  * via C++ patches — we only pass through config, not manual flags.
+ *
+ * Failure mode: throws with install instructions. We deliberately do NOT
+ * fall back to stock Playwright — silent fallback to Chrome for Testing
+ * (the un-patched binary) reintroduces the unsafe path that caused
+ * meaningless verifier passes pre-2026-04-14 (see project memory:
+ * `project_cloakbrowser_default_decision.md`).
  *
  * Returns { browser, context } — caller manages lifecycle.
  */
 export async function launchCloakBrowser(
   opts: CloakBrowserLaunchOptions = {},
 ): Promise<{ browser: Browser | null; context: BrowserContext }> {
+  let cb: typeof import('cloakbrowser');
   try {
-    const cb = await import('cloakbrowser');
+    cb = await import('cloakbrowser');
+  } catch (err: any) {
+    throw new Error(
+      `[nightcrawl] FATAL: CloakBrowser unavailable. Install with:\n` +
+      `  bun add cloakbrowser@latest\n` +
+      `Underlying error: ${err?.message || err}`,
+    );
+  }
 
+  try {
     // Extra args: only extension loading (CloakBrowser handles stealth args)
     const extraArgs: string[] = [];
     if (opts.extensionsDir) {
@@ -156,30 +170,12 @@ export async function launchCloakBrowser(
     patchContextClose(context);
 
     return { browser: context.browser(), context };
-  } catch (err) {
-    // CloakBrowser is the default engine — failure must be LOUD, not silent
-    console.error(`[nightcrawl] FATAL: CloakBrowser failed to launch: ${err}`);
-    console.error(`[nightcrawl] Install: bun add cloakbrowser@latest`);
-    console.error(`[nightcrawl] Falling back to stock Playwright (NO stealth patches)`);
-    return launchPlaywrightFallback(opts);
+  } catch (err: any) {
+    // CloakBrowser is loaded but launch failed — surface the real cause
+    throw new Error(
+      `[nightcrawl] FATAL: CloakBrowser launch failed: ${err?.message || err}`,
+    );
   }
-}
-
-// ─── Fallback ──────────────────────────────────────────────
-
-async function launchPlaywrightFallback(
-  opts: CloakBrowserLaunchOptions,
-): Promise<{ browser: Browser; context: BrowserContext }> {
-  const pw = await import('playwright');
-  const browser = await pw.chromium.launch({
-    headless: opts.headless ?? true,
-    args: ['--disable-blink-features=AutomationControlled'],
-  });
-  const context = await browser.newContext({
-    userAgent: opts.userAgent,
-    viewport: opts.viewport ?? { width: 1920, height: 1080 },
-  });
-  return { browser, context };
 }
 
 async function createTempProfile(): Promise<string> {

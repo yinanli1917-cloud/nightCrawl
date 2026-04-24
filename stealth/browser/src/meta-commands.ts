@@ -107,19 +107,10 @@ export async function handleMetaCommand(
       if (sub === 'stealth') {
         // Deep verifier — drives bot-detector test sites for ~25s
         const { verifyStealth } = await import('./stealth-verifier');
-        const { parseEngineConfig } = await import('./engine-config');
-        const engine = parseEngineConfig(process.env);
-        // Use the SAME engine as the daemon — stock PW verifier misses CloakBrowser's stealth
-        let verifierBrowser;
-        if (engine.engine === 'cloakbrowser') {
-          const { createCloakVerifierBrowser } = await import('./stealth-verifier-cloakbrowser');
-          verifierBrowser = createCloakVerifierBrowser();
-        } else {
-          const { createPlaywrightVerifierBrowser } = await import('./stealth-verifier-playwright');
-          verifierBrowser = createPlaywrightVerifierBrowser();
-        }
+        const { createCloakVerifierBrowser } = await import('./stealth-verifier-cloakbrowser');
+        const verifierBrowser = createCloakVerifierBrowser();
         const result = await verifyStealth({ browser: verifierBrowser });
-        const lines: string[] = [`nightCrawl Stealth Verification`, `Engine: ${engine.engine}`, ``];
+        const lines: string[] = [`nightCrawl Stealth Verification`, `Engine: cloakbrowser`, ``];
         for (const check of result.checks) {
           const icon = check.passed ? (check.warning ? '⚠️' : '✅') : '❌';
           lines.push(`${icon} ${check.name} — ${check.detail}`);

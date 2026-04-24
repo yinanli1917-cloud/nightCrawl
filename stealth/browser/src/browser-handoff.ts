@@ -93,31 +93,16 @@ export async function launchHeaded(this: any, authToken?: string): Promise<void>
   // headed mode in Chrome-for-Testing while headless runs CloakBrowser
   // means every headed login is wasted — the cookies die on replay.
   const engineConfig = parseEngineConfig();
-
-  if (engineConfig.engine === 'cloakbrowser') {
-    const { context } = await launchCloakBrowser({
-      headless: false,
-      userDataDir,
-      extensionsDir: extensionPath ?? undefined,
-      fingerprintSeed: engineConfig.fingerprintSeed,
-      humanize: engineConfig.humanize,
-      viewport: undefined,
-    });
-    this.context = context;
-    console.log(`[nightcrawl] Headed engine: CloakBrowser (seed: ${engineConfig.fingerprintSeed ?? 'random'})`);
-  } else {
-    const chromiumPath = findChromiumExecutable();
-    this.context = await (await _getChromium()).launchPersistentContext(userDataDir, {
-      headless: false,
-      ...(chromiumPath ? { executablePath: chromiumPath } : {}),
-      args: launchArgs,
-      viewport: null,
-      ignoreDefaultArgs: [
-        '--disable-extensions',
-        '--disable-component-extensions-with-background-pages',
-      ],
-    });
-  }
+  const { context } = await launchCloakBrowser({
+    headless: false,
+    userDataDir,
+    extensionsDir: extensionPath ?? undefined,
+    fingerprintSeed: engineConfig.fingerprintSeed,
+    humanize: engineConfig.humanize,
+    viewport: undefined,
+  });
+  this.context = context;
+  console.log(`[nightcrawl] Headed engine: CloakBrowser (seed: ${engineConfig.fingerprintSeed ?? 'random'})`);
   this.browser = this.context.browser();
   this.connectionMode = 'headed';
   this.intentionalDisconnect = false;
@@ -259,32 +244,15 @@ export async function handoff(this: any, message: string): Promise<string> {
     // — bot-managed edges reject them and the user gets stuck re-logging
     // every session. See memory/project_cloakbrowser_default_decision.md.
     const engineConfig = parseEngineConfig();
-    if (engineConfig.engine === 'cloakbrowser') {
-      const { context: cbContext } = await launchCloakBrowser({
-        headless: false,
-        userDataDir,
-        extensionsDir: extensionPath ?? undefined,
-        fingerprintSeed: engineConfig.fingerprintSeed,
-        humanize: engineConfig.humanize,
-      });
-      newContext = cbContext;
-      console.log(`[nightcrawl] Handoff engine: CloakBrowser (seed: ${engineConfig.fingerprintSeed ?? 'random'})`);
-    } else {
-      const chromiumPath = findChromiumExecutable();
-      newContext = await (await _getChromium()).launchPersistentContext(userDataDir, {
-        headless: false,
-        ...(chromiumPath ? { executablePath: chromiumPath } : {}),
-        chromiumSandbox: process.platform !== 'win32',
-        args: launchArgs,
-        viewport: null,
-        ignoreDefaultArgs: [
-          '--disable-extensions',
-          '--disable-component-extensions-with-background-pages',
-          '--enable-automation',
-        ],
-        timeout: 30000,
-      });
-    }
+    const { context: cbContext } = await launchCloakBrowser({
+      headless: false,
+      userDataDir,
+      extensionsDir: extensionPath ?? undefined,
+      fingerprintSeed: engineConfig.fingerprintSeed,
+      humanize: engineConfig.humanize,
+    });
+    newContext = cbContext;
+    console.log(`[nightcrawl] Handoff engine: CloakBrowser (seed: ${engineConfig.fingerprintSeed ?? 'random'})`);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     return `ERROR: Cannot open headed browser — ${msg}. Headless browser still running.`;
@@ -388,33 +356,14 @@ export async function resume(this: any): Promise<string> {
     // by a different Chromium binary — bot-managed edges reject them and the
     // login is wasted. Match engines: CloakBrowser headed → CloakBrowser headless.
     const engineConfig = parseEngineConfig();
-    const ua = this.customUserAgent || DEFAULT_USER_AGENT;
-
-    if (engineConfig.engine === 'cloakbrowser') {
-      const { context } = await launchCloakBrowser({
-        headless: true,
-        fingerprintSeed: engineConfig.fingerprintSeed,
-        humanize: false,
-      });
-      this.context = context;
-      this.browser = (context as any).browser?.() ?? null;
-      console.log(`[nightcrawl] Resumed headless via CloakBrowser (seed: ${engineConfig.fingerprintSeed ?? 'random'})`);
-    } else {
-      const chromium = await _getChromium();
-      this.browser = await chromium.launch({
-        headless: true,
-        chromiumSandbox: process.platform !== 'win32',
-        args: ['--disable-blink-features=AutomationControlled'],
-      });
-      this.context = await this.browser.newContext({
-        viewport: { width: 1920, height: 1080 },
-        userAgent: ua,
-      });
-      await this.context.setExtraHTTPHeaders({
-        ...this.extraHeaders,
-        'User-Agent': ua,
-      });
-    }
+    const { context } = await launchCloakBrowser({
+      headless: true,
+      fingerprintSeed: engineConfig.fingerprintSeed,
+      humanize: false,
+    });
+    this.context = context;
+    this.browser = (context as any).browser?.() ?? null;
+    console.log(`[nightcrawl] Resumed headless via CloakBrowser (seed: ${engineConfig.fingerprintSeed ?? 'random'})`);
 
     if (this.browser) {
       this.browser.on('disconnected', () => {

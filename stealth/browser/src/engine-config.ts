@@ -1,8 +1,12 @@
 /**
- * [INPUT]: Environment variables BROWSE_ENGINE, BROWSE_FINGERPRINT_SEED, BROWSE_HUMANIZE;
+ * [INPUT]: Environment variables BROWSE_FINGERPRINT_SEED, BROWSE_HUMANIZE;
  *          persistent seed at ~/.nightcrawl/state/engine-seed.json
  * [OUTPUT]: Exports parseEngineConfig, EngineConfig type
  * [POS]: Configuration layer for browser engine selection within browser module
+ *
+ * CloakBrowser is the only engine. The stock Playwright path was removed
+ * (see project memory `project_cloakbrowser_default_decision.md`) because
+ * Chrome for Testing is detectable by every Tier-1+ bot-detection system.
  *
  * Fingerprint seed persistence is load-bearing: bot-managed sites (Cloudflare
  * Turnstile, DataDome, etc.) pin session cookies to the browser fingerprint
@@ -18,15 +22,13 @@ import * as path from 'path';
 
 // ─── Engine Config ─────────────────────────────────────────
 
-export type BrowserEngine = 'playwright' | 'cloakbrowser';
+export type BrowserEngine = 'cloakbrowser';
 
 export interface EngineConfig {
   engine: BrowserEngine;
   fingerprintSeed?: number;
   humanize: boolean;
 }
-
-const VALID_ENGINES: ReadonlySet<string> = new Set(['playwright', 'cloakbrowser']);
 
 // Valid range per CloakBrowser docs: [10000, 99999].
 const SEED_MIN = 10000;
@@ -77,11 +79,6 @@ function getPersistentSeed(): number {
 export function parseEngineConfig(
   env: Record<string, string | undefined> = process.env,
 ): EngineConfig {
-  const rawEngine = env.BROWSE_ENGINE || 'cloakbrowser';
-  const engine: BrowserEngine = VALID_ENGINES.has(rawEngine)
-    ? (rawEngine as BrowserEngine)
-    : 'cloakbrowser';
-
   const rawSeed = env.BROWSE_FINGERPRINT_SEED;
   const parsedSeed = rawSeed ? parseInt(rawSeed, 10) : NaN;
   const fingerprintSeed = Number.isFinite(parsedSeed)
@@ -90,5 +87,5 @@ export function parseEngineConfig(
 
   const humanize = env.BROWSE_HUMANIZE === '1';
 
-  return { engine, fingerprintSeed, humanize };
+  return { engine: 'cloakbrowser', fingerprintSeed, humanize };
 }

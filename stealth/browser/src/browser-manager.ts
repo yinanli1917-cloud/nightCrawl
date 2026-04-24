@@ -36,8 +36,8 @@ import { assertSafeNavigation, filterHostileCookies } from './hostile-domains';
 import { replaceCookiesFor } from './handoff-cookie-import';
 import { applyLocale, buildAcceptLanguage, resolveLocale } from './locale';
 import { parseEngineConfig } from './engine-config';
-import { launchCloakBrowser, shouldSkipCdpPatches } from './cloakbrowser-engine';
-import { DEFAULT_USER_AGENT, findChromiumExecutable, applyStealthPatches } from './stealth';
+import { launchCloakBrowser } from './cloakbrowser-engine';
+import { DEFAULT_USER_AGENT } from './stealth';
 import { markPinnedFromHeaders } from './fingerprint-pinned';
 
 export { DEFAULT_USER_AGENT } from './stealth';
@@ -176,17 +176,10 @@ export class BrowserManager {
   async launch() {
     const engineConfig = parseEngineConfig(process.env);
 
-    // CDP stealth patches -- skip when CloakBrowser handles it internally
-    if (!shouldSkipCdpPatches(engineConfig.engine)) {
-      await applyStealthPatches();
-      process.env.REBROWSER_PATCHES_RUNTIME_FIX_MODE = 'addBinding';
-    }
-
     const extensionMode = process.env.BROWSE_EXTENSIONS || 'all';
     const extensionsDir = extensionMode !== 'none' ? process.env.BROWSE_EXTENSIONS_DIR : undefined;
     const ua = this.customUserAgent || DEFAULT_USER_AGENT;
 
-    // ─── CloakBrowser Engine ─────────────────────────────────
     // Resolve locale once at launch: BROWSE_LOCALE env var takes precedence,
     // otherwise read macOS AppleLanguages so the browser matches the user's
     // real system preference. Sites that region-gate on navigator.language
@@ -200,70 +193,18 @@ export class BrowserManager {
       );
     }
 
-    if (engineConfig.engine === 'cloakbrowser') {
-      const result = await launchCloakBrowser({
-        fingerprintSeed: engineConfig.fingerprintSeed,
-        extensionsDir,
-        headless: true,
-        humanize: engineConfig.humanize,
-        humanPreset: engineConfig.humanize ? 'default' : undefined,
-        viewport: { width: 1920, height: 1080 },
-        locale: resolvedLocale ?? undefined,
-      });
-      this.browser = result.browser;
-      this.context = result.context;
-      console.log(`[nightcrawl] Engine: CloakBrowser (seed: ${engineConfig.fingerprintSeed ?? 'random'})`);
-    } else {
-      // ─── Stock Playwright Engine ─────────────────────────────
-      const launchArgs: string[] = [
-        '--disable-blink-features=AutomationControlled',
-      ];
-
-      if (process.env.CI || process.env.CONTAINER) {
-        launchArgs.push('--no-sandbox');
-      }
-
-      const contextOptions: BrowserContextOptions = {
-        viewport: { width: 1920, height: 1080 },
-        userAgent: ua,
-      };
-
-      if (extensionsDir) {
-        launchArgs.push(
-          `--disable-extensions-except=${extensionsDir}`,
-          `--load-extension=${extensionsDir}`,
-          '--headless=new',
-        );
-        const ignoreArgs = [
-          '--disable-extensions',
-          '--enable-automation',
-          '--disable-component-extensions-with-background-pages',
-        ];
-
-        const userDataDir = await import('fs').then(fs =>
-          fs.promises.mkdtemp(require('path').join(require('os').tmpdir(), 'browse-ext-'))
-        );
-
-        const chromiumPath = findChromiumExecutable();
-        this.context = await (await getChromium()).launchPersistentContext(userDataDir, {
-          headless: false,
-          ...(chromiumPath ? { executablePath: chromiumPath } : {}),
-          chromiumSandbox: process.platform !== 'win32',
-          args: launchArgs,
-          ignoreDefaultArgs: ignoreArgs,
-          ...contextOptions,
-        });
-        this.browser = this.context.browser()!;
-        console.log(`[nightcrawl] Extensions loaded from: ${extensionsDir}`);
-      } else {
-        this.browser = await (await getChromium()).launch({
-          headless: true,
-          chromiumSandbox: process.platform !== 'win32',
-          args: launchArgs,
-        });
-        this.context = await this.browser.newContext(contextOptions);
-      }
-    }
+    const result = await launchCloakBrowser({
+      fingerprintSeed: engineConfig.fingerprintSeed,
+      extensionsDir,
+      headless: true,
+      humanize: engineConfig.humanize,
+      humanPreset: engineConfig.humanize ? 'default' : undefined,
+      viewport: { width: 1920, height: 1080 },
+      locale: resolvedLocale ?? undefined,
+    });
+    this.browser = result.browser;
+    this.context = result.context;
+    console.log(`[nightcrawl] Engine: CloakBrowser (seed: ${engineConfig.fingerprintSeed ?? 'random'})`);
 
     // Locale override (BROWSE_LOCALE env) — patches navigator.language,
     // navigator.languages, and Accept-Language header. Applied to both
