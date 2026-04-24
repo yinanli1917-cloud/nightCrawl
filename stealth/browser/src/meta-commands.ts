@@ -102,29 +102,79 @@ export async function handleMetaCommand(
     }
 
     case 'health': {
-      const { verifyStealth } = await import('./stealth-verifier');
+      const sub = args[0];
+
+      if (sub === 'stealth') {
+        // Deep verifier — drives bot-detector test sites for ~25s
+        const { verifyStealth } = await import('./stealth-verifier');
+        const { parseEngineConfig } = await import('./engine-config');
+        const engine = parseEngineConfig(process.env);
+        // Use the SAME engine as the daemon — stock PW verifier misses CloakBrowser's stealth
+        let verifierBrowser;
+        if (engine.engine === 'cloakbrowser') {
+          const { createCloakVerifierBrowser } = await import('./stealth-verifier-cloakbrowser');
+          verifierBrowser = createCloakVerifierBrowser();
+        } else {
+          const { createPlaywrightVerifierBrowser } = await import('./stealth-verifier-playwright');
+          verifierBrowser = createPlaywrightVerifierBrowser();
+        }
+        const result = await verifyStealth({ browser: verifierBrowser });
+        const lines: string[] = [`nightCrawl Stealth Verification`, `Engine: ${engine.engine}`, ``];
+        for (const check of result.checks) {
+          const icon = check.passed ? (check.warning ? '⚠️' : '✅') : '❌';
+          lines.push(`${icon} ${check.name} — ${check.detail}`);
+        }
+        lines.push(``);
+        const allPass = result.checks.every(c => c.passed);
+        lines.push(allPass ? `Status: HEALTHY` : `Status: DEGRADED`);
+        lines.push(`Completed in ${(result.durationMs / 1000).toFixed(1)}s`);
+        return lines.join('\n');
+      }
+
+      // Plain-English snapshot — fast, aggregates daemon/browser/sync/handoff state
       const { parseEngineConfig } = await import('./engine-config');
+      const { getSyncTelemetry } = await import('./sync-state');
+      const { listPinned } = await import('./fingerprint-pinned');
+      const { formatHealthSnapshot } = await import('./health-snapshot');
+      type HealthSnapshot = import('./health-snapshot').HealthSnapshot;
       const engine = parseEngineConfig(process.env);
-      // Use the SAME engine as the daemon — stock PW verifier misses CloakBrowser's stealth
-      let verifierBrowser;
-      if (engine.engine === 'cloakbrowser') {
-        const { createCloakVerifierBrowser } = await import('./stealth-verifier-cloakbrowser');
-        verifierBrowser = createCloakVerifierBrowser();
-      } else {
-        const { createPlaywrightVerifierBrowser } = await import('./stealth-verifier-playwright');
-        verifierBrowser = createPlaywrightVerifierBrowser();
-      }
-      const result = await verifyStealth({ browser: verifierBrowser });
-      const lines: string[] = [`nightCrawl Health Check`, `Engine: ${engine.engine}`, ``];
-      for (const check of result.checks) {
-        const icon = check.passed ? (check.warning ? '⚠️' : '✅') : '❌';
-        lines.push(`${icon} ${check.name} — ${check.detail}`);
-      }
-      lines.push(``);
-      const allPass = result.checks.every(c => c.passed);
-      lines.push(allPass ? `Status: HEALTHY` : `Status: DEGRADED`);
-      lines.push(`Completed in ${(result.durationMs / 1000).toFixed(1)}s`);
-      return lines.join('\n');
+      const telemetry = getSyncTelemetry();
+      const consent = prune(readConsent(defaultConsentPath()));
+      const pinned = listPinned();
+      const ctx = bm.context;
+      const cookieCount = ctx ? (await ctx.cookies().catch(() => [])).length : 0;
+      const now = Date.now();
+
+      const snap: HealthSnapshot = {
+        daemon: {
+          engine: engine.engine,
+          seed: typeof engine.fingerprintSeed === 'number' ? engine.fingerprintSeed : null,
+          mode: bm.getConnectionMode(),
+          pid: process.pid,
+          uptimeSec: process.uptime(),
+        },
+        browser: {
+          url: bm.getCurrentUrl(),
+          tabCount: bm.getTabCount(),
+          cookieCount,
+        },
+        sync: {
+          runCount: telemetry.runCount,
+          successCount: telemetry.successCount,
+          errorCount: telemetry.errorCount,
+          lastRunAgoMs: telemetry.lastRunAt !== null ? Math.max(0, now - telemetry.lastRunAt) : null,
+          lastSuccessAgoMs: telemetry.lastSuccessAt !== null ? Math.max(0, now - telemetry.lastSuccessAt) : null,
+          lastImportedCount: telemetry.lastImportedCount,
+          lastBrowser: telemetry.lastBrowser,
+          intervalMs: telemetry.intervalMs,
+          lastError: telemetry.lastError,
+        },
+        handoff: {
+          grantedDomains: Object.values(consent.entries).map(e => e.domain),
+          pinnedDomains: pinned.map(p => p.domain),
+        },
+      };
+      return formatHealthSnapshot(snap);
     }
 
     case 'url': {

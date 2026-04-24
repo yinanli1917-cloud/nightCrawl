@@ -144,7 +144,7 @@ export const COMMAND_DESCRIPTIONS: Record<string, { category: string; descriptio
   // Frame
   'frame':   { category: 'Meta', description: 'Switch to iframe context (or main to return)', usage: 'frame <sel|@ref|--name n|--url pattern|main>' },
   // Health
-  'health':  { category: 'Server', description: 'Run stealth verification against Tier 1-2 bot detection sites (~25s)', usage: 'health' },
+  'health':  { category: 'Server', description: 'Plain-English daemon snapshot (engine, browser, sync, handoff). Add `stealth` for deep verifier (~25s).', usage: 'health [stealth]' },
   // Sync
   'sync':    { category: 'Server', description: 'Inspect or trigger background Arc→nightCrawl cookie sync', usage: 'sync (status|now)' },
 };
