@@ -640,6 +640,47 @@ export async function handleMetaCommand(
       return `Switched to frame: ${frame.url()}`;
     }
 
+    // ─── Sync ────────────────────────────────────────
+    case 'sync': {
+      const sub = args[0];
+      const {
+        getSyncTelemetry,
+        formatSyncStatus,
+        recordSyncStart,
+        recordSyncSuccess,
+        recordSyncError,
+      } = await import('./sync-state');
+
+      if (!sub || sub === 'status') {
+        return formatSyncStatus(getSyncTelemetry());
+      }
+
+      if (sub === 'now') {
+        const { syncAllCookies } = await import('./handoff-cookie-import');
+        const ctx = bm.context;
+        if (!ctx) return 'ERROR: no browser context — daemon may be starting up';
+        recordSyncStart();
+        try {
+          const result = await syncAllCookies(ctx);
+          recordSyncSuccess(result);
+          const lines: string[] = [];
+          lines.push(`Sync from ${result.browser || '(no default browser detected)'}:`);
+          lines.push(`  Imported ${result.importedCount} cookies for ${result.newDomains.length} new domain(s)`);
+          if (result.newDomains.length > 0 && result.newDomains.length <= 20) {
+            lines.push(`  Domains: ${result.newDomains.join(', ')}`);
+          } else if (result.newDomains.length > 20) {
+            lines.push(`  (${result.newDomains.length} domains — first 20: ${result.newDomains.slice(0, 20).join(', ')}...)`);
+          }
+          return lines.join('\n');
+        } catch (err: any) {
+          recordSyncError(err);
+          return `ERROR: ${err.message || err}`;
+        }
+      }
+
+      return 'Usage: sync (status|now)';
+    }
+
     default:
       throw new Error(`Unknown meta command: ${command}`);
   }

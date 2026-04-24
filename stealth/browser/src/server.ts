@@ -45,6 +45,12 @@ import {
   clickOnetapButton,
   syncAllCookies,
 } from './handoff-cookie-import';
+import {
+  recordSyncStart,
+  recordSyncSuccess,
+  recordSyncError,
+  recordSyncSkipped,
+} from './sync-state';
 import { isFirstRun, runOnboarding } from './onboarding';
 import { emitActivity, subscribe, getActivityAfter, getActivityHistory, getSubscriberCount } from './activity';
 // Bun.spawn used instead of child_process.spawn (compiled bun binaries
@@ -611,23 +617,38 @@ const storageFlushInterval = setInterval(persistStorage, 5 * 60_000);
 // First run triggers the Keychain dialog once; "Always Allow" makes
 // every subsequent sync silent.
 async function runBackgroundSync() {
-  if (process.env.BROWSE_INCOGNITO === '1') return;
-  if (browserManager.getConnectionMode() === 'headed') return;
+  if (process.env.BROWSE_INCOGNITO === '1') {
+    recordSyncSkipped('incognito-mode');
+    return;
+  }
+  if (browserManager.getConnectionMode() === 'headed') {
+    recordSyncSkipped('headed-mode');
+    return;
+  }
   const page = browserManager.getPage();
   if (page) {
     // Browser is mid-navigation — skip this cycle
-    try { page.url(); } catch { return; }
+    try { page.url(); } catch {
+      recordSyncSkipped('mid-navigation');
+      return;
+    }
   }
+  recordSyncStart();
   try {
     const context = browserManager.context;
-    if (!context) return;
+    if (!context) {
+      recordSyncSkipped('no-context');
+      return;
+    }
     const result = await syncAllCookies(context);
+    recordSyncSuccess(result);
     if (result.importedCount > 0) {
       console.log(`[nightcrawl] Background sync: imported ${result.importedCount} cookies for ${result.newDomains.length} new domain(s) from ${result.browser}.`);
       await persistStorage();
     }
   } catch (err: any) {
     // Non-fatal — sync failure must not crash the daemon
+    recordSyncError(err);
   }
 }
 

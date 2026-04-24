@@ -40,6 +40,7 @@ export const META_COMMANDS = new Set([
   'state',
   'frame',
   'health',
+  'sync',
 ]);
 
 export const ALL_COMMANDS = new Set([...READ_COMMANDS, ...WRITE_COMMANDS, ...META_COMMANDS]);
@@ -144,6 +145,8 @@ export const COMMAND_DESCRIPTIONS: Record<string, { category: string; descriptio
   'frame':   { category: 'Meta', description: 'Switch to iframe context (or main to return)', usage: 'frame <sel|@ref|--name n|--url pattern|main>' },
   // Health
   'health':  { category: 'Server', description: 'Run stealth verification against Tier 1-2 bot detection sites (~25s)', usage: 'health' },
+  // Sync
+  'sync':    { category: 'Server', description: 'Inspect or trigger background Arc→nightCrawl cookie sync', usage: 'sync (status|now)' },
 };
 
 // Load-time validation: descriptions must cover exactly the command sets
