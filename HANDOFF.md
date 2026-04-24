@@ -1,318 +1,105 @@
-# HANDOFF -- 2026-04-14 (Session 7 -- auto-import resurrection + Canvas closed end-to-end)
+# HANDOFF — 2026-04-24
 
-## What this session was
+## Current task
+Two-tier cookie strategy for nightCrawl's generalized login flow. Continuous
+background Arc→nightCrawl sync for the 95% of normal sites, and headed
+CloakBrowser auto-pop for fingerprint-pinned domains (doubao, CF Turnstile,
+DataDome). Plan: `~/.claude/plans/playful-mixing-quail.md`.
 
-A second, much rougher pass over the same problem. Session 6 (earlier today)
-shipped consent-per-domain handoff + URL-stability polling + macOS notification.
-Live-tested on Canvas, the user got a window pop, logged in, dashboard loaded —
-but on a NEW daemon ~10 min later, Canvas re-bounced.
+## Status
 
-The user (after staying up all night) pointed out the deeper regression:
-nightCrawl USED to silently auto-import cookies from their default browser
-when hitting a login wall; the current code forced manual `cookie-import-browser`
-calls instead. The "never run cookie-import-browser" rule (from commit 520a253)
-was the bug, not the safety. They were right.
+### ✅ Landed (commit `b180255`, pushed to `origin/main`)
 
-## What landed
+- **Background sync** — `syncAllCookies()` in `handoff-cookie-import.ts` +
+  `runBackgroundSync()` in `server.ts` (10-min cycle, hostile-domain filtered,
+  batch of 200, skips incognito/headed, silent on error).
+- **Pinned-domain auto-pop** — `browser-handoff.ts` drops the
+  `BROWSE_AUTO_POP_HEADED` gate for pinned domains (no alternative path exists),
+  fires a single proactive notification before launch with an
+  "Open in browser" fallback action, cleans up the twice-fired
+  pre-launch-stub notification pattern from before.
+- **Message cleanup** — STEP 1 and STEP 2 response strings in `server.ts`
+  removed the stale "run `nc open-handoff`" instruction; pinned branches now
+  say "Arc cookies imported but wall persisted — auto-opening CloakBrowser."
+- **Pure helper + unit tests** — extracted `computeNewDomainsToSync()` and
+  `isHostileDomain()` as exported pure functions; added 9 unit tests covering
+  eTLD+1 diff, subdomain dedupe, hostile filter, co.uk/edu.cn suffixes.
+- **Live verification — Canvas control** — `nc goto canvas.uw.edu` → Dashboard
+  loaded (COMMLD 512/515/525, to-dos, recent feedback). No wall, no window,
+  no regression from the diff. Pre-existing autonomous auto-import path
+  still works.
 
-**`stealth/browser/src/handoff-cookie-import.ts` (new):**
-- `tryAutoImportForWall(targetUrl, wallUrl, context, browser?)` — silent path
-- Computes candidate eTLD+1 set (target + wall + curated SSO_HELPER_DOMAINS)
-- Discovers actual host_keys in the user's default browser cookie DB matching
-  any candidate eTLD+1 (so dynamic subdomains like
-  `7f032619-fbd5-41ee-ac6c-e629af79ebcd.iad.login.instructure.com` get caught
-  via their `instructure.com` parent)
-- Imports them via the existing `importCookies()` + injects into the live
-  Playwright BrowserContext
-- Returns structured `{ attempted, importedCount, hostKeys, browser, error }`
-- Default browser priority: arc → chrome → brave → edge
+### Tests
+- `handoff-cookie-import.test.ts`: 51 pass (was 42).
+- Full handoff suite (`handoff-consent`, `login-wall-detection`,
+  `handoff-poll`, `handoff-cookie-import`): 81 pass, 0 fail.
 
-**`stealth/browser/src/server.ts`:**
-After `detectLoginWall` returns `{detected:true, approved:true}`:
-1. Call `tryAutoImportForWall` (privacy-gated by approved consent — same
-   trust level as the existing autoHandover window-pop)
-2. If imported > 0: re-navigate the original target URL, re-run detectLoginWall
-3. If wall cleared on retry: return success WITHOUT popping a window
-4. Else: fall through to the existing `autoHandover` polling headed-window flow
+### ⏳ Still needs live verification (deferred — destructive in this session)
 
-**Tests:**
-- `test/handoff-cookie-import.test.ts` (6 unit tests for SSO list + buildCandidateDomains)
-- All prior tests still pass (82 across 8 files at last full check)
+- **doubao re-auth**: clear doubao cookies → restart daemon → `nc goto doubao.com`
+  → expect CloakBrowser auto-pops without `BROWSE_AUTO_POP_HEADED=1`. Will cost
+  the user one re-login on doubao.com to re-verify. I did not run this because
+  it wipes a working session and would need user attention to complete Duo/OTP.
+- **10-min background sync**: log into a site not currently in the nightCrawl
+  jar (e.g., create a fresh Hacker News account in Arc) → wait ≥10 min →
+  `nc goto news.ycombinator.com` → expect logged in, no wall, no import trigger.
 
-**Live verification (the proof the user demanded):**
-With ALL UW/Canvas/Instructure cookies stripped from the persistent store and a
-fresh daemon, `goto canvas.uw.edu` produced:
-```
-Navigated to https://canvas.uw.edu/ (200)
-LOGIN_WALL_DETECTED: Login URL detected: https://idp.u.washington.edu/idp/profile/SAML2/Redirect/SSO?execution=e1s1
-Auto-imported 161 cookies from arc for 63 host(s). Re-trying navigation...
-Login wall cleared after auto-import. No window opened.
-```
-Real Canvas dashboard rendered (COMMLD 515 Advanced User Design / COMMLD 525
-Brand Values / Civil Rights course / archived COMMLD 512). Zero windows popped.
-Generalized — the same flow handles any consent-approved login wall on any site
-where the user has cookies in their default browser.
+## Key decisions this session
 
-**SKILL.md updated** to remove the blanket "never run cookie-import-browser"
-rule and document the new auto-import-as-Step-1 of the handoff flow.
+1. **Auto-pop without env gate for pinned domains** — Previously guarded by
+   `BROWSE_AUTO_POP_HEADED=1`. Decision: for pinned domains the env gate was
+   friction without safety value — Arc cookies are structurally useless, so
+   there's literally no quieter alternative to a window. Non-pinned domains
+   still respect the gate.
+2. **Accepted the one-time Keychain prompt** — the background sync calls
+   `importCookies()` every 10 min, which on first run triggers the macOS
+   Keychain dialog. The user has been burned by unexpected Keychain prompts
+   before (see `feedback_no_windows.md`), but the plan explicitly accepts
+   this as the tradeoff — "Always Allow" silences it forever after. If
+   future-me is reviewing this: the right time to revisit is if the dialog
+   re-fires after OS/browser updates.
+3. **Replaced the whole HANDOFF.md rather than appending** — the previous
+   file had 3 stacked 2026-04-14 sessions which are now in git history
+   (search commits around that date). Clean slate reads better.
 
-**Memory updates:**
-- `feedback_no_windows.md` — clarified that cookie-import-browser is fine when
-  consent-gated; old blanket ban removed
-- `project_auto_import_regression_2026_04_14.md` (new) — incident record so
-  future me doesn't re-introduce the over-correction
+## Known concerns / watch-outs
 
-## What's still deferred
+- **Background sync is unverified in production** — ships with unit tests
+  only. First real-world cycle will trigger the Keychain dialog if the user
+  hasn't clicked "Always Allow" yet; that's expected but heads-up.
+- **No telemetry on sync success** — `runBackgroundSync` swallows errors
+  silently to avoid crashing the daemon. If syncs are failing, the only
+  signal will be "new Arc logins don't appear in nightCrawl after 10 min."
+  Consider adding a `nc sync status` command if this turns out to be the
+  case in practice.
+- **The old HANDOFF.md dated 2026-04-14 was deleted** — its content is
+  reachable via `git log -- HANDOFF.md` if needed.
 
-### P1: Daemon kills its spawned headed Chrome on shutdown
-Current `pkill -f "bun"` doesn't kill Playwright-spawned Chromium. The handoff
-launches a headed Chrome that survives the daemon's death, leading to orphaned
-windows on the user's screen. Fix: `BrowserManager.shutdown()` should track
-the headed PID and kill its process tree (or spawn with `detached: false` so
-Playwright cleans it up automatically).
+## Next-step options (in priority order)
 
-### P2: Rebuild compiled binary so cross-project usage gets the fix
-`stealth/browser/dist/browse` is from April 7 — predates ALL of today's fixes.
-Other projects use that stale binary and reproduce the original bug.
-```
-cd stealth/browser && bun build src/cli.ts --compile --outfile dist/browse
-```
+1. **Live-verify doubao re-auth** when you're ready to spend a re-login.
+   Expected: `nc goto doubao.com` → notification fires → CloakBrowser window
+   pops → complete login → window closes → headless goto works.
+2. **Live-verify the 10-min background sync loop.** Easiest test site is
+   something where the user can create a throwaway account in Arc and watch
+   it propagate into nightCrawl within the cycle.
+3. **Add a `nc sync status` / `nc sync now` CLI command** — exposes the
+   last sync timestamp, last `importedCount`, last error. Would let the
+   user diagnose silent sync failures without reading logs.
+4. **P4 items from prior handoff** still apply: re-port CDP patches for
+   PW 1.59.1 (or kill PW path entirely now that CloakBrowser is default),
+   default-browser-medium handoff, `browse health` plain-English command.
 
-### P3: Tracked redirect-chain hosts in candidate-domain discovery
-Current `buildCandidateDomains` uses target eTLD+1 + wall eTLD+1 + curated SSO list.
-Better: page.on('framenavigated') during the goto records every host actually
-visited; auto-import uses that exact set. Eliminates the SSO_HELPER_DOMAINS
-heuristic. Small refactor inside server.ts goto handler.
+## Relevant files
 
-### P4: All deferred items from Session 6's handoff still apply
-CloakBrowser-as-default flip, default-browser-medium handoff (open Arc instead
-of headed Chromium), auto-updater baseline-vs-post comparison, `browse health`
-plain-English status command, re-port CDP patches for PW 1.59.1.
-
----
-
-# HANDOFF -- 2026-04-14 (Session 6 -- product reframe + consent-based handoff + polling fix)
-
-## Late-session addendum: URL-stability fix for multi-step IDPs
-
-Live test on canvas.uw.edu surfaced a second bug in the auto-handover
-flow that the consent fix exposed. The user logged in via Duo, the
-window closed itself "successfully," but the next nav re-bounced to
-Shibboleth — same symptom as the original Canvas regression.
-
-**Root cause (different layer, same shape):** the polling loop at
-the original `browser-handoff.ts:498-525` concluded "login complete"
-the moment URL changed off `/login` + no password form was visible.
-With multi-step IDPs (UW IDP → Duo → SAML callbacks → SP landing)
-that fired DURING the chain — typically when Duo's iframe loaded —
-before the SP set its `_shibsession_*` cookie. Snapshot captured
-mid-flight cookies; next nav re-bounced.
-
-**Cookie-store evidence:** after the failed live test, inspecting
-`~/.nightcrawl/browse-cookies.json` showed UW had:
-- `idp.u.washington.edu` — `__Host-shib_idp_session` ✅ (IDP session)
-- `canvas.uw.edu` — `canvas_session`, `_csrf_token`, `log_session_id` ✅
-- `finance.uw.edu` — `_shibsession_*` ✅ (proves persistence layer works)
-- **`canvas.uw.edu` — NO `_shibsession_*`** ❌
-
-The `_shibsession_*` is the SP-side cookie that prevents bounce-loops
-on every Canvas navigation. We have it for `finance.uw.edu` from a
-prior successful login, proving cookies persist correctly. We don't
-have it for `canvas.uw.edu` because polling resumed before the SP
-callback set it. Same root cause class as the original Canvas
-regression: fix the gate, not the storage.
-
-**Fix (TDD-built, ships with this commit):**
-
-`stealth/browser/src/handoff-poll.ts` (new, ~110 lines):
-  Pure-logic polling decision function. Adds a URL-stability
-  requirement: only resume when (a) URL doesn't match login pattern,
-  (b) wall is gone (if ever seen), AND (c) URL has been unchanged
-  for `stabilityMs` (default 5s). Multi-redirect chains are forced
-  to fully settle before snapshot.
-
-`stealth/browser/src/browser-handoff.ts`:
-  `autoHandover()` polling loop replaced. Same observation surface
-  (URL + wall) but decision delegated to `decidePoll()`.
-
-`stealth/browser/test/handoff-poll.test.ts` (12 unit tests):
-  Covers single-step happy path, multi-step IDP chain (the regression
-  scenario), mid-chain URL changes resetting the timer, wall-still-
-  present check, login URL pattern matching with word boundaries,
-  timeout precedence, default options.
-
-`stealth/browser/test/handoff-poll-integration.test.ts` (1 test):
-  Drives a real headless Chromium through a 4-step redirect chain
-  fixture (`/multi-step-1-login.html` → `/multi-step-2-duo.html` →
-  `/multi-step-3-callback.html` → `/multi-step-4-landing.html`).
-  Verifies polling waits through all hops AND captures the
-  `app_session=complete` cookie set by the landing page (the cookie
-  the buggy polling would have missed — direct analogue of the
-  missing `_shibsession_*` for canvas.uw.edu).
-
-**Test status (post-polling-fix):** 113 pass, 0 fail across 11
-relevant files. Pre-existing PW 1.59.1 / `ariaSnapshot` flakes in
-`handoff.test.ts` and `cnki-login.test.ts` still present, still not
-caused by this work.
-
-**Live Canvas verification:** deferred. The user is asleep, cannot
-complete Duo 2FA, and a 5-min headed window timeout would not
-constitute a useful test signal. Unit + integration tests verify
-the timing logic end-to-end on a real browser. Next session: when
-the user is available, retest canvas.uw.edu with the new polling
-in place — expected behavior is single window pop, full Duo
-completion, autonomous resume after URL stabilizes on Canvas
-dashboard, `_shibsession_*` cookie present on next inspection.
+- [stealth/browser/src/handoff-cookie-import.ts](stealth/browser/src/handoff-cookie-import.ts) — `syncAllCookies`, `computeNewDomainsToSync`, `isHostileDomain` (exported)
+- [stealth/browser/src/server.ts](stealth/browser/src/server.ts) — `runBackgroundSync`, `backgroundSyncInterval`, pinned STEP 1/2 messages
+- [stealth/browser/src/browser-handoff.ts](stealth/browser/src/browser-handoff.ts) — pinned-domain auto-pop, proactive notification
+- [stealth/browser/test/handoff-cookie-import.test.ts](stealth/browser/test/handoff-cookie-import.test.ts) — 9 new tests, 51 total
+- [~/.claude/plans/playful-mixing-quail.md](~/.claude/plans/playful-mixing-quail.md) — the plan this session executed
 
 ---
-
-# HANDOFF -- 2026-04-14 (Session 6 -- product reframe + consent-based handoff)
-
-## What this session was
-
-A long, conversational session that started as "verify Session 5's auto-updater works" and ended as a wholesale re-anchor of what nightCrawl actually IS, plus a regression-fix-as-redesign for the handoff system.
-
-The product identity got a complete reframe (with the user's pushback driving it). Per-domain consent landed for the auto-handoff path. A pile of product knowledge that lived only in Apple Notes is now in-repo.
-
-## What's done
-
-### A. Product identity captured (memory + repo)
-
-Every important product/UX/safety decision from this session is now in `/Users/yinanli/.claude/projects/-Users-yinanli-Documents-nightCrawl/memory/`:
-
-- `project_product_identity.md` — **nightCrawl is a background browser FOR AI agents using user's real logged-in context. NOT a stealth/hacker tool.** This is the reframe the user demanded after I kept calling it "stealth."
-- `project_wedge_positioning.md` — "Hermes owns terminal, Claude Code owns coding, nothing owns browser-as-you. That's the wedge."
-- `project_user_scenarios.md` — green/yellow/red scenarios. China Judgments, Midjourney, Gemini, social uploads = green. Trading = yellow (needs gates). XHS posting = deleted.
-- `project_open_todos.md` — user's running todos from Apple Notes + this session's decisions.
-- `project_cloakbrowser_default_decision.md` — flip CloakBrowser to default; delete PW engine path; no Chrome for Testing.
-- `project_canvas_regression_2026_04_14.md` — incident record for why the consent-per-domain design exists.
-- `feedback_no_stealth_framing.md` — never call nightCrawl a stealth/hacker tool to the user.
-- `feedback_proactive_handoff_ux.md` — the full proactive handoff design (consent + always-on detection + default-browser path).
-- `feedback_universal_safety_layer.md` — every scenario needs gates, not just trading.
-- `reference_product_docs.md` — map of in-repo docs, Apple Notes, external research.
-- `reference_cloakbrowser_explainer.md` — plain-English answer to "what is CloakBrowser / do we still use Playwright."
-
-`MEMORY.md` index updated with all of these. **Read the "Product Identity" section first when opening a new session.**
-
-Apple Notes also captured in-repo at `docs/product-notes/` (5 markdown files + README index) so external readers / future sessions don't need Apple Notes access.
-
-### B. Consent-based handoff (the Canvas regression fix)
-
-**Problem solved:** UW Canvas (and any SSO-protected institutional site) was broken by commit `520a253` (2026-04-11) which flipped `BROWSE_AUTO_HANDOVER` to opt-in to fix an unrelated silent-popup on quark.cn. That punished well-behaved domains (Canvas worked autonomously thousands of times pre-520a253) to protect against unknown ones. Manual `handoff`/`resume` doesn't poll — agent guesses timing wrong, captures half-written cookie jar, Canvas re-bounces.
-
-**Fix layer (right one this time):** consent is per `(agent-session × eTLD+1 domain)`, persisted to `~/.nightcrawl/state/handoff-consent.json` with TTL. Detection always runs. Window-pop gate moved from env var → consent store.
-
-**New module:** `stealth/browser/src/handoff-consent.ts` (210 lines)
-- `eTldPlusOne(urlOrHost)` with handcrafted two-level public-suffix list (`.co.uk`, `.com.cn`, `.edu.cn`, `.com.au`, `.co.jp`, `.com.hk`, etc.)
-- `readConsent` / `writeConsent` (atomic, missing-file safe)
-- `grant` / `revoke` / `isApproved` / `prune` (immutable ops, return new store)
-- `defaultConsentPath()` → `~/.nightcrawl/state/handoff-consent.json`
-
-**Modified `browser-handoff.ts`:**
-- `detectLoginWall` removed env-var gate. Always runs (still skipped in headed mode). Returns `{ detected, reason, domain, approved }`.
-- `autoHandover` has belt-and-suspenders consent check before opening any window. Returns `CONSENT_REQUIRED: <domain>` if called directly without prior approval.
-- All four detection paths (URL pattern, password input, QR code, Chinese auth-barrier text) wrapped through `withConsent()` helper.
-
-**Modified `server.ts`:** branches on `detection.approved`:
-- approved → fire-and-forget `autoHandover()` (full polling autonomous SSO handling, the good code from `browser-handoff.ts:445-533`)
-- not approved → `CONSENT_REQUIRED: <domain>` in HTTP response + macOS notification, no window opens
-
-**New meta-commands** (`stealth/browser/src/meta-commands.ts` + `commands.ts`):
-- `grant-handoff <domain-or-url> [ttl-days]` — approve auto-handoff for a domain (default 30 days)
-- `revoke-handoff <domain-or-url>` — revoke
-- `list-handoff` — list approved domains with grant + expiry dates
-
-**Tests:**
-- `test/handoff-consent.test.ts` — 16 unit tests for the consent module
-- `test/login-wall-detection.test.ts` — rewritten for new shape; snapshots/restores user's real consent file so test runs never pollute it
-- All passing: 31 in the touched files, 96 in the broader handoff/safety/auto-update suite
-
-### C. macOS notifications (new helper)
-
-**New module:** `stealth/browser/src/notify.ts`
-- `notify(title, body)` — best-effort, fire-and-forget AppleScript notification
-- macOS-only; no-op on other platforms
-- Opt-out via `NIGHTCRAWL_NO_NOTIFY=1`
-- Wired to fire on `CONSENT_REQUIRED` so user sees the prompt even when not watching the chat
-
-**Tests:** `test/notify.test.ts` — 4 smoke tests (never throws, escape safety, kill switch).
-
-### D. Documentation
-
-- `CLAUDE.md` updated: handoff section reflects consent-per-domain (replaces opt-in env-var description); new commands documented; product-notes dir listed.
-- `docs/product-notes/` — 5 Apple Notes preserved as markdown.
-
-## Test status
-
-```
-96 pass, 0 fail across:
-  - test/handoff-consent.test.ts         (16, NEW)
-  - test/login-wall-detection.test.ts    (11, REWRITTEN for consent shape)
-  - test/notify.test.ts                  (4, NEW)
-  - test/hostile-domains.test.ts         (26, unchanged)
-  - test/browser-manager-hostile.test.ts (6, unchanged)
-  - test/update-snapshot.test.ts         (11, unchanged)
-  - test/update-executor.test.ts         (6, unchanged)
-  - test/auto-updater.test.ts            (14, unchanged)
-  - test/stealth-reinforcement.test.ts   (6, unchanged)
-```
-
-**Pre-existing flakes (NOT regressions from this session):**
-- `test/handoff.test.ts > resume without prior handoff works via meta command` — times out at `ariaSnapshot()`. Caused by commit `8dc179a` (Waves 2-5) which bumped Playwright 1.58.2→1.59.1 without re-porting CDP patches. Subagent investigation in this session confirmed the root cause.
-- `test/cnki-login.test.ts` — Playwright `Disposable` channel mismatch from same PW 1.59.1 issue.
-
-## What's deferred (next session)
-
-### P1: CloakBrowser-as-default flip
-- Decision is made (`project_cloakbrowser_default_decision.md`).
-- Today's E2E test (Session 5 verifier test) revealed the verifier launches stock Playwright, not CloakBrowser — so all stealth-verification signals were testing the wrong engine. Flip `engine-config.ts` default from `playwright` → `cloakbrowser`, point verifier at CloakBrowser, delete the PW-engine code path. This also kills the PW 1.59.1 / CDP patches mismatch that breaks the two pre-existing test flakes — the patches become dead code.
-- Risk: CloakBrowser binary auto-downloads ~200MB on first use; need to make sure error path is loud, not silent fallback to broken PW engine.
-
-### P2: Default-browser handoff (open user's Arc/Chrome instead of headed Chromium)
-- Designed in `feedback_proactive_handoff_ux.md` step 6.
-- Why deferred: cookie sync from Arc/Chrome → nightCrawl daemon requires `cookie-import-browser`, which triggers Keychain dialog (per `feedback_no_windows.md` — user has been burned by this multiple times). Can't silently re-import after user logs in their default browser.
-- Resolution path: either (a) accept Keychain prompt as part of the user-approved handoff flow (it's expected at that point), or (b) keep using spawned headed CloakBrowser as the only handoff medium.
-- Requires user input on which path before coding.
-
-### P3: Auto-updater verifier baseline comparison
-- Today's E2E test showed the verifier reports "FAIL" on both pre-update and post-update versions because Playwright-engine has known stealth gaps. Rollback fires on every update.
-- Fix: compare `verifyStealth()` output BEFORE update vs AFTER update. Only roll back if post is *worse* than pre. (Naturally, this becomes trivial after P1 — CloakBrowser engine should pass these sites cleanly.)
-
-### P4: User-facing health command
-- `browse health` → plain-English report ("✅ Google, ✅ Zhihu, ❌ bot.sannysoft").
-- Non-technical user must be able to verify nightCrawl works without reading logs.
-- Use the same `verifyStealth()` infrastructure but with friendly output.
-
-### P5: Pre-existing handoff/snapshot test flakes
-- Two tests time out on `ariaSnapshot()` under PW 1.59.1.
-- Becomes dead code if P1 (CloakBrowser-only) ships, since CDP patches go away.
-- If P1 deferred further, re-port CDP patches against PW 1.59.1 directly.
-
-### Bigger product moves (from `project_open_todos.md` + Apple Notes)
-
-Not for next session necessarily — these are months of work, listed so they're not forgotten:
-
-- **Six moat features** from `docs/product-notes/agent-centric-roadmap.md`: intent-level API, habit memory, intent-based HITL, per-action trust scopes, audit log as product surface, passive observation mode ("watch me work").
-- **Hermes-pattern adoptions** from `docs/product-notes/hermes-agent-synthesis.md`: COMMAND_REGISTRY central dispatch, progressive disclosure for skills, fenced memory injection (prompt-injection defense), subagent delegation with hard blocklist, profiles via env-var-before-import.
-- **Bridge to Hermes**: ship `nightcrawl/skills/browser-twin` as a Hermes-installable skill that registers nightCrawl's MCP endpoint. nightCrawl owns "browser-as-you," Hermes owns terminal+messaging, the skill is the bridge.
-- **Landing page scenarios** (from running todo): AI-information export, Canvas assignments, tax filing, customer-service battles, judgment search, etc. — to brainstorm + design.
-- **Onboarding UX**: iOS-style cookie permissions ("import all / import per-domain / never"), folder path setup, persuasion that it's safe.
-- **Question to answer**: skill vs standalone CLI as the final user-facing form?
-
-## Working tree at handoff time
-
-Clean except `bun.lock` change introduced earlier in session by the auto-updater E2E test (cloakbrowser entry was missing from the lockfile pre-session — `bun install` properly added it). Included in this session's commit.
-
-## Account safety reminders (still load-bearing)
-
-- Hostile-domain blocklist in `stealth/browser/src/hostile-domains.ts` is HARDCODED. Do NOT make it configurable.
-- Tier 5 testing (XHS posting) is DELETED from the roadmap, not deferred. Do not re-add it.
-- New feature with write-access to user accounts → ship with safety gate in the same PR (per `feedback_universal_safety_layer.md`).
-
-## Memory state
-
-`MEMORY.md` index reorganized with a "Product Identity" section at the top. Future sessions should read those files first. Total memories: 23 (was 20).
-
----
-
-*Created by Claude Opus 4.6 (1M ctx) — 2026-04-14, Session 6. Conversational pivot from "verify Session 5" → "rebuild product identity" → "ship consent-based handoff fix for UW Canvas regression."*
+*Created by Claude Opus 4.7 (1M ctx) — 2026-04-24. Previous session
+(`cfee4c10` / `playful-mixing-quail`) terminated by repeated API 400 errors
+on "invalid thinking-block signature"; this session resumed from plan +
+uncommitted diff and executed the pending commit/push/handoff sequence.*
