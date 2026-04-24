@@ -11,6 +11,8 @@
 
 const DEFAULT_INTERVAL_MS = 10 * 60_000;
 
+export type SyncTrigger = 'poll' | 'watch' | 'manual';
+
 export interface SyncTelemetry {
   intervalMs: number;
   runCount: number;
@@ -25,6 +27,9 @@ export interface SyncTelemetry {
   lastImportedCount: number;
   lastNewDomains: string[];
   lastSkipReason: string | null;
+  lastTrigger: SyncTrigger | null;
+  triggerCounts: { poll: number; watch: number; manual: number };
+  watchPath: string | null;
 }
 
 const telemetry: SyncTelemetry = {
@@ -41,15 +46,24 @@ const telemetry: SyncTelemetry = {
   lastImportedCount: 0,
   lastNewDomains: [],
   lastSkipReason: null,
+  lastTrigger: null,
+  triggerCounts: { poll: 0, watch: 0, manual: 0 },
+  watchPath: null,
 };
 
 export function getSyncTelemetry(): Readonly<SyncTelemetry> {
   return telemetry;
 }
 
-export function recordSyncStart(): void {
+export function recordSyncStart(trigger: SyncTrigger = 'manual'): void {
   telemetry.runCount++;
   telemetry.lastRunAt = Date.now();
+  telemetry.lastTrigger = trigger;
+  telemetry.triggerCounts[trigger]++;
+}
+
+export function setWatchPath(p: string | null): void {
+  telemetry.watchPath = p;
 }
 
 export function recordSyncSuccess(result: {
@@ -100,6 +114,9 @@ export function resetSyncTelemetryForTesting(): void {
   telemetry.lastImportedCount = 0;
   telemetry.lastNewDomains = [];
   telemetry.lastSkipReason = null;
+  telemetry.lastTrigger = null;
+  telemetry.triggerCounts = { poll: 0, watch: 0, manual: 0 };
+  telemetry.watchPath = null;
 }
 
 function formatAge(then: number, now: number): string {
@@ -115,14 +132,26 @@ function formatAge(then: number, now: number): string {
 
 export function formatSyncStatus(t: Readonly<SyncTelemetry>, now: number = Date.now()): string {
   const lines: string[] = [];
-  lines.push('Background sync (Arc → nightCrawl)');
-  lines.push(`  Interval: ${Math.round(t.intervalMs / 60_000)} min`);
-  lines.push(`  Runs: ${t.runCount} (success: ${t.successCount}, errors: ${t.errorCount}, skipped: ${t.skippedCount})`);
+  lines.push('Background sync (default browser → nightCrawl)');
+  if (t.watchPath) {
+    lines.push(`  Watcher: real-time on ${t.watchPath}`);
+    lines.push(`  Poll fallback: every ${Math.round(t.intervalMs / 60_000)} min`);
+  } else {
+    lines.push(`  Watcher: (not running — using poll only)`);
+    lines.push(`  Interval: every ${Math.round(t.intervalMs / 60_000)} min`);
+  }
+  lines.push(
+    `  Runs: ${t.runCount} (success: ${t.successCount}, errors: ${t.errorCount}, skipped: ${t.skippedCount})`,
+  );
+  lines.push(
+    `  Triggers: watch ${t.triggerCounts.watch}, poll ${t.triggerCounts.poll}, manual ${t.triggerCounts.manual}`,
+  );
 
   if (t.lastRunAt === null) {
-    lines.push('  Last run: never — daemon just started, first cycle is in <10 min.');
+    lines.push('  Last run: never — daemon just started, watcher will fire on next Arc cookie write.');
   } else {
-    lines.push(`  Last run: ${formatAge(t.lastRunAt, now)}`);
+    const triggerStr = t.lastTrigger ? ` (${t.lastTrigger})` : '';
+    lines.push(`  Last run: ${formatAge(t.lastRunAt, now)}${triggerStr}`);
   }
 
   if (t.lastSuccessAt !== null) {

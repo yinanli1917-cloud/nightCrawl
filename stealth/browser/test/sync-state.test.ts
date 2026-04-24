@@ -14,6 +14,7 @@ import {
   recordSyncSkipped,
   resetSyncTelemetryForTesting,
   formatSyncStatus,
+  setWatchPath,
 } from '../src/sync-state';
 
 describe('sync-state', () => {
@@ -33,15 +34,39 @@ describe('sync-state', () => {
     expect(t.lastImportedCount).toBe(0);
     expect(t.lastNewDomains).toEqual([]);
     expect(t.intervalMs).toBe(10 * 60_000);
+    expect(t.lastTrigger).toBeNull();
+    expect(t.triggerCounts).toEqual({ poll: 0, watch: 0, manual: 0 });
+    expect(t.watchPath).toBeNull();
   });
 
-  test('recordSyncStart increments runCount and sets lastRunAt', () => {
+  test('recordSyncStart increments runCount, sets lastRunAt, defaults trigger to manual', () => {
     const before = Date.now();
     recordSyncStart();
     const t = getSyncTelemetry();
     expect(t.runCount).toBe(1);
     expect(t.lastRunAt).not.toBeNull();
     expect(t.lastRunAt!).toBeGreaterThanOrEqual(before);
+    expect(t.lastTrigger).toBe('manual');
+    expect(t.triggerCounts.manual).toBe(1);
+  });
+
+  test('recordSyncStart records explicit trigger and bumps trigger counter', () => {
+    recordSyncStart('watch');
+    recordSyncStart('watch');
+    recordSyncStart('poll');
+    const t = getSyncTelemetry();
+    expect(t.lastTrigger).toBe('poll');
+    expect(t.triggerCounts).toEqual({ poll: 1, watch: 2, manual: 0 });
+    expect(t.runCount).toBe(3);
+  });
+
+  test('setWatchPath populates watchPath, formatSyncStatus shows real-time', () => {
+    setWatchPath('/path/to/Cookies');
+    const t = getSyncTelemetry();
+    expect(t.watchPath).toBe('/path/to/Cookies');
+    const out = formatSyncStatus(t);
+    expect(out).toContain('real-time');
+    expect(out).toContain('/path/to/Cookies');
   });
 
   test('recordSyncSuccess records result, increments successCount, clears lastError', () => {
@@ -91,8 +116,8 @@ describe('sync-state', () => {
   test('formatSyncStatus on fresh state explains daemon just started', () => {
     const out = formatSyncStatus(getSyncTelemetry(), Date.now());
     expect(out).toContain('Background sync');
-    expect(out).toContain('Interval: 10 min');
-    expect(out).toMatch(/never|just started/i);
+    expect(out).toContain('every 10 min');
+    expect(out).toMatch(/never|just started|fire on next/i);
   });
 
   test('formatSyncStatus shows last success summary', () => {

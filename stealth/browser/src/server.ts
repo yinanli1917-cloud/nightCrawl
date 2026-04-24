@@ -613,10 +613,12 @@ const storageFlushInterval = setInterval(persistStorage, 5 * 60_000);
 // ─── Background Cookie Sync ──────────────────────────────────
 // Proactively sync cookies from the user's default browser so sites
 // they've logged into in Arc/Chrome also work in nightCrawl without
-// ever hitting a login wall. Runs on an independent 10-minute cycle.
+// ever hitting a login wall. Two layers:
+//   1. fs.watch on the cookie SQLite — REAL-TIME (sub-3s after Arc writes)
+//   2. 10-min poll fallback — covers FSEvents drops on macOS
 // First run triggers the Keychain dialog once; "Always Allow" makes
 // every subsequent sync silent.
-async function runBackgroundSync() {
+async function runBackgroundSync(trigger: 'poll' | 'watch' | 'manual' = 'poll') {
   if (process.env.BROWSE_INCOGNITO === '1') {
     recordSyncSkipped('incognito-mode');
     return;
@@ -633,7 +635,7 @@ async function runBackgroundSync() {
       return;
     }
   }
-  recordSyncStart();
+  recordSyncStart(trigger);
   try {
     const context = browserManager.context;
     if (!context) {
@@ -643,7 +645,7 @@ async function runBackgroundSync() {
     const result = await syncAllCookies(context);
     recordSyncSuccess(result);
     if (result.importedCount > 0) {
-      console.log(`[nightcrawl] Background sync: imported ${result.importedCount} cookies for ${result.newDomains.length} new domain(s) from ${result.browser}.`);
+      console.log(`[nightcrawl] Sync (${trigger}): imported ${result.importedCount} cookies for ${result.newDomains.length} new domain(s) from ${result.browser}.`);
       await persistStorage();
     }
   } catch (err: any) {
@@ -652,7 +654,37 @@ async function runBackgroundSync() {
   }
 }
 
-const backgroundSyncInterval = setInterval(runBackgroundSync, 10 * 60_000);
+const backgroundSyncInterval = setInterval(() => runBackgroundSync('poll'), 10 * 60_000);
+
+// ─── Real-Time Cookie Watcher ────────────────────────────────
+// Attach an fs.watch on the user's default browser cookie DB so a fresh
+// Arc/Chrome login propagates to nightCrawl in seconds, not minutes.
+// Inflight protection: drop watch-triggered syncs while a sync is already
+// running (a single Arc cookie write fans out into several FS events;
+// debounce is the first line, this is the second).
+let cookieWatcher: { stop: () => void } | null = null;
+let syncInflight = false;
+(async () => {
+  try {
+    const { watchBrowserCookieDb } = await import('./cookie-watch');
+    const { cookieDbPath } = await import('./cookie-import-browser');
+    const { pickDefaultBrowser } = await import('./handoff-cookie-import');
+    const { setWatchPath } = await import('./sync-state');
+    const browser = pickDefaultBrowser();
+    if (!browser) return;
+    const dbPath = cookieDbPath(browser);
+    if (!dbPath) return;
+    cookieWatcher = watchBrowserCookieDb(dbPath, async () => {
+      if (syncInflight) return;
+      syncInflight = true;
+      try { await runBackgroundSync('watch'); } finally { syncInflight = false; }
+    });
+    setWatchPath(dbPath);
+    console.log(`[nightcrawl] Cookie watcher attached: ${dbPath}`);
+  } catch (err: any) {
+    console.error(`[nightcrawl] Cookie watcher startup failed: ${err?.message || err}`);
+  }
+})();
 
 // ─── Idle Timer ────────────────────────────────────────────────
 let lastActivity = Date.now();
@@ -1187,6 +1219,7 @@ async function shutdown() {
   clearInterval(idleCheckInterval);
   clearInterval(storageFlushInterval);
   clearInterval(backgroundSyncInterval);
+  if (cookieWatcher) { try { cookieWatcher.stop(); } catch {} cookieWatcher = null; }
   await flushBuffers(); // Final flush (async now)
 
   // Persist cookies + storage before closing browser

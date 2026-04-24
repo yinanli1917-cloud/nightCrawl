@@ -358,6 +358,27 @@ export async function importCookies(
 
 // ─── Internal: Browser Resolution ───────────────────────────────
 
+/**
+ * Return the on-disk SQLite path for a Chromium-family browser's cookie
+ * store, or null if the browser isn't installed (or isn't Chromium-family
+ * — Firefox/Safari use different stores and aren't supported here).
+ *
+ * Used by cookie-watch.ts to attach an fs.watch on the right path.
+ */
+export function cookieDbPath(browserName: string, profile = 'Default'): string | null {
+  let info: BrowserInfo;
+  try {
+    info = resolveBrowser(browserName);
+  } catch {
+    return null;
+  }
+  // Only Chromium-family browsers expose a `dataDir` in the registry shape
+  // the watcher cares about. Firefox/Safari stub through different paths.
+  if (info === FIREFOX_BROWSER_INFO || info === SAFARI_BROWSER_INFO) return null;
+  const match = findBrowserMatch(info, profile);
+  return match ? match.dbPath : null;
+}
+
 function resolveBrowser(nameOrAlias: string): BrowserInfo {
   const needle = nameOrAlias.toLowerCase().trim();
 
