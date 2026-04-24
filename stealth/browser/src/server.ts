@@ -1751,7 +1751,7 @@ async function start() {
     if (readConfigValue('auto_upgrade') !== 'true') return;
 
     try {
-      const { createPlaywrightVerifierBrowser } = await import('./stealth-verifier-playwright');
+      const { createCloakVerifierBrowser } = await import('./stealth-verifier-cloakbrowser');
       const { verifyStealth } = await import('./stealth-verifier');
       const cooldownPath = path.join(stateDir, 'auto-update-last-run.json');
       const COOLDOWN_MS = 24 * 60 * 60 * 1000;
@@ -1794,7 +1794,7 @@ async function start() {
           return await installPackage(pkg, version, { runner: defaultRunner, cwd });
         },
         runVerifier: async () => {
-          return await verifyStealth({ browser: createPlaywrightVerifierBrowser() });
+          return await verifyStealth({ browser: createCloakVerifierBrowser() });
         },
         applyPatches: async () => { await applyStealthPatches(); },
         log: (msg) => console.log(msg),
@@ -1818,7 +1818,7 @@ async function start() {
   if (process.env.BROWSE_REINFORCEMENT !== '0') {
     (async () => {
       try {
-        const { createPlaywrightVerifierBrowser } = await import('./stealth-verifier-playwright');
+        const { createCloakVerifierBrowser } = await import('./stealth-verifier-cloakbrowser');
         const { verifyStealth } = await import('./stealth-verifier');
         const stateDir = path.join(process.env.HOME || '/tmp', '.nightcrawl');
 
@@ -1826,7 +1826,7 @@ async function start() {
           intervalMs: 6 * 60 * 60 * 1000,    // 6h
           initialDelayMs: 60 * 60 * 1000,    // 1h after startup
           stateDir,
-          runVerifier: () => verifyStealth({ browser: createPlaywrightVerifierBrowser() }),
+          runVerifier: () => verifyStealth({ browser: createCloakVerifierBrowser() }),
           reapplyPatches: () => applyStealthPatches(),
           schedule: (delayMs, cb) => setTimeout(cb, delayMs),
           cancel: (handle) => clearTimeout(handle),

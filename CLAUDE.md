@@ -54,24 +54,19 @@ No existing tool combines: **local CLI + real browser cookies + stealth + persis
 7. **Scoped token system** — per-agent permissions (read/write/admin/meta scopes), domain restrictions, rate limiting
 8. **IPv6 + DNS hardening** — full fc00::/7, fe80::/10, IPv4-mapped IPv6, AAAA DNS rebinding, ReDoS-safe regex
 
-9. **CloakBrowser engine** — `BROWSE_ENGINE=cloakbrowser` uses CloakBrowser's stealth Chromium with 48 C++ patches (canvas, WebGL, audio, fonts, GPU, WebRTC, etc.). Falls back to stock Playwright if unavailable.
+9. **CloakBrowser engine** — the only production engine. CloakBrowser's stealth Chromium with 48 C++ patches (canvas, WebGL, audio, fonts, GPU, WebRTC, etc.). Failure throws with install instructions; stock Playwright fallback was removed (Chrome for Testing is detectable by every Tier-1+ vendor).
 10. **Fingerprint profiles** — `BROWSE_FINGERPRINT_SEED` or per-identity seeds in `~/.nightcrawl/identities/`. Deterministic fingerprints across all surfaces.
 11. **Behavioral humanization** — `BROWSE_HUMANIZE=1` enables CloakBrowser's built-in Bezier mouse, typing jitter, non-linear scroll (Tier 4-5 sites only)
 12. **Fingerprint-pinned domain classifier** — `fingerprint-pinned.ts` detects sites whose bot-management vendor pins sessions to the solving browser's fingerprint (Cloudflare `cf-mitigated`, DataDome, Kasada, PerimeterX). Persists to `~/.nightcrawl/state/fingerprint-pinned.json`. Header-sniffed on `document` responses OR marked observationally when Arc cookie import fails to clear the wall. Shortens the default-browser poll from 5 min → 30 s for pinned domains and routes straight to headed CloakBrowser.
 13. **Actionable notifications** — `notify.ts` adds `notifyWithAction(title, body, action)` using optional `terminal-notifier` (`brew install terminal-notifier`). Clickable buttons for "Focus browser" / "Focus CloakBrowser". Degrades to passive `notify()` when terminal-notifier absent.
 14. **Persistent fingerprint seed** — `engine-config.ts` persists the CloakBrowser fingerprint seed to `~/.nightcrawl/state/engine-seed.json`. Every headless AND headed launch on this machine uses the SAME seed so bot-managed sites (CF/Akamai/etc) see a consistent fingerprint across sessions and headless↔headed transitions. Previously each launch picked a random seed, invalidating cookies each time.
-15. **CloakBrowser for headed handoff** — `browser-handoff.ts` routes both `launchHeaded` and the `handoff` relaunch through `launchCloakBrowser` when engine is cloakbrowser. Fixes the v0.2 gap where headless was CloakBrowser but handoff was Chrome-for-Testing, breaking the whole fingerprint-match premise.
+15. **CloakBrowser for headed handoff** — `browser-handoff.ts` routes both `launchHeaded` and the `handoff` relaunch through `launchCloakBrowser`. Fixes the v0.2 gap where headless was CloakBrowser but handoff was Chrome-for-Testing, breaking the whole fingerprint-match premise.
 16. **Late-redirect watcher** — `server.ts` runs a 20-second background URL watcher after every goto whose initial detection returned null. If the URL settles on a login path (CF dash takes ~10s to client-redirect `/` → `/login`), invalidates auth-cache, marks the domain as observed-pinned, and fires auto-handover or a consent notification.
 
-### Engine Selection
-- `BROWSE_ENGINE=playwright` (default) — stock Playwright Chromium with CDP patches
-- `BROWSE_ENGINE=cloakbrowser` — CloakBrowser stealth Chromium (skips CDP patches, uses 48 C++ patches instead)
-- `BROWSE_FINGERPRINT_SEED=12345` — explicit fingerprint seed (10000-99999)
-- `BROWSE_HUMANIZE=0|1` — behavioral humanization (CloakBrowser only)
-
-### Stealth Limitation (Playwright engine)
-CDP patches fix basic automation detection, but canvas/WebGL/audio fingerprinting and
-behavioral analysis are NOT patched. Switch to `BROWSE_ENGINE=cloakbrowser` for full stealth.
+### Engine Configuration
+- CloakBrowser stealth Chromium is the only engine. `BROWSE_ENGINE` is no longer parsed.
+- `BROWSE_FINGERPRINT_SEED=12345` — explicit fingerprint seed (10000-99999); otherwise persisted in `~/.nightcrawl/state/engine-seed.json`
+- `BROWSE_HUMANIZE=0|1` — behavioral humanization (Bezier mouse, typing jitter, non-linear scroll)
 
 ### Roadmap (v0.3+)
 - TLS/JA3 fingerprint masking

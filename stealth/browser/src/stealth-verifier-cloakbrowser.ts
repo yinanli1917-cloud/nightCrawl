@@ -1,10 +1,10 @@
 /**
  * CloakBrowser VerifierBrowser implementation.
  *
- * Mirrors stealth-verifier-playwright.ts but uses CloakBrowser's
- * stealth Chromium. This is the correct verifier when CloakBrowser
- * is the active engine — using the stock PW verifier would test
- * the wrong browser and report false negatives.
+ * The verifier launches CloakBrowser and runs sannysoft + rebrowser
+ * detection sites against it. CloakBrowser is now the only production
+ * engine (stock Playwright path was removed) so this is the only
+ * verifier wired into the auto-updater + reinforcement loop.
  *
  * [INPUT]: cloakbrowser-engine.ts (launchCloakBrowser + patchScreencast)
  * [OUTPUT]: createCloakVerifierBrowser(): VerifierBrowser
