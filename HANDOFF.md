@@ -1,140 +1,129 @@
-# HANDOFF — 2026-04-24 (session 2)
+# HANDOFF — 2026-04-24 (session 3)
 
 ## Current state
 
-Branch `main`, all work pushed to `origin/main`. Four commits on top of
-the prior `ab62019` checkpoint:
+Branch `main`, all work pushed. Seven commits on top of `ab62019`:
 
 1. `13dab82` — `feat(sync): nc sync status / nc sync now`
 2. `36fff25` — `feat(health): plain-English daemon snapshot; deep verifier moved to 'health stealth'`
 3. `91c7360` — `refactor(engine): collapse PW engine path; CloakBrowser is the only engine`
-4. `bb9e398` — `refactor(verifier): switch auto-update + reinforcement to CloakBrowser verifier; delete PW verifier`
+4. `bb9e398` — `refactor(verifier): switch auto-update + reinforcement to CloakBrowser verifier`
+5. `851a8e2` — `docs: handoff session 2 wrap`
+6. `b28c5cf` — **`feat(sync): real-time fs.watch on default-browser cookie DB (sub-3s sync)`**
+7. `cad9f3f` — `feat(notify): add 'nc notify-test' diagnostic command`
+
+## What this session shipped
+
+### ✅ Real-time cookie sync (the headline)
+The 10-min poll is now a *fallback*, not the primary path. `cookie-watch.ts`
+attaches `fs.watch` to the user's default-browser cookie SQLite directory.
+On any write to `Cookies` / `Cookies-journal` / `Cookies-wal`, debounces
+2 seconds (SQLite write bursts) and triggers `runBackgroundSync('watch')`.
+
+**Verified live**: `touch ~/Library/Application\ Support/Arc/User\ Data/Default/Cookies`
+→ within 3 seconds, `nc sync status` showed `Triggers: watch 1`,
+`Last run: 2s ago (watch)`, `imported 0 cookies, 0 new domain(s) from arc`.
+
+User-facing impact: log into a site in Arc → nightCrawl knows ~3 seconds
+later. Was: 0–10 minutes.
+
+### ✅ `nc notify-test` diagnostic command
+Fires both passive (osascript) and actionable (terminal-notifier)
+notifications with a timestamp, plus prints a System Settings checklist
+for diagnosing "I never see notifications." Code path tests clean — if
+the user runs it and sees nothing, it's a downstream macOS permissions
+issue (System Settings → Notifications → osascript / terminal-notifier).
+
+### ✅ Notification + sync design doc
+`docs/notification-and-sync-design.md` captures the full design + the
+inventory of every notification / handoff / real-time-sync requirement
+the user has expressed across the project memory and Apple Notes.
+
+### ✅ Sync telemetry now distinguishes triggers
+`nc sync status` shows per-trigger counters (`Triggers: watch X, poll Y,
+manual Z`) and labels each run with its origin (e.g.
+`Last run: 2s ago (watch)`). Lets the user diagnose whether real-time
+or poll is doing the work.
 
 ## Status
 
-### ✅ Sync telemetry (`nc sync status`, `nc sync now`)
-- New `sync-state.ts` exposes in-memory telemetry (run/success/error/skipped
-  counts, last timestamps, last error, intervalMs, last imported domains).
-- `runBackgroundSync` updates telemetry on every cycle.
-- `meta-commands.ts` adds the `sync` case with `status` (read) and `now`
-  (trigger immediately) sub-commands.
-- 11 new unit tests in `test/sync-state.test.ts`.
-- Live-verified: `sync now` returned `Imported 0 cookies, 0 new domain(s)
-  from arc` (correct — Arc state already synced from prior background runs);
-  `sync status` reflected `Runs: 1 (success: 1...)`.
+| Item | Status |
+|---|---|
+| `nc sync status` / `sync now` (telemetry) | ✅ shipped (`13dab82`) |
+| `nc health` plain-English snapshot | ✅ shipped (`36fff25`) |
+| PW engine path collapse | ✅ shipped (`91c7360`, `bb9e398`) |
+| **Real-time cookie sync (fs.watch)** | ✅ shipped (`b28c5cf`) |
+| **`nc notify-test`** | ✅ shipped (`cad9f3f`) |
+| Notification design doc | ✅ shipped (`docs/notification-and-sync-design.md`) |
+| Notifications actually visible to user | ❓ pending user check of `nc notify-test` |
+| doubao.com end-to-end live verify | ⏳ pending (destructive — needs user re-login) |
+| `default-browser-medium handoff` | ⏳ deferred — term doesn't exist in code, needs user scoping |
+| CDP-patches-under-CloakBrowser investigation | ⏳ deferred (A/B verifier run needed) |
 
-### ✅ Plain-English `browse health`
-- `health-snapshot.ts` is a pure formatter for an aggregated daemon view:
-  engine + seed, mode, PID, uptime, current URL/tabs/cookie count, sync
-  cycle/last run/last success/error, granted + pinned domain lists.
-- `meta-commands.ts` `health` handler aggregates state and calls the
-  formatter. The deep stealth verifier moved to `health stealth`.
-- 9 new unit tests in `test/health-snapshot.test.ts` (formatter shape,
-  STALE/DEGRADED thresholds, large-list elision, fresh-daemon case).
-- Live-verified: `health` showed real values (5 granted domains, 2 pinned,
-  2943 cookies). `health stealth` still passes — HEALTHY in 11.9s.
+## What I corrected mid-session
 
-### ✅ PW engine path collapsed (Stages 1-4)
-Recorded decision (`project_cloakbrowser_default_decision.md`,
-2026-04-14) honored: stock Playwright launch path is gone.
+The user pushed back on two earlier overclaims:
 
-- `cloakbrowser-engine.ts`: `launchPlaywrightFallback` deleted. Failure
-  now throws with install instructions (no silent fallback to the unsafe
-  Chrome-for-Testing path).
-- `browser-manager.ts`: `launch()` collapsed to CloakBrowser only
-  (~50 lines removed). Dead imports of `applyStealthPatches`,
-  `shouldSkipCdpPatches`, `findChromiumExecutable` removed.
-- `engine-config.ts`: `BrowserEngine` is now the literal `'cloakbrowser'`.
-  `BROWSE_ENGINE` env var no longer parsed. `VALID_ENGINES` set deleted.
-- `browser-handoff.ts`: `launchHeaded` / `handoff` / `resume` collapsed
-  to CloakBrowser only (3 if/else pairs removed).
-- `meta-commands.ts`: `health stealth` no longer branches on engine.
-- `server.ts`: auto-updater verifier and 6h reinforcement loop verifier
-  both switched from `createPlaywrightVerifierBrowser` →
-  `createCloakVerifierBrowser`. Per the project memory: "All verification
-  signals have been meaningless" — they were testing the wrong browser.
-- `stealth-verifier-playwright.ts` deleted.
-- `CLAUDE.md` updated: stealth feature #9 reflects single engine, "Engine
-  Configuration" section drops `BROWSE_ENGINE`.
+1. **"We built the auto-pop feature."** Not true. Auto-handoff goes back to
+   `92468d8` and earlier. Commit `b180255` (prior session, not me) added
+   *background polling* and *removed the env-var gate* for pinned domains.
+   The auto-handoff machinery itself is the user's, not mine.
+2. **"Verified" without driving real sites.** I had only verified that
+   `sync now` returned a no-op success and that the daemon launched. Real
+   end-to-end on doubao.com remains unverified. This session's watcher
+   verification used `touch` on the Arc cookie file — proves the wiring
+   works, doesn't prove a real Arc login propagates (because I'd need
+   to log into a fresh site as the user to do that).
 
-Net across the 4 commits: ~+550 / −330 lines. 130 of 132 tests pass; the
-2 failures in `cloakbrowser-integration.test.ts` are pre-existing on main
-(parseEngineConfig assumes `fingerprintSeed` is `undefined` when no env
-var is set, but the persistent-seed feature always returns a number).
+## What's still pending
 
-## Watch-outs / known-pending
+1. **You see the test notifications?** Run `nc notify-test` (already ran
+   during this session). If you see neither: System Settings → Notifications
+   → search for `osascript` and `terminal-notifier`, set both to "Allow
+   Notifications." If you see them: notifications work; any "not working"
+   reports are about specific handoff scenarios that may need their own
+   investigation.
 
-- **`applyStealthPatches` and `stealth/patches/cdp/` are NOT removed yet.**
-  CloakBrowser depends on `playwright-core` for its API surface, so the
-  JS-layer CDP patches against `playwright-core/lib/server/chromium/*.js`
-  may still be helpful (or at least neutral) under CloakBrowser. Removing
-  them would also delete `cdp-patches-v2.test.ts` and `stealth-cdp.test.ts`.
-  Investigation deferred — needs an A/B verifier run on
-  bot-detector.rebrowser.net with patches on vs off.
-- **Catch-block PW emergency fallback in `resume()` kept as-is.** Only
-  fires when CloakBrowser launch already failed; gives the user a usable
-  blank context instead of a dead daemon. Per the "fail loud" policy this
-  could also throw, but the UX cost (dead daemon, no recovery path) seemed
-  worse than the stealth cost (blank context with no real session).
-- **2 pre-existing test failures in `cloakbrowser-integration.test.ts`.**
-  `parseEngineConfig defaults to cloakbrowser` and `parseEngineConfig
-  ignores non-numeric seed` both expect `fingerprintSeed === undefined`,
-  but the persistent-seed feature (`engine-seed.json`) always returns a
-  number. Either update the tests to clear `engine-seed.json` between
-  runs, or change the contract.
-- **Background sync first real-world cycle may trigger Keychain dialog**
-  if the user hasn't clicked "Always Allow" yet. Still expected behavior.
+2. **End-to-end real-Arc-login verify.** Open Arc, log into a site you've
+   never touched in nightCrawl (a throwaway Hacker News account is the
+   easiest), then run `nc sync status`. Expected: within ~10 seconds of
+   your Arc login, `lastNewDomains` shows the new domain and `Triggers:
+   watch +1`.
 
-## Still pending (need user / further scoping)
+3. **Doubao end-to-end.** Wipe doubao cookies from the jar, restart daemon,
+   `nc goto doubao.com` → expect notification → expect CloakBrowser auto-pop
+   → log in → expect headless resume to work. Costs you one re-login.
 
-1. **Live-verify doubao re-auth** — destructive: wipes a working doubao
-   session, requires user at the keyboard for Duo/OTP. Best done when
-   the user is willing to spend a re-login. Expected: `nc goto doubao.com`
-   → notification fires → CloakBrowser window pops → user logs in →
-   window closes → headless goto works.
-2. **Live-verify the 10-min background sync loop** — needs a fresh Arc
-   login on a site not yet in the nightCrawl jar (e.g. throwaway HN
-   account). Wait ≥10 min, then `nc goto news.ycombinator.com`. Expect
-   logged in, no wall, no import trigger. Now diagnosable with
-   `nc sync status` (shows runs/success/error counts).
-3. **`default-browser-medium handoff`** — listed as P4 in the prior
-   handoff, but the term doesn't appear in the code or docs. Needs the
-   user to scope it: is "medium" a tier between notify-only and
-   full-headed-handoff? A surface change (system browser vs
-   CloakBrowser)? Surface this question before implementing.
+4. **`default-browser-medium handoff`** — needs scoping. Best guess: a tier
+   that opens your actual default browser (Arc) for the login instead of
+   spawning a headed CloakBrowser. Aligns with the consent-flow intent
+   ("Preferred handoff medium: user's default browser") in
+   `feedback_proactive_handoff_ux.md`.
 
-## Next-step options (in priority order)
+## Watch-outs
 
-1. **Fix the 2 pre-existing `parseEngineConfig` test failures** by
-   isolating the persistent seed file in test setup — small, mechanical,
-   gets the test suite green.
-2. **Investigate the CDP patches under CloakBrowser** — A/B verifier run
-   to decide whether `stealth/patches/cdp/` and `applyStealthPatches`
-   stay or go. Would close the last mile of the engine-collapse refactor
-   and let `cdp-patches-v2.test.ts` / `stealth-cdp.test.ts` either be
-   deleted or reframed.
-3. **Live-verify doubao + 10-min sync** when the user can spare the
-   re-logins / wait time.
-4. **Scope default-browser-medium handoff** with the user before
-   implementing.
+- **Watcher only watches the *default* browser.** If you switch your default
+  browser while the daemon is running, the watcher stays on the old one until
+  daemon restart. `nc sync status` will show the old path under `Watcher:`.
+- **Watcher swallows the FSEvents-on-macOS startup echo** (30ms warm-up).
+  A real Arc cookie write within the first 30ms after daemon launch would
+  be missed — vanishingly unlikely in practice.
+- **Watcher doesn't sync deletions.** If you log OUT of a site in Arc, the
+  cookies linger in nightCrawl's jar until they expire naturally. Fix would
+  require diff instead of additive import.
 
-## Relevant files (this session)
+## Relevant files
 
-- [stealth/browser/src/sync-state.ts](stealth/browser/src/sync-state.ts) — telemetry singleton + `formatSyncStatus`
-- [stealth/browser/src/health-snapshot.ts](stealth/browser/src/health-snapshot.ts) — pure formatter for `nc health`
-- [stealth/browser/src/meta-commands.ts](stealth/browser/src/meta-commands.ts) — `sync` and `health` handlers
-- [stealth/browser/src/server.ts](stealth/browser/src/server.ts) — telemetry hooks in `runBackgroundSync`, verifier switch in auto-update + reinforcement
-- [stealth/browser/src/cloakbrowser-engine.ts](stealth/browser/src/cloakbrowser-engine.ts) — fail-loud (no PW fallback)
-- [stealth/browser/src/browser-manager.ts](stealth/browser/src/browser-manager.ts) — single launch path
-- [stealth/browser/src/browser-handoff.ts](stealth/browser/src/browser-handoff.ts) — single handoff/resume path
-- [stealth/browser/src/engine-config.ts](stealth/browser/src/engine-config.ts) — single-engine config
-- [CLAUDE.md](CLAUDE.md) — single-engine docs
+- [stealth/browser/src/cookie-watch.ts](stealth/browser/src/cookie-watch.ts) — fs.watch wrapper, 2s debounce
+- [stealth/browser/src/sync-state.ts](stealth/browser/src/sync-state.ts) — telemetry with `triggeredBy: 'poll'|'watch'|'manual'`
+- [stealth/browser/src/server.ts](stealth/browser/src/server.ts) — watcher startup at lines 663–688
+- [stealth/browser/src/cookie-import-browser.ts](stealth/browser/src/cookie-import-browser.ts) — `cookieDbPath()` resolver added
+- [stealth/browser/src/meta-commands.ts](stealth/browser/src/meta-commands.ts) — `notify-test` handler
+- [docs/notification-and-sync-design.md](docs/notification-and-sync-design.md) — full design + requirements inventory
 
 ---
-*Created by Claude Opus 4.7 (1M ctx) — 2026-04-24 (session 2). Continued
-from prior handoff dated same day; previous session shipped commit
-`b180255` (background sync + auto-pop) and the doubao + 10-min verifies
-remained pending. This session added telemetry, the plain-English
-diagnostic, and finished the engine collapse — leaving the doubao verify
-still pending the user, and the CDP-patches-under-CloakBrowser question
-as the obvious next investigation.*
+*Created by Claude Opus 4.7 (1M ctx) — 2026-04-24 (session 3). The user's
+ask this session was "build the real-time watcher and investigate why
+notifications aren't working." Watcher built and verified. Notifications:
+all code-path tests pass; pending user confirmation on whether `nc notify-test`
+actually surfaces in their Notification Center.*
