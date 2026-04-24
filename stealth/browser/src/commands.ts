@@ -41,6 +41,7 @@ export const META_COMMANDS = new Set([
   'frame',
   'health',
   'sync',
+  'notify-test',
 ]);
 
 export const ALL_COMMANDS = new Set([...READ_COMMANDS, ...WRITE_COMMANDS, ...META_COMMANDS]);
@@ -147,6 +148,8 @@ export const COMMAND_DESCRIPTIONS: Record<string, { category: string; descriptio
   'health':  { category: 'Server', description: 'Plain-English daemon snapshot (engine, browser, sync, handoff). Add `stealth` for deep verifier (~25s).', usage: 'health [stealth]' },
   // Sync
   'sync':    { category: 'Server', description: 'Inspect or trigger background Arc→nightCrawl cookie sync', usage: 'sync (status|now)' },
+  // Notify test
+  'notify-test': { category: 'Server', description: 'Fire a test notification to verify macOS Notification Center delivery', usage: 'notify-test' },
 };
 
 // Load-time validation: descriptions must cover exactly the command sets
