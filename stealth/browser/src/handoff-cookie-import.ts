@@ -1,6 +1,6 @@
 /**
  * [INPUT]: cookie-import-browser, handoff-consent, eTldPlusOne
- * [OUTPUT]: Exports tryAutoImportForWall, defaultBrowserPriority, SSO_HELPER_DOMAINS
+ * [OUTPUT]: Exports tryAutoImportForWall, syncAllCookies, defaultBrowserPriority, SSO_HELPER_DOMAINS
  * [POS]: Auto-import bridge for handoff flow within browser module
  *
  * Why this exists: nightCrawl is supposed to be the user's digital twin
@@ -33,6 +33,7 @@ import {
   type PlaywrightCookie,
 } from './cookie-import-browser';
 import { eTldPlusOne } from './handoff-consent';
+import { HOSTILE_DOMAINS } from './hostile-domains';
 
 // ─── SSO helper domains ─────────────────────────────────────
 
@@ -543,4 +544,92 @@ export async function tryAutoImportForWall(
       error: err?.message ?? String(err),
     };
   }
+}
+
+// ─── Continuous background sync ──────────────────────────────
+
+export function isHostileDomain(hostKey: string): boolean {
+  const h = hostKey.toLowerCase().replace(/^\./, '');
+  return HOSTILE_DOMAINS.some(suffix => {
+    const s = suffix.toLowerCase();
+    return h === s || h.endsWith('.' + s);
+  });
+}
+
+// ─── Pure domain-diff logic (unit-testable) ──────────────────
+// Given the host_keys present in the user's default browser and
+// the eTLD+1s already in the nightCrawl cookie jar, return the
+// host_keys that should be imported on this cycle. Hostile domains
+// are dropped; duplicate eTLD+1s across arcDomains collapse to one.
+export function computeNewDomainsToSync(
+  arcDomains: { domain: string }[],
+  currentEtlds: Set<string>,
+): { newHostKeys: string[]; newEtlds: string[] } {
+  const newHostKeys: string[] = [];
+  const newEtlds = new Set<string>();
+  for (const { domain } of arcDomains) {
+    if (isHostileDomain(domain)) continue;
+    try {
+      const etld = eTldPlusOne(domain.replace(/^\./, ''));
+      if (etld && !currentEtlds.has(etld) && !newEtlds.has(etld)) {
+        newEtlds.add(etld);
+        newHostKeys.push(domain);
+      }
+    } catch {}
+  }
+  return { newHostKeys, newEtlds: [...newEtlds] };
+}
+
+export interface SyncResult {
+  importedCount: number;
+  newDomains: string[];
+  browser: string | null;
+}
+
+export async function syncAllCookies(
+  context: BrowserContext,
+  browser: string | null = pickDefaultBrowser(),
+): Promise<SyncResult> {
+  if (!browser) return { importedCount: 0, newDomains: [], browser: null };
+
+  let arcDomains: { domain: string; count: number }[];
+  try {
+    arcDomains = listDomains(browser).domains;
+  } catch {
+    return { importedCount: 0, newDomains: [], browser };
+  }
+  if (arcDomains.length === 0) return { importedCount: 0, newDomains: [], browser };
+
+  const currentCookies = await context.cookies().catch(() => []);
+  const currentEtlds = new Set<string>();
+  for (const c of currentCookies) {
+    try {
+      const host = (c.domain || '').replace(/^\./, '');
+      currentEtlds.add(eTldPlusOne(host));
+    } catch {}
+  }
+
+  const { newHostKeys, newEtlds } = computeNewDomainsToSync(arcDomains, currentEtlds);
+
+  if (newHostKeys.length === 0) {
+    return { importedCount: 0, newDomains: [], browser };
+  }
+
+  const batch = newHostKeys.slice(0, 200);
+  let result;
+  try {
+    result = await importCookies(browser, batch);
+  } catch {
+    return { importedCount: 0, newDomains: newEtlds.slice(0, batch.length), browser };
+  }
+
+  if (result.cookies.length > 0) {
+    await replaceCookiesFor(context, result.cookies);
+  }
+
+  return {
+    importedCount: result.cookies.length,
+    newDomains: newEtlds.slice(0, batch.length),
+    browser,
+  };
 }

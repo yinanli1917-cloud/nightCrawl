@@ -617,12 +617,7 @@ export async function autoHandover(this: any, targetUrl?: string): Promise<strin
     // path that mints cookies the headless engine can actually reuse.
     if (pinned) {
       console.log(
-        `[nightcrawl] ${domain} is ${vendor}-protected (fingerprint-pinned). Skipping default-browser cookie import (cookies from another browser cannot authenticate here). Opening headed CloakBrowser directly.`,
-      );
-      notifyWithAction(
-        'nightCrawl: login required',
-        `${domain} is ${vendor}-protected — opening CloakBrowser so you can log in. The login must happen here so CloakBrowser can replay the session.`,
-        focusAppAction('Chromium', 'Focus CloakBrowser'),
+        `[nightcrawl] ${domain} is ${vendor}-protected (fingerprint-pinned). Skipping default-browser cookie import. Will auto-pop headed CloakBrowser.`,
       );
       // Fall through to the spawned-CloakBrowser block below.
     } else {
@@ -741,7 +736,9 @@ export async function autoHandover(this: any, targetUrl?: string): Promise<strin
   // UX was "windows jumping in front of your work without consent" —
   // the exact thing the no-silent-pops rule forbids.
   const autoPop = process.env.BROWSE_AUTO_POP_HEADED === '1';
-  if (!autoPop) {
+  // Pinned domains have exactly one path — headed CloakBrowser.
+  // Arc import is proven impossible. Don't gate it behind an env var.
+  if (!autoPop && !isPinned(loginUrl)) {
     const domain = loginUrl ? eTldPlusOne(loginUrl) : 'site';
     const vendor = loginUrl ? pinnedVendor(loginUrl) : null;
     const body = vendor
@@ -773,11 +770,23 @@ export async function autoHandover(this: any, targetUrl?: string): Promise<strin
     ].join('\n');
   }
 
-  console.log(`[nightcrawl] BROWSE_AUTO_POP_HEADED=1 set — popping headed CloakBrowser for ${loginUrl}...`);
+  const isPinnedDomain = isPinned(loginUrl);
+  const logMsg = isPinnedDomain
+    ? `[nightcrawl] Fingerprint-pinned domain — popping headed CloakBrowser for ${loginUrl}...`
+    : `[nightcrawl] BROWSE_AUTO_POP_HEADED=1 set — popping headed CloakBrowser for ${loginUrl}...`;
+  console.log(logMsg);
+
+  // Fire notification BEFORE launch so the user knows a window is about
+  // to appear. Uses terminal-notifier (has its own app bundle → reliable
+  // on modern macOS even from daemon processes). Falls back to osascript
+  // passive notification when terminal-notifier is absent.
+  // The action opens the URL as a backup in case CloakBrowser fails.
   notifyWithAction(
-    'nightCrawl: opening CloakBrowser',
-    `Headed CloakBrowser opening for login at ${eTldPlusOne(loginUrl)}.`,
-    focusAppAction('Chromium', 'Focus CloakBrowser'),
+    'nightCrawl: login required',
+    isPinnedDomain
+      ? `${eTldPlusOne(loginUrl)} requires a one-time login in CloakBrowser (session tokens are fingerprint-bound).`
+      : `Headed CloakBrowser opening for login at ${eTldPlusOne(loginUrl)}.`,
+    { label: 'Open in browser', onClick: `open "${testUrl.replace(/"/g, '\\"')}"` },
   );
 
   const handoffResult = await this.handoff(

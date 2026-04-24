@@ -43,6 +43,7 @@ import {
   collectLoginHostsFromPage,
   collectSSOBrandDomains,
   clickOnetapButton,
+  syncAllCookies,
 } from './handoff-cookie-import';
 import { isFirstRun, runOnboarding } from './onboarding';
 import { emitActivity, subscribe, getActivityAfter, getActivityHistory, getSubscriberCount } from './activity';
@@ -603,6 +604,35 @@ async function persistStorage() {
 
 const storageFlushInterval = setInterval(persistStorage, 5 * 60_000);
 
+// ─── Background Cookie Sync ──────────────────────────────────
+// Proactively sync cookies from the user's default browser so sites
+// they've logged into in Arc/Chrome also work in nightCrawl without
+// ever hitting a login wall. Runs on an independent 10-minute cycle.
+// First run triggers the Keychain dialog once; "Always Allow" makes
+// every subsequent sync silent.
+async function runBackgroundSync() {
+  if (process.env.BROWSE_INCOGNITO === '1') return;
+  if (browserManager.getConnectionMode() === 'headed') return;
+  const page = browserManager.getPage();
+  if (page) {
+    // Browser is mid-navigation — skip this cycle
+    try { page.url(); } catch { return; }
+  }
+  try {
+    const context = browserManager.context;
+    if (!context) return;
+    const result = await syncAllCookies(context);
+    if (result.importedCount > 0) {
+      console.log(`[nightcrawl] Background sync: imported ${result.importedCount} cookies for ${result.newDomains.length} new domain(s) from ${result.browser}.`);
+      await persistStorage();
+    }
+  } catch (err: any) {
+    // Non-fatal — sync failure must not crash the daemon
+  }
+}
+
+const backgroundSyncInterval = setInterval(runBackgroundSync, 10 * 60_000);
+
 // ─── Idle Timer ────────────────────────────────────────────────
 let lastActivity = Date.now();
 
@@ -911,8 +941,7 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
           // No-op if no installed browser, no matching cookies, or import fails.
           const siteIsPinned = isPinned(wallUrl);
           if (siteIsPinned) {
-            result += `\nFINGERPRINT_PINNED: ${detection.domain} — your Arc session is tied to Arc's browser fingerprint. Importing those cookies cannot authenticate in a different browser.`;
-            result += `\nACTION REQUIRED: run 'nc open-handoff ${targetUrl}' to log in once via CloakBrowser. After that first login, all future visits work headlessly with no window.`;
+            result += `\nFINGERPRINT_PINNED: ${detection.domain} — Arc session tokens are fingerprint-bound and cannot authenticate here. Skipping Arc import, auto-opening CloakBrowser for one-time login instead.`;
           }
           if (page && !siteIsPinned) {
             try {
@@ -1007,9 +1036,7 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
           // actionable message now. Otherwise stay silent to avoid duplicates.
           const stepTwoPinned = isPinned(wallUrl);
           if (stepTwoPinned && !siteIsPinned) {
-            // Was marked pinned by STEP 1b just now — add the instruction.
-            result += `\nFINGERPRINT_PINNED: ${detection.domain} session tokens are tied to the CloakBrowser fingerprint — Arc/Chrome cookies cannot authenticate here.`;
-            result += `\nACTION REQUIRED: run 'nc open-handoff ${targetUrl}' to open a CloakBrowser window and log in once. All future headless visits will use those session cookies automatically.`;
+            result += `\nFINGERPRINT_PINNED: ${detection.domain} — Arc cookies imported but wall persisted (empirical fingerprint-pinning). Auto-opening CloakBrowser for one-time login.`;
           } else if (!stepTwoPinned) {
             result += `\nOpening ${detection.domain} in your default browser for login. Will auto-resume when cookies are imported.`;
           }
@@ -1138,6 +1165,7 @@ async function shutdown() {
   clearInterval(flushInterval);
   clearInterval(idleCheckInterval);
   clearInterval(storageFlushInterval);
+  clearInterval(backgroundSyncInterval);
   await flushBuffers(); // Final flush (async now)
 
   // Persist cookies + storage before closing browser

@@ -16,6 +16,8 @@ import {
   clickLoginButton,
   collectSSOBrandDomains,
   clickOnetapButton,
+  computeNewDomainsToSync,
+  isHostileDomain,
 } from '../src/handoff-cookie-import';
 
 describe('SSO_HELPER_DOMAINS', () => {
@@ -731,5 +733,96 @@ describe('clickOnetapButton — one-tap SSO element clicker', () => {
   test('swallows errors and returns null (fail-safe)', async () => {
     const page = { evaluate: async () => { throw new Error('crash'); } };
     expect(await clickOnetapButton(page)).toBeNull();
+  });
+});
+
+// ─── Background sync pure logic ──────────────────────────────
+// computeNewDomainsToSync is the decision core for the periodic
+// Arc-→nightCrawl sync: "of these arc host_keys, which ones do
+// we not yet have cookies for?" Exercised in isolation so we
+// don't need to stub Keychain / the real cookie DB.
+
+describe('isHostileDomain', () => {
+  test('flags hardcoded hostile platforms', () => {
+    // From HOSTILE_DOMAINS in hostile-domains.ts
+    expect(isHostileDomain('xiaohongshu.com')).toBe(true);
+    expect(isHostileDomain('www.xiaohongshu.com')).toBe(true);
+    expect(isHostileDomain('.xiaohongshu.com')).toBe(true);
+  });
+  test('does not flag normal domains', () => {
+    expect(isHostileDomain('github.com')).toBe(false);
+    expect(isHostileDomain('canvas.uw.edu')).toBe(false);
+    expect(isHostileDomain('reddit.com')).toBe(false);
+  });
+  test('case-insensitive', () => {
+    expect(isHostileDomain('XIAOHONGSHU.COM')).toBe(true);
+  });
+});
+
+describe('computeNewDomainsToSync', () => {
+  test('returns empty when all arc domains already present', () => {
+    const arc = [{ domain: 'github.com' }, { domain: '.reddit.com' }];
+    const present = new Set(['github.com', 'reddit.com']);
+    const { newHostKeys, newEtlds } = computeNewDomainsToSync(arc, present);
+    expect(newHostKeys).toEqual([]);
+    expect(newEtlds).toEqual([]);
+  });
+
+  test('returns only domains whose eTLD+1 is missing', () => {
+    const arc = [
+      { domain: 'github.com' },     // already have
+      { domain: 'reddit.com' },     // new
+      { domain: '.zhihu.com' },     // new (dot-prefix, same host_key shape Chromium uses)
+    ];
+    const present = new Set(['github.com']);
+    const { newHostKeys, newEtlds } = computeNewDomainsToSync(arc, present);
+    expect(newEtlds.sort()).toEqual(['reddit.com', 'zhihu.com']);
+    // Host keys preserved verbatim so importCookies gets the same
+    // shape Chromium stores them in.
+    expect(newHostKeys).toContain('reddit.com');
+    expect(newHostKeys).toContain('.zhihu.com');
+  });
+
+  test('collapses multiple subdomains sharing an eTLD+1', () => {
+    const arc = [
+      { domain: 'sub1.example.com' },
+      { domain: 'sub2.example.com' },
+      { domain: '.example.com' },
+    ];
+    const present = new Set<string>();
+    const { newHostKeys, newEtlds } = computeNewDomainsToSync(arc, present);
+    expect(newEtlds).toEqual(['example.com']);
+    // Only the first host_key wins per eTLD+1 — subsequent ones dedupe.
+    expect(newHostKeys).toHaveLength(1);
+    expect(newHostKeys[0]).toBe('sub1.example.com');
+  });
+
+  test('filters out hostile domains entirely', () => {
+    const arc = [
+      { domain: 'xiaohongshu.com' },
+      { domain: 'github.com' },
+    ];
+    const present = new Set<string>();
+    const { newEtlds } = computeNewDomainsToSync(arc, present);
+    expect(newEtlds).toEqual(['github.com']);
+    expect(newEtlds).not.toContain('xiaohongshu.com');
+  });
+
+  test('empty arc input yields empty output', () => {
+    const { newHostKeys, newEtlds } = computeNewDomainsToSync([], new Set());
+    expect(newHostKeys).toEqual([]);
+    expect(newEtlds).toEqual([]);
+  });
+
+  test('respects multi-level public-suffix eTLDs (co.uk, edu.cn)', () => {
+    const arc = [
+      { domain: 'bbc.co.uk' },
+      { domain: 'tsinghua.edu.cn' },
+    ];
+    const present = new Set<string>();
+    const { newEtlds } = computeNewDomainsToSync(arc, present);
+    // eTldPlusOne must recognize .co.uk / .edu.cn so these don't
+    // collapse to co.uk / edu.cn.
+    expect(newEtlds.sort()).toEqual(['bbc.co.uk', 'tsinghua.edu.cn']);
   });
 });
