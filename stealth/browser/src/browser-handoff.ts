@@ -430,15 +430,28 @@ export function getFailureHint(this: any): string | null {
  */
 export async function detectLoginWall(
   this: any
-): Promise<{ detected: boolean; reason: string; domain: string; approved: boolean } | null> {
+): Promise<{ detected: boolean; reason: string; domain: string; approved: boolean; turnstile?: boolean } | null> {
   if (this.isHeaded) return null;
 
   const page = this.getPage();
   if (!page) return null;
   const url = page.url();
 
+  // Turnstile check runs once and is attached to whichever signal fires.
+  // Detecting Turnstile on the login page is a strong fingerprint-pinning
+  // signal — session cookies are bound to the browser that solved the
+  // challenge, so Arc cookie import is architecturally useless.
+  const hasTurnstile = await page.evaluate(() => {
+    if (document.querySelector('[class*="cf-turnstile"], [id*="cf-turnstile"], [class*="cf-chl-widget"]')) return true;
+    for (const iframe of Array.from(document.querySelectorAll('iframe'))) {
+      if ((iframe as HTMLIFrameElement).src?.includes('challenges.cloudflare.com')) return true;
+    }
+    const text = document.body?.innerText?.slice(0, 3000) || '';
+    return /let us know you are human|verify you are human|cf-turnstile/i.test(text);
+  }).catch(() => false);
+
   if (/[/=](login|signin|sign-in|auth|captcha|verify|sso)\b/i.test(url)) {
-    return withConsent(url, { detected: true, reason: `Login URL detected: ${url}` });
+    return withConsent(url, { detected: true, reason: `Login URL detected: ${url}`, turnstile: hasTurnstile || undefined });
   }
 
   const hasLoginForm = await page.evaluate(() => {
@@ -458,7 +471,7 @@ export async function detectLoginWall(
   }).catch(() => false);
 
   if (hasLoginForm) {
-    return withConsent(url, { detected: true, reason: `Login form detected at ${url}` });
+    return withConsent(url, { detected: true, reason: `Login form detected at ${url}`, turnstile: hasTurnstile || undefined });
   }
 
   const hasQrLogin = await page.evaluate(() => {
@@ -470,7 +483,7 @@ export async function detectLoginWall(
   }).catch(() => false);
 
   if (hasQrLogin) {
-    return withConsent(url, { detected: true, reason: `QR code login detected at ${url}` });
+    return withConsent(url, { detected: true, reason: `QR code login detected at ${url}`, turnstile: hasTurnstile || undefined });
   }
 
   const hasAuthBarrier = await page.evaluate(() => {
@@ -479,7 +492,7 @@ export async function detectLoginWall(
   }).catch(() => false);
 
   if (hasAuthBarrier) {
-    return withConsent(url, { detected: true, reason: `Auth barrier text detected at ${url}` });
+    return withConsent(url, { detected: true, reason: `Auth barrier text detected at ${url}`, turnstile: hasTurnstile || undefined });
   }
 
   return null;
@@ -491,8 +504,8 @@ export async function detectLoginWall(
  */
 function withConsent(
   url: string,
-  base: { detected: boolean; reason: string },
-): { detected: boolean; reason: string; domain: string; approved: boolean } {
+  base: { detected: boolean; reason: string; turnstile?: boolean },
+): { detected: boolean; reason: string; domain: string; approved: boolean; turnstile?: boolean } {
   const domain = eTldPlusOne(url);
   const store = readConsent(defaultConsentPath());
   const approved = isApproved(store, url);
