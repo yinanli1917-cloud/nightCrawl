@@ -191,27 +191,52 @@ export async function handoff(this: any, message: string): Promise<string> {
     throw new Error('Browser not launched');
   }
 
-  const state = await this.saveState();
   const currentUrl = this.getCurrentUrl();
 
   // SAFETY: refuse handoff to headed mode for hostile platforms.
-  // The headed user-data-dir loads ALL real cookies; this is the
-  // exact path that banned XHS accounts on 2026-04-09.
   if (currentUrl && isHostile(currentUrl) && process.env.BROWSE_INCOGNITO !== '1') {
     const err = new HostileDomainError(currentUrl);
     return `ERROR: ${err.message}`;
   }
 
+  const fs = require('fs');
+  const path = require('path');
+  const engineConfig = parseEngineConfig();
+
+  // Close headless FIRST to release the profile lock. Both headless
+  // and headed use the same persistent profile (engineConfig.profileDir)
+  // so Chromium's native cookie SQLite persists everything — no manual
+  // saveState/restoreState needed for cookies.
+  this.intentionalDisconnect = true;
+  if (this.browser) this.browser.removeAllListeners('disconnected');
+  try {
+    if (this.context) {
+      const browser = (this.context as any).browser?.();
+      await Promise.race([
+        this.context.close(),
+        new Promise(resolve => setTimeout(resolve, 5000)),
+      ]).catch(() => {});
+      if (browser) { try { browser.close(); } catch {} }
+    }
+  } catch {}
+  this.browser = null;
+  this.context = null;
+  this.pages.clear();
+  this.intentionalDisconnect = false;
+
+  // Clean up Chromium's SingletonLock from the persistent profile.
+  // The close above should release it, but belt-and-suspenders for
+  // macOS where lock files sometimes linger.
+  try {
+    const lockFile = path.join(engineConfig.profileDir, 'SingletonLock');
+    if (fs.existsSync(lockFile)) fs.unlinkSync(lockFile);
+  } catch {}
+
   let newContext: BrowserContext;
   try {
-    const fs = require('fs');
-    const path = require('path');
     const extensionMode = process.env.BROWSE_EXTENSIONS || 'all';
     const extensionPath = extensionMode !== 'none' ? this.findExtensionPath() : null;
-    const launchArgs = ['--hide-crash-restore-bubble', '--disable-blink-features=AutomationControlled'];
     if (extensionPath) {
-      launchArgs.push(`--disable-extensions-except=${extensionPath}`);
-      launchArgs.push(`--load-extension=${extensionPath}`);
       if (this.serverPort) {
         try {
           const { resolveConfig } = require('./config');
@@ -230,23 +255,13 @@ export async function handoff(this: any, message: string): Promise<string> {
       console.log('[nightcrawl] Handoff: headed mode without side panel');
     }
 
-    const userDataDir = await fs.promises.mkdtemp(
-      path.join(require('os').tmpdir(), 'nightcrawl-handoff-')
-    );
-    // Record so BrowserManager.close() / emergencyCleanup() can pkill -f it
-    // if context.close() hangs. Without this the headed Chromium outlives
-    // the daemon (P1 orphan-window bug, HANDOFF.md).
-    this.headedUserDataDir = userDataDir;
+    // Same persistent profile as headless — cookies survive the
+    // headless→headed→headless cycle natively via Chromium's SQLite.
+    this.headedUserDataDir = engineConfig.profileDir;
 
-    // Engine selection: the handoff MUST use the same engine as the
-    // headless daemon. Mixing engines means the login cookies are minted
-    // against Chrome-for-Testing's fingerprint but replayed by CloakBrowser
-    // — bot-managed edges reject them and the user gets stuck re-logging
-    // every session. See memory/project_cloakbrowser_default_decision.md.
-    const engineConfig = parseEngineConfig();
     const { context: cbContext } = await launchCloakBrowser({
       headless: false,
-      userDataDir,
+      userDataDir: engineConfig.profileDir,
       extensionsDir: extensionPath ?? undefined,
       fingerprintSeed: engineConfig.fingerprintSeed,
       humanize: engineConfig.humanize,
@@ -254,53 +269,72 @@ export async function handoff(this: any, message: string): Promise<string> {
     newContext = cbContext;
     console.log(`[nightcrawl] Handoff engine: CloakBrowser (seed: ${engineConfig.fingerprintSeed ?? 'random'})`);
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return `ERROR: Cannot open headed browser — ${msg}. Headless browser still running.`;
-  }
-
-  try {
-    const oldBrowser = this.browser;
-
-    this.context = newContext;
-    this.browser = newContext.browser();
-    this.pages.clear();
-    this.connectionMode = 'headed';
-
-    if (Object.keys(this.extraHeaders).length > 0) {
-      await newContext.setExtraHTTPHeaders(this.extraHeaders);
-    }
-
-    if (this.browser) {
-      this.browser.on('disconnected', () => {
-        if (this.intentionalDisconnect) return;
-        console.error('[browse] FATAL: Chromium process crashed or was killed. Server exiting.');
-        process.exit(1);
+    // Headed launch failed — re-launch headless to recover.
+    console.error(`[nightcrawl] Headed launch failed, recovering headless...`);
+    try {
+      const { context: recoveryCtx } = await launchCloakBrowser({
+        headless: true,
+        userDataDir: engineConfig.profileDir,
+        fingerprintSeed: engineConfig.fingerprintSeed,
+        humanize: false,
       });
-    }
-
-    await this.restoreState(state);
-    this.isHeaded = true;
-    this.dialogAutoAccept = false;
-
-    oldBrowser.removeAllListeners('disconnected');
-    oldBrowser.close().catch(() => {});
-
-    return [
-      `HANDOFF: Browser opened at ${currentUrl}`,
-      `MESSAGE: ${message}`,
-      `STATUS: Waiting for user. Run 'resume' when done.`,
-    ].join('\n');
-  } catch (err: unknown) {
-    await newContext.close().catch(() => {});
+      this.context = recoveryCtx;
+      this.browser = recoveryCtx.browser();
+      this.connectionMode = 'launched';
+      if (this.browser) {
+        this.browser.on('disconnected', () => {
+          if (this.intentionalDisconnect) return;
+          process.exit(1);
+        });
+      }
+    } catch {}
     const msg = err instanceof Error ? err.message : String(err);
-    return `ERROR: Handoff failed during state restore — ${msg}. Headless browser still running.`;
+    return `ERROR: Cannot open headed browser — ${msg}. Headless browser recovered.`;
   }
+
+  this.context = newContext;
+  this.browser = newContext.browser();
+  this.pages.clear();
+  this.connectionMode = 'headed';
+  this.isHeaded = true;
+  this.dialogAutoAccept = false;
+
+  if (Object.keys(this.extraHeaders).length > 0) {
+    await newContext.setExtraHTTPHeaders(this.extraHeaders);
+  }
+
+  if (this.browser) {
+    this.browser.on('disconnected', () => {
+      if (this.intentionalDisconnect) return;
+      console.error('[browse] FATAL: Chromium process crashed or was killed. Server exiting.');
+      process.exit(1);
+    });
+  }
+
+  // Navigate the headed browser to where the user was.
+  // Cookies are already in the profile — no restoreState needed.
+  const page = newContext.pages()[0] || await newContext.newPage();
+  const tabId = this.nextTabId++;
+  this.pages.set(tabId, page);
+  this.activeTabId = tabId;
+  this.wirePageEvents(page);
+  if (currentUrl && currentUrl !== 'about:blank') {
+    try { await page.goto(currentUrl, { waitUntil: 'load', timeout: 15000 }); } catch {}
+  }
+
+  return [
+    `HANDOFF: Browser opened at ${currentUrl}`,
+    `MESSAGE: ${message}`,
+    `STATUS: Waiting for user. Run 'resume' when done.`,
+  ].join('\n');
 }
 
 // ─── Resume: Headed -> Headless ─────────────────────────────
 /**
  * Resume AI control after user handoff.
- * Saves cookies from headed session, relaunches headless, restores state.
+ * Closes headed browser, relaunches headless with the same persistent
+ * profile. Cookies survive natively via Chromium's SQLite — no manual
+ * save/restore needed.
  */
 export async function resume(this: any): Promise<string> {
   this.clearRefs();
@@ -311,16 +345,6 @@ export async function resume(this: any): Promise<string> {
     return 'Resumed (already headless).';
   }
 
-  let state: { cookies: any[]; pages: any[] };
-  try {
-    state = await Promise.race([
-      this.saveState(),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('saveState timeout')), 5000)),
-    ]);
-  } catch {
-    console.warn('[nightcrawl] Could not save state from headed browser (closed/crashed). Resuming with empty state.');
-    state = { cookies: [], pages: [] };
-  }
   const currentUrl = this.getCurrentUrl();
 
   try {
@@ -351,14 +375,19 @@ export async function resume(this: any): Promise<string> {
     this.intentionalDisconnect = false;
     this.headedUserDataDir = null;
 
-    // Resume MUST use the same engine as the headed session.
-    // Cookies minted by CloakBrowser's fingerprint become invalid if replayed
-    // by a different Chromium binary — bot-managed edges reject them and the
-    // login is wasted. Match engines: CloakBrowser headed → CloakBrowser headless.
     const engineConfig = parseEngineConfig();
+    // Clean up SingletonLock before re-launching.
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const lockFile = path.join(engineConfig.profileDir, 'SingletonLock');
+      if (fs.existsSync(lockFile)) fs.unlinkSync(lockFile);
+    } catch {}
+
     const { context } = await launchCloakBrowser({
       headless: true,
       fingerprintSeed: engineConfig.fingerprintSeed,
+      userDataDir: engineConfig.profileDir,
       humanize: false,
     });
     this.context = context;
@@ -373,10 +402,19 @@ export async function resume(this: any): Promise<string> {
       });
     }
 
-    await this.restoreState(state);
+    // Navigate to where the user was. Cookies are in the shared
+    // persistent profile — no manual restoreState needed.
+    const page = context.pages()[0] || await context.newPage();
+    const tabId = this.nextTabId++;
+    this.pages.set(tabId, page);
+    this.activeTabId = tabId;
+    this.wirePageEvents(page);
+    if (currentUrl && currentUrl !== 'about:blank') {
+      try { await page.goto(currentUrl, { waitUntil: 'load', timeout: 15000 }); } catch {}
+    }
 
-    console.log(`[nightcrawl] Resumed headless at ${currentUrl} with ${state.cookies.length} cookies`);
-    return `Resumed headless at ${currentUrl}. ${state.cookies.length} cookies preserved from login session.`;
+    console.log(`[nightcrawl] Resumed headless at ${currentUrl} — cookies persisted via Chromium profile`);
+    return `Resumed headless at ${currentUrl}. Cookies persisted natively via Chromium profile.`;
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[nightcrawl] Resume failed: ${msg}`);

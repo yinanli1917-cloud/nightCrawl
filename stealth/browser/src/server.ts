@@ -1730,6 +1730,18 @@ async function start() {
     const browserLaunchStart = Date.now();
     (async () => {
       try {
+        // Clean up stale Chromium SingletonLock from the persistent profile
+        // before launching. Can linger after unclean shutdown (kill -9, crash).
+        try {
+          const { parseEngineConfig } = await import('./engine-config');
+          const ec = parseEngineConfig();
+          const lockFile = path.join(ec.profileDir, 'SingletonLock');
+          if (fs.existsSync(lockFile)) {
+            fs.unlinkSync(lockFile);
+            console.log(`[browse] Removed stale SingletonLock from profile`);
+          }
+        } catch {}
+
         const headed = process.env.BROWSE_HEADED === '1';
         if (headed) {
           await browserManager.launchHeaded(AUTH_TOKEN);
@@ -1738,19 +1750,26 @@ async function start() {
           await browserManager.launch();
         }
 
-        // Restore cookies from previous session (skip in incognito mode)
+        // Cookie restoration: the persistent profile (userDataDir) now
+        // handles cookie persistence natively via Chromium's SQLite.
+        // The JSON backup file is only used as a migration fallback for
+        // the first launch after upgrading to persistent profiles.
         if (process.env.BROWSE_INCOGNITO === '1') {
           console.log(`[browse] Incognito mode — no cookies restored`);
         } else {
-          try {
-            const raw = fs.readFileSync(config.storageFile, 'utf-8');
-            const saved = JSON.parse(raw);
-            if (saved.cookies?.length > 0) {
-              await browserManager.restoreCookies(saved.cookies);
-              console.log(`[browse] Restored ${saved.cookies.length} cookies from previous session`);
-            }
-          } catch {
-            // No storage file or parse error — start fresh
+          const nativeCookies = await browserManager.saveState().then(s => s.cookies.length).catch(() => 0);
+          if (nativeCookies > 100) {
+            console.log(`[browse] ${nativeCookies} cookies loaded natively from Chromium profile`);
+          } else {
+            // Profile is empty or new — seed from JSON backup
+            try {
+              const raw = fs.readFileSync(config.storageFile, 'utf-8');
+              const saved = JSON.parse(raw);
+              if (saved.cookies?.length > 0) {
+                await browserManager.restoreCookies(saved.cookies);
+                console.log(`[browse] Seeded ${saved.cookies.length} cookies from JSON backup into Chromium profile`);
+              }
+            } catch {}
           }
         }
 

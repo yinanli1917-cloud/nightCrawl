@@ -196,6 +196,7 @@ export class BrowserManager {
     const result = await launchCloakBrowser({
       fingerprintSeed: engineConfig.fingerprintSeed,
       extensionsDir,
+      userDataDir: engineConfig.profileDir,
       headless: true,
       humanize: engineConfig.humanize,
       humanPreset: engineConfig.humanize ? 'default' : undefined,

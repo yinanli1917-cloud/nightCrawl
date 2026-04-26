@@ -28,18 +28,18 @@ export interface EngineConfig {
   engine: BrowserEngine;
   fingerprintSeed?: number;
   humanize: boolean;
+  profileDir: string;
 }
 
 // Valid range per CloakBrowser docs: [10000, 99999].
 const SEED_MIN = 10000;
 const SEED_MAX = 99999;
 
-const SEED_FILE = path.join(
-  process.env.HOME || '/tmp',
-  '.nightcrawl',
-  'state',
-  'engine-seed.json',
-);
+const NIGHTCRAWL_DIR = path.join(process.env.HOME || '/tmp', '.nightcrawl');
+
+const SEED_FILE = path.join(NIGHTCRAWL_DIR, 'state', 'engine-seed.json');
+
+const DEFAULT_PROFILE_DIR = path.join(NIGHTCRAWL_DIR, 'chromium-profile');
 
 /**
  * Return a stable fingerprint seed for this machine. First call generates
@@ -87,5 +87,10 @@ export function parseEngineConfig(
 
   const humanize = env.BROWSE_HUMANIZE === '1';
 
-  return { engine: 'cloakbrowser', fingerprintSeed, humanize };
+  // Persistent profile directory — Chromium natively persists cookies,
+  // TLS session tickets, and HTTP state here. Survives daemon restarts.
+  const profileDir = env.BROWSE_PROFILE_DIR || DEFAULT_PROFILE_DIR;
+  try { fs.mkdirSync(profileDir, { recursive: true }); } catch {}
+
+  return { engine: 'cloakbrowser', fingerprintSeed, humanize, profileDir };
 }
