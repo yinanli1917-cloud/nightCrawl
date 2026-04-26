@@ -1,35 +1,28 @@
-node_modules/
-subtitles/
-*.zip
-*.rar
 
 # Built binaries (large Bun-compiled executables)
+# Claude Code
+# Cookies and session data — NEVER commit
+# OS
+# Scraped output data
+# Third-party extensions (install separately, see README)
+# nightcrawl local state
+# skill-creator workspaces (eval runs, snapshots — not source)
+*-cookies.json
+*.rar
+*.session
+*.zip
+.DS_Store
+.claude/settings.local.json
+.claude/skills/*-workspace/
+.claude/worktrees/
+.gstack/
+.nightcrawl/
+Thumbs.db
+browse-cookies.json
+node_modules/
+output/
 stealth/browser/dist/browse
 stealth/browser/dist/browse.bak
 stealth/browser/dist/find-browse
-
-# Claude Code
-.claude/settings.local.json
-.claude/worktrees/
-
-# Cookies and session data — NEVER commit
-*-cookies.json
-*.session
-browse-cookies.json
-
-# Scraped output data
-output/
-
-# Third-party extensions (install separately, see README)
 stealth/extensions/bypass-paywalls-chrome/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# nightcrawl local state
-.nightcrawl/
-.gstack/
-
-# skill-creator workspaces (eval runs, snapshots — not source)
-.claude/skills/*-workspace/
+subtitles/
