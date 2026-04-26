@@ -630,25 +630,14 @@ export async function autoHandover(this: any, targetUrl?: string): Promise<strin
       // SSO silently if the session is still live, or prompt MFA if expired.
       const openUrl = testUrl !== loginUrl ? testUrl : loginUrl;
 
-      // Notification-first UX: NEVER open a window before the user approves.
-      // Notification = manifest (what happened + what will happen).
-      // Click notification = approve. Dismiss = reject.
-      // Only BROWSE_AUTO_OPEN_BROWSER=1 bypasses this (explicit opt-in).
-      const autoOpen = process.env.BROWSE_AUTO_OPEN_BROWSER === '1';
-
-      notifyWithAction(
-        `nightCrawl: ${domain} login needed`,
-        `Login wall detected. Click to open your browser for ${domain} login. nightCrawl will watch for cookies and auto-resume headless when done.`,
-        { label: 'Open browser', onClick: `open "${openUrl.replace(/"/g, '\\"')}"` },
+      const approval = await notifyWithAction(
+        `nightCrawl needs a hand`,
+        `I hit a login wall at ${domain}.\n\nHere's the plan:\n  1. Open your browser so you can log in\n  2. I'll watch for fresh cookies\n  3. Auto-resume and keep working\n\nShould only take a moment!`,
+        { label: "Let's go!", onClick: `open "${openUrl.replace(/"/g, '\\"')}"` },
       );
 
-      if (autoOpen) {
-        try {
-          const { execSync } = await import('child_process');
-          execSync(`open "${openUrl.replace(/"/g, '\\"')}"`, { timeout: 5000 });
-        } catch (err: any) {
-          console.warn(`[nightcrawl] Failed to open default browser: ${err?.message}`);
-        }
+      if (approval === 'rejected') {
+        console.log(`[nightcrawl] User declined handoff for ${domain}.`);
       }
     }
 
@@ -740,28 +729,30 @@ export async function autoHandover(this: any, targetUrl?: string): Promise<strin
     const domain = loginUrl ? eTldPlusOne(loginUrl) : 'site';
     const vendor = loginUrl ? pinnedVendor(loginUrl) : null;
 
-    // Manifest: what happened → what will happen → approve/reject
-    const manifest = vendor
-      ? `Login wall at ${domain} (${vendor}-protected). Cookie sync from your browser can't authenticate here. Click to open CloakBrowser for one-time login — nightCrawl auto-resumes headless when done.`
-      : `Cookie sync didn't clear ${domain}. Click to open CloakBrowser for direct login — nightCrawl auto-resumes headless when done.`;
+    const reason = vendor
+      ? `${domain} uses ${vendor} protection, so cookie sync alone won't work here.`
+      : `Cookie sync from your browser didn't clear ${domain}.`;
 
     const cliPath = `${__dirname}/cli.ts`;
     const bunPath = process.execPath;
     const safeUrl = loginUrl.replace(/"/g, '\\"');
-    notifyWithAction(
-      `nightCrawl: ${domain} login needed`,
-      manifest,
+
+    const approval = await notifyWithAction(
+      `nightCrawl needs a hand`,
+      `I hit a login wall at ${domain}.\n\n${reason}\n\nHere's the plan:\n  1. Open CloakBrowser for a quick one-time login\n  2. I'll grab the fresh cookies\n  3. Auto-resume and keep working\n\nShould only take a moment!`,
       {
-        label: 'Open CloakBrowser',
+        label: "Let's go!",
         onClick: `"${bunPath}" run "${cliPath}" open-handoff "${safeUrl}"`,
       },
     );
 
-    return [
-      `HANDOFF_PENDING: ${domain} needs a headed login in CloakBrowser.`,
-      `A notification was sent. Click to approve, dismiss to reject.`,
-      `Or run manually: nc open-handoff ${loginUrl}`,
-    ].join('\n');
+    if (approval === 'rejected') {
+      console.log(`[nightcrawl] User declined CloakBrowser handoff for ${domain}.`);
+    }
+
+    return approval === 'approved'
+      ? `HANDOFF_APPROVED: Opening CloakBrowser for ${domain}. Will auto-resume when done.`
+      : `HANDOFF_DECLINED: User chose not to open CloakBrowser for ${domain}.`;
   }
 
   const isPinnedDomain = isPinned(loginUrl);
@@ -770,13 +761,11 @@ export async function autoHandover(this: any, targetUrl?: string): Promise<strin
     : `[nightcrawl] BROWSE_AUTO_POP_HEADED=1 set — popping headed CloakBrowser for ${loginUrl}...`;
   console.log(logMsg);
 
-  // Manifest notification BEFORE launch — user already approved via
-  // BROWSE_AUTO_POP_HEADED=1, so this is informational.
+  // Informational — user already opted in via BROWSE_AUTO_POP_HEADED=1.
   const handoffDomain = eTldPlusOne(loginUrl);
-  notifyWithAction(
-    `nightCrawl: opening CloakBrowser for ${handoffDomain}`,
-    `Login wall detected. CloakBrowser is opening for ${handoffDomain} login. Complete the login — nightCrawl will auto-resume headless when done.`,
-    { label: 'Open in browser', onClick: `open "${testUrl.replace(/"/g, '\\"')}"` },
+  notify(
+    'nightCrawl is on it',
+    `Opening CloakBrowser for ${handoffDomain}. Log in and I'll take it from there!`,
   );
 
   const handoffResult = await this.handoff(

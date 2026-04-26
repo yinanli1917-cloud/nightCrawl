@@ -1,61 +1,41 @@
 /**
- * [INPUT]: macOS osascript (system), terminal-notifier (optional, brew install)
- * [OUTPUT]: notify() — passive notification; notifyWithAction() — clickable
- *          notification whose button runs a shell command on click
- * [POS]: System notification helper within browser module
+ * [INPUT]: macOS osascript (system)
+ * [OUTPUT]: notify() — passive notification; notifyWithAction() — modal dialog
+ *          with Approve / Not now buttons that returns the user's choice
+ * [POS]: System notification + approval dialog within browser module
  *
- * Used to surface CONSENT_REQUIRED and other proactive prompts to the user
- * without requiring the agent to interrupt the chat. macOS-only for MVP;
- * other platforms get a no-op (the textual signal in the HTTP response is
- * still surfaced to the agent, so nothing is lost — only the OS-level ping
- * is missing).
+ * Uses osascript `display dialog` for approval prompts — this is modal,
+ * always visible (can't be silenced by Focus mode), and returns which
+ * button the user pressed. terminal-notifier is NOT used (broken on
+ * macOS 26 — clicking opens Script Editor instead of running the action).
  *
- * terminal-notifier is OPTIONAL. When absent, notifyWithAction silently
- * degrades to a passive notification — the body text still tells the user
- * what's happening, they just can't one-click the action button.
- *
- * See memory/feedback_proactive_handoff_ux.md for the larger design.
+ * Sound: "Tink" — warm and friendly, matching the "nightCrawl needs you" tone.
  */
 
-import { spawn, spawnSync } from 'child_process';
+import { spawn, spawnSync, execSync } from 'child_process';
 import * as os from 'os';
 
 const IS_MAC = os.platform() === 'darwin';
+const SOUND = '/System/Library/Sounds/Tink.aiff';
 
-// ─── Capability Detection ─────────────────────────────────
-// Cache the terminal-notifier check for the life of the process.
-// Spawning `which` every notification would be wasteful.
+// ─── Helpers ─────────────────────────────────────────────
 
-let tnCached: string | null | undefined = undefined;
+const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 
-function terminalNotifierPath(): string | null {
-  if (tnCached !== undefined) return tnCached;
+function playSound(): void {
   try {
-    const r = spawnSync('which', ['terminal-notifier'], { encoding: 'utf-8' });
-    const out = (r.stdout || '').trim();
-    tnCached = out && r.status === 0 ? out : null;
-  } catch {
-    tnCached = null;
-  }
-  return tnCached;
+    spawn('afplay', [SOUND], { stdio: 'ignore', detached: true }).unref();
+  } catch {}
 }
 
-// ─── Passive Notification ─────────────────────────────────
+// ─── Passive Notification ────────────────────────────────
 
-/**
- * Display a macOS notification. Best-effort — never throws, never blocks.
- * On non-macOS, this is a no-op.
- *
- * Inputs are escaped for the AppleScript double-quoted string context:
- * backslash + double-quote are the only chars that can break out.
- */
 export function notify(title: string, body: string): void {
   if (!IS_MAC) return;
   if (process.env.NIGHTCRAWL_NO_NOTIFY === '1') return;
 
-  const safe = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-  const script = `display notification "${safe(body)}" with title "${safe(title)}" sound name "Glass"`;
-
+  playSound();
+  const script = `display notification "${esc(body)}" with title "${esc(title)}"`;
   try {
     const child = spawn('osascript', ['-e', script], {
       stdio: ['ignore', 'ignore', 'ignore'],
@@ -66,95 +46,77 @@ export function notify(title: string, body: string): void {
   } catch {}
 }
 
-// ─── Actionable Notification ──────────────────────────────
+// ─── Approval Dialog ─────────────────────────────────────
 
 export interface NotifyAction {
-  /** Button label shown on the notification. */
   label: string;
-  /** Shell command to execute when the user clicks the button. */
   onClick: string;
 }
 
-/**
- * Display a notification with a clickable action button.
- *
- * Requires terminal-notifier (brew install terminal-notifier). When absent,
- * falls back to passive notify() — the body already describes the state,
- * only the one-click is missing. Install-hint is printed ONCE per process
- * so the user sees it without getting spammed.
- *
- * The onClick command runs through `sh -c` on click. Callers are
- * responsible for quoting; this helper does not escape for them (the
- * common case is a short osascript or open invocation authored by us,
- * not user input).
- */
-let installHintShown = false;
+export type ApprovalResult = 'approved' | 'rejected' | 'error';
 
-export function notifyWithAction(
+/**
+ * Show a modal approval dialog with Approve / Not now buttons.
+ *
+ * - Plays warm "Tink" sound to get attention without startling
+ * - Shows a manifest: what happened, what will happen
+ * - User clicks "Let's go!" → returns 'approved', runs onClick
+ * - User clicks "Not now"   → returns 'rejected', does nothing
+ * - Dialog is modal — always visible, can't be missed
+ *
+ * Non-blocking from the caller's perspective (returns a Promise).
+ * The daemon continues serving other requests while waiting.
+ */
+export async function notifyWithAction(
   title: string,
   body: string,
   action: NotifyAction,
-): void {
-  // Even on non-Mac or with notifications suppressed, the user still
-  // needs a way to see and run the action. Print it to the terminal
-  // unconditionally — this is the reliable fallback for silenced
-  // notifications, broken permissions, or click-does-nothing cases
-  // (terminal-notifier 2.0.0's action-button support was removed,
-  // see below). The user can always copy-paste from stderr.
+): Promise<ApprovalResult> {
   printActionable(title, body, action);
 
-  if (!IS_MAC) return;
-  if (process.env.NIGHTCRAWL_NO_NOTIFY === '1') return;
-
-  const tn = terminalNotifierPath();
-  if (!tn) {
-    notify(title, `${body} (install terminal-notifier for clickable notifications)`);
-    if (!installHintShown) {
-      installHintShown = true;
-      console.log(
-        '[nightcrawl] Install terminal-notifier for clickable notifications: brew install terminal-notifier',
-      );
-    }
-    return;
+  if (!IS_MAC || process.env.NIGHTCRAWL_NO_NOTIFY === '1') {
+    return 'error';
   }
 
-  // terminal-notifier 2.0.0 removed -actions (user report + `tn -help`
-  // shows no such flag). What IS supported:
-  //   -execute COMMAND → runs on click of the notification BODY
-  //   -open URL        → opens URL on click (more reliable on modern macOS)
-  //
-  // If the action is a simple `open URL`, use -open (Apple's happy path).
-  // Otherwise -execute. Both map to "click the notification" — no button
-  // is rendered. The stderr hint above already tells the user what
-  // command will run.
-  const args: string[] = [
-    '-title', title,
-    '-message', body,
-    '-sound', 'Glass',
-    '-group', 'nightcrawl-handoff',
-  ];
-  const openMatch = action.onClick.match(/^open\s+"?([^"]+)"?\s*$/);
-  if (openMatch) {
-    args.push('-open', openMatch[1]);
-  } else {
-    args.push('-execute', action.onClick);
-  }
+  playSound();
 
-  try {
-    const child = spawn(tn, args, {
-      stdio: ['ignore', 'ignore', 'ignore'],
-      detached: true,
+  const script = [
+    `display dialog "${esc(body)}"`,
+    `with title "${esc(title)}"`,
+    `buttons {"Not now", "${esc(action.label)}"}`,
+    `default button "${esc(action.label)}"`,
+    `with icon note`,
+  ].join(' ');
+
+  return new Promise<ApprovalResult>((resolve) => {
+    const child = spawn('osascript', ['-e', script], {
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
-    child.on('error', () => {});
-    child.unref();
-  } catch {}
+
+    let stdout = '';
+    let stderr = '';
+    child.stdout?.on('data', (d: Buffer) => { stdout += d.toString(); });
+    child.stderr?.on('data', (d: Buffer) => { stderr += d.toString(); });
+
+    child.on('close', (code) => {
+      if (code === 0 && stdout.includes(action.label)) {
+        // User clicked the approve button — run the action
+        try {
+          const sh = spawn('sh', ['-c', action.onClick], {
+            stdio: 'ignore', detached: true,
+          });
+          sh.unref();
+        } catch {}
+        resolve('approved');
+      } else {
+        resolve('rejected');
+      }
+    });
+
+    child.on('error', () => resolve('error'));
+  });
 }
 
-/**
- * Print the actionable command to stderr so the user always has a
- * paste-able fallback. Uses a compact, scannable format so the command
- * stands out in agent logs.
- */
 function printActionable(title: string, body: string, action: NotifyAction): void {
   try {
     console.error(`[nightcrawl] ${title}: ${body}`);
@@ -162,13 +124,8 @@ function printActionable(title: string, body: string, action: NotifyAction): voi
   } catch {}
 }
 
-// ─── Action Helpers ───────────────────────────────────────
-// Pre-built actions for the common cases. Keeping these here (rather than
-// inline at call sites) so the osascript incantations live in one place.
+// ─── Action Helpers ──────────────────────────────────────
 
-/**
- * Action that brings the named macOS app to the foreground.
- */
 export function focusAppAction(appName: string, label?: string): NotifyAction {
   const safe = appName.replace(/"/g, '\\"');
   return {
@@ -177,9 +134,6 @@ export function focusAppAction(appName: string, label?: string): NotifyAction {
   };
 }
 
-/**
- * Action that opens a URL in the user's default browser.
- */
 export function openUrlAction(url: string, label: string): NotifyAction {
   const safe = url.replace(/"/g, '\\"');
   return { label, onClick: `open "${safe}"` };
