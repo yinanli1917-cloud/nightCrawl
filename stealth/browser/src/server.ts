@@ -35,7 +35,7 @@ import {
 import { applyStealthPatches } from './stealth';
 import { startReinforcementLoop } from './stealth-reinforcement';
 import { notify } from './notify';
-import { markPinnedObserved, isPinned } from './fingerprint-pinned';
+import { markPinnedObserved, isPinned, sniffVendor } from './fingerprint-pinned';
 import { isAuthenticated, markAuthenticated, invalidate } from './auth-cache';
 import {
   tryAutoImportForWall,
@@ -1081,11 +1081,18 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
                       return new Response(result, { status: 200, headers: { 'Content-Type': 'text/plain' } });
                     }
                     result += `\nClick-through import insufficient (${detection3.reason}).`;
-                    // Cookies were imported but wall persisted — empirical
-                    // fingerprint-pinning signal. Mark now so autoHandover
-                    // routes straight to CloakBrowser instead of wasting 5 min.
-                    markPinnedObserved(targetUrl, 'cloudflare');
-                    result += ` Site marked fingerprint-pinned — use 'nc open-handoff' to log in via CloakBrowser.`;
+                    // Only mark as pinned if cookies contain vendor-specific
+                    // markers (cf_clearance → Cloudflare, _dd_s → DataDome).
+                    // Sites like Google/Microsoft have their own auth system —
+                    // cookies fail for reasons unrelated to fingerprint-pinning.
+                    const pageCookies = await page.context().cookies().catch(() => []);
+                    const hasCfClearance = pageCookies.some(c => c.name === 'cf_clearance');
+                    const hasDataDome = pageCookies.some(c => c.name === '_dd_s' || c.name === 'datadome');
+                    const observedVendor = hasCfClearance ? 'cloudflare' : hasDataDome ? 'datadome' : null;
+                    if (observedVendor) {
+                      markPinnedObserved(targetUrl, observedVendor);
+                      result += ` Site confirmed ${observedVendor}-pinned — use 'nc open-handoff' to log in via CloakBrowser.`;
+                    }
                   }
                 }
               } else {
@@ -1165,7 +1172,15 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
             const detection = await browserManager.detectLoginWall();
             if (!detection?.detected) return;
             const domain = detection.domain;
-            markPinnedObserved(origUrl, 'cloudflare');
+            // Only mark pinned if vendor-specific cookies confirm it.
+            // Late redirect to /login alone is NOT sufficient — many sites
+            // (Google, Microsoft, etc.) redirect to login without being
+            // fingerprint-pinned.
+            const lateCookies = await page.context().cookies().catch(() => []);
+            const lateVendor = lateCookies.some(c => c.name === 'cf_clearance') ? 'cloudflare'
+              : lateCookies.some(c => c.name === '_dd_s' || c.name === 'datadome') ? 'datadome'
+              : null;
+            if (lateVendor) markPinnedObserved(origUrl, lateVendor);
             if (detection.approved) {
               console.log(`[nightcrawl] Late redirect to ${url}. Auto-handover starting for ${domain}.`);
               browserManager.autoHandover(origUrl).then(async () => {
