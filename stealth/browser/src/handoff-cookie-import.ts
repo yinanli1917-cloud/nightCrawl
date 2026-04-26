@@ -624,6 +624,9 @@ export async function syncAllCookies(
   let syncedDomains: string[];
 
   if (syncMode === 'all-domains') {
+    // listDomains now sorts by session-cookie presence first, so domains with
+    // auth tokens (like lib.washington.edu) appear before analytics domains and
+    // are never cut off by the cap.
     hostKeys = arcDomains
       .filter(d => !isHostileDomain(d.domain))
       .map(d => d.domain)

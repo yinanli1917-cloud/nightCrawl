@@ -731,11 +731,25 @@ export async function handleMetaCommand(
         if (!ctx) return 'ERROR: no browser context — daemon may be starting up';
         recordSyncStart();
         try {
-          const result = await syncAllCookies(ctx);
+          // Use all-domains mode so low-cookie-count subdomains (e.g. lib.washington.edu
+          // with a single session cookie) are not skipped by eTLD+1 deduplication.
+          const result = await syncAllCookies(ctx, undefined, 'all-domains');
           recordSyncSuccess(result);
+          // Persist to disk immediately — session cookies must not wait for the 5-min flush.
+          if (result.importedCount > 0 && process.env.BROWSE_INCOGNITO !== '1') {
+            try {
+              const state = await bm.saveState();
+              if (state.cookies.length > 0) {
+                const cfg = resolveConfig();
+                const tmp = cfg.storageFile + '.tmp';
+                fs.writeFileSync(tmp, JSON.stringify(state, null, 2), { mode: 0o600 });
+                fs.renameSync(tmp, cfg.storageFile);
+              }
+            } catch {}
+          }
           const lines: string[] = [];
           lines.push(`Sync from ${result.browser || '(no default browser detected)'}:`);
-          lines.push(`  Imported ${result.importedCount} cookies for ${result.newDomains.length} new domain(s)`);
+          lines.push(`  Imported ${result.importedCount} cookies for ${result.newDomains.length} domain(s)`);
           if (result.newDomains.length > 0 && result.newDomains.length <= 20) {
             lines.push(`  Domains: ${result.newDomains.join(', ')}`);
           } else if (result.newDomains.length > 20) {

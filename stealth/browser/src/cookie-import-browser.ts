@@ -273,11 +273,13 @@ export function listDomains(browserName: string, profile = 'Default'): { domains
   try {
     const now = chromiumNow();
     const rows = db.query(
+      // Domains with session cookies (has_expires=0) sort first so they are never
+      // cut off by the slice cap — they carry auth tokens, not just tracking data.
       `SELECT host_key AS domain, COUNT(*) AS count
        FROM cookies
        WHERE has_expires = 0 OR expires_utc > ?
        GROUP BY host_key
-       ORDER BY count DESC`
+       ORDER BY MAX(CASE WHEN has_expires = 0 THEN 1 ELSE 0 END) DESC, count DESC`
     ).all(now) as DomainEntry[];
     return { domains: rows, browser: browser.name };
   } finally {

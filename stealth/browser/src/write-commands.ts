@@ -10,6 +10,7 @@ import { findInstalledBrowsers, importCookies, listSupportedBrowserNames } from 
 import { replaceCookiesFor } from './handoff-cookie-import';
 import { validateNavigationUrl } from './url-validation';
 import { cleanup, formatCleanupResult } from './cleanup';
+import { resolveConfig } from './config';
 import * as fs from 'fs';
 import * as path from 'path';
 import { TEMP_DIR, isPathWithin } from './platform';
@@ -383,6 +384,18 @@ export async function handleWriteCommand(
         const result = await importCookies(browser, [domain], profile);
         if (result.cookies.length > 0) {
           await replaceCookiesFor(page.context(), result.cookies);
+          // Persist immediately so session cookies (expires: -1) survive a daemon restart.
+          if (process.env.BROWSE_INCOGNITO !== '1') {
+            try {
+              const state = await bm.saveState();
+              if (state.cookies.length > 0) {
+                const cfg = resolveConfig();
+                const tmp = cfg.storageFile + '.tmp';
+                fs.writeFileSync(tmp, JSON.stringify(state, null, 2), { mode: 0o600 });
+                fs.renameSync(tmp, cfg.storageFile);
+              }
+            } catch {}
+          }
         }
         const msg = [`Imported ${result.count} cookies for ${domain} from ${browser}`];
         if (result.failed > 0) msg.push(`(${result.failed} failed to decrypt)`);
