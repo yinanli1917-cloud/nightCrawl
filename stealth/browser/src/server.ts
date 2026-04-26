@@ -992,7 +992,16 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
           //
           // Only runs for consent-approved domains (privacy gate).
           // No-op if no installed browser, no matching cookies, or import fails.
-          const siteIsPinned = isPinned(wallUrl);
+          let siteIsPinned = isPinned(wallUrl);
+          // Turnstile on the login page is a strong pinning signal —
+          // the session cookie will be bound to the solving browser's
+          // fingerprint. Mark now to skip the doomed Arc import + SSO
+          // click-through (~20s saved on first encounter).
+          if (!siteIsPinned && detection.turnstile) {
+            markPinnedObserved(wallUrl, 'cloudflare');
+            siteIsPinned = true;
+            result += `\nTURNSTILE_DETECTED: Cloudflare Turnstile on login page — marking ${detection.domain} as fingerprint-pinned (Arc cookies cannot authenticate Turnstile-protected sessions).`;
+          }
           if (siteIsPinned) {
             result += `\nFINGERPRINT_PINNED: ${detection.domain} — Arc session tokens are fingerprint-bound and cannot authenticate here. Skipping Arc import, auto-opening CloakBrowser for one-time login instead.`;
           }
@@ -1095,11 +1104,12 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
           }
           browserManager.autoHandover(targetUrl).then(async handoverResult => {
             if (handoverResult) console.log(`[nightcrawl] Auto-handover complete: ${handoverResult}`);
-            // If cookies resolved the wall without opening a window, persist them
-            // immediately so a daemon restart doesn't re-trigger the SSO flow.
-            if (handoverResult?.includes('Zero windows')) {
-              await persistStorage();
-            }
+            // Persist cookies immediately after ANY successful handover —
+            // both Arc-import ("Zero windows") AND CloakBrowser headed login.
+            // Without this, cookies from headed sessions are only in memory
+            // and lost on daemon crash/restart (the 5-min periodic flush
+            // may never fire if the process exits first).
+            await persistStorage();
           }).catch(err => {
             console.error(`[nightcrawl] Auto-handover failed: ${err.message}`);
           });
@@ -1156,8 +1166,9 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
             markPinnedObserved(origUrl, 'cloudflare');
             if (detection.approved) {
               console.log(`[nightcrawl] Late redirect to ${url}. Auto-handover starting for ${domain}.`);
-              // Let autoHandover emit its own (now correctly gated) notifications.
-              browserManager.autoHandover(origUrl).catch(err => {
+              browserManager.autoHandover(origUrl).then(async () => {
+                await persistStorage();
+              }).catch(err => {
                 console.error(`[nightcrawl] Auto-handover failed: ${err?.message ?? err}`);
               });
             } else {
