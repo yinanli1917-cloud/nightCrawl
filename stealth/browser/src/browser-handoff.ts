@@ -630,22 +630,19 @@ export async function autoHandover(this: any, targetUrl?: string): Promise<strin
       // SSO silently if the session is still live, or prompt MFA if expired.
       const openUrl = testUrl !== loginUrl ? testUrl : loginUrl;
 
-      // Gate vs auto-open: if BROWSE_NOTIFY_GATE=1, only notify; user clicks
-      // "Open browser" to trigger. Default (unset/0) behaves as before —
-      // open immediately and also notify. Gate mode is the less-intrusive
-      // UX but requires terminal-notifier to be present; otherwise the
-      // passive notification can't be clicked.
-      const gated = process.env.BROWSE_NOTIFY_GATE === '1';
+      // Notification-first UX: NEVER open a window before the user approves.
+      // Notification = manifest (what happened + what will happen).
+      // Click notification = approve. Dismiss = reject.
+      // Only BROWSE_AUTO_OPEN_BROWSER=1 bypasses this (explicit opt-in).
+      const autoOpen = process.env.BROWSE_AUTO_OPEN_BROWSER === '1';
 
       notifyWithAction(
-        'nightCrawl: log in',
-        gated
-          ? `${domain} needs a login. Click "Open browser" to start.`
-          : `Opening ${domain} in your browser. Auto-resume when done.`,
+        `nightCrawl: ${domain} login needed`,
+        `Login wall detected. Click to open your browser for ${domain} login. nightCrawl will watch for cookies and auto-resume headless when done.`,
         { label: 'Open browser', onClick: `open "${openUrl.replace(/"/g, '\\"')}"` },
       );
 
-      if (!gated) {
+      if (autoOpen) {
         try {
           const { execSync } = await import('child_process');
           execSync(`open "${openUrl.replace(/"/g, '\\"')}"`, { timeout: 5000 });
@@ -742,21 +739,18 @@ export async function autoHandover(this: any, targetUrl?: string): Promise<strin
   if (!autoPop) {
     const domain = loginUrl ? eTldPlusOne(loginUrl) : 'site';
     const vendor = loginUrl ? pinnedVendor(loginUrl) : null;
-    const body = vendor
-      ? `${domain} is ${vendor}-protected — your default browser's session can't authenticate here. Run 'open-handoff' to launch a headed CloakBrowser window where you can log in. Cookies minted there will replay correctly in headless.`
-      : `Default-browser cookies didn't clear ${domain}. Run 'open-handoff' to launch a headed CloakBrowser window for direct login.`;
 
-    // Notification button runs the `open-handoff` meta-command via the
-    // CLI. That connects back to this daemon over its unix socket and
-    // triggers the headed-CloakBrowser launch exactly the same way the
-    // env-var path does. One-click from notification to logged-in
-    // window, no windows popping without user consent.
+    // Manifest: what happened → what will happen → approve/reject
+    const manifest = vendor
+      ? `Login wall at ${domain} (${vendor}-protected). Cookie sync from your browser can't authenticate here. Click to open CloakBrowser for one-time login — nightCrawl auto-resumes headless when done.`
+      : `Cookie sync didn't clear ${domain}. Click to open CloakBrowser for direct login — nightCrawl auto-resumes headless when done.`;
+
     const cliPath = `${__dirname}/cli.ts`;
-    const bunPath = process.execPath; // the bun binary running this daemon
+    const bunPath = process.execPath;
     const safeUrl = loginUrl.replace(/"/g, '\\"');
     notifyWithAction(
-      'nightCrawl: headed login needed',
-      body,
+      `nightCrawl: ${domain} login needed`,
+      manifest,
       {
         label: 'Open CloakBrowser',
         onClick: `"${bunPath}" run "${cliPath}" open-handoff "${safeUrl}"`,
@@ -765,9 +759,8 @@ export async function autoHandover(this: any, targetUrl?: string): Promise<strin
 
     return [
       `HANDOFF_PENDING: ${domain} needs a headed login in CloakBrowser.`,
-      `Click the notification's "Open CloakBrowser" button, or run:`,
-      `  nc open-handoff ${loginUrl}`,
-      `(Or set BROWSE_AUTO_POP_HEADED=1 to allow automatic pops.)`,
+      `A notification was sent. Click to approve, dismiss to reject.`,
+      `Or run manually: nc open-handoff ${loginUrl}`,
     ].join('\n');
   }
 
@@ -777,16 +770,12 @@ export async function autoHandover(this: any, targetUrl?: string): Promise<strin
     : `[nightcrawl] BROWSE_AUTO_POP_HEADED=1 set — popping headed CloakBrowser for ${loginUrl}...`;
   console.log(logMsg);
 
-  // Fire notification BEFORE launch so the user knows a window is about
-  // to appear. Uses terminal-notifier (has its own app bundle → reliable
-  // on modern macOS even from daemon processes). Falls back to osascript
-  // passive notification when terminal-notifier is absent.
-  // The action opens the URL as a backup in case CloakBrowser fails.
+  // Manifest notification BEFORE launch — user already approved via
+  // BROWSE_AUTO_POP_HEADED=1, so this is informational.
+  const handoffDomain = eTldPlusOne(loginUrl);
   notifyWithAction(
-    'nightCrawl: login required',
-    isPinnedDomain
-      ? `${eTldPlusOne(loginUrl)} requires a one-time login in CloakBrowser (session tokens are fingerprint-bound).`
-      : `Headed CloakBrowser opening for login at ${eTldPlusOne(loginUrl)}.`,
+    `nightCrawl: opening CloakBrowser for ${handoffDomain}`,
+    `Login wall detected. CloakBrowser is opening for ${handoffDomain} login. Complete the login — nightCrawl will auto-resume headless when done.`,
     { label: 'Open in browser', onClick: `open "${testUrl.replace(/"/g, '\\"')}"` },
   );
 

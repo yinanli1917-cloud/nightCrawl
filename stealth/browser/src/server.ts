@@ -1747,15 +1747,14 @@ async function start() {
     const browserLaunchStart = Date.now();
     (async () => {
       try {
-        // Clean up stale Chromium SingletonLock from the persistent profile
+        // Clean up ALL stale Chromium lock files from the persistent profile
         // before launching. Can linger after unclean shutdown (kill -9, crash).
         try {
           const { parseEngineConfig } = await import('./engine-config');
           const ec = parseEngineConfig();
-          const lockFile = path.join(ec.profileDir, 'SingletonLock');
-          if (fs.existsSync(lockFile)) {
-            fs.unlinkSync(lockFile);
-            console.log(`[browse] Removed stale SingletonLock from profile`);
+          for (const name of ['SingletonLock', 'SingletonSocket', 'SingletonCookie']) {
+            const p = path.join(ec.profileDir, name);
+            try { if (fs.existsSync(p)) { fs.unlinkSync(p); console.log(`[browse] Removed stale ${name}`); } } catch {}
           }
         } catch {}
 
