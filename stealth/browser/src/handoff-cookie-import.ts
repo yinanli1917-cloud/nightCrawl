@@ -605,6 +605,7 @@ export interface SyncResult {
 export async function syncAllCookies(
   context: BrowserContext,
   browser: string | null = pickDefaultBrowser(),
+  syncMode: 'new-domains-only' | 'all-domains' = 'new-domains-only',
 ): Promise<SyncResult> {
   if (!browser) return { importedCount: 0, newDomains: [], browser: null };
 
@@ -616,27 +617,42 @@ export async function syncAllCookies(
   }
   if (arcDomains.length === 0) return { importedCount: 0, newDomains: [], browser };
 
-  const currentCookies = await context.cookies().catch(() => []);
-  const currentEtlds = new Set<string>();
-  for (const c of currentCookies) {
-    try {
-      const host = (c.domain || '').replace(/^\./, '');
-      currentEtlds.add(eTldPlusOne(host));
-    } catch {}
+  // When watching for Arc cookie changes (watch mode), sync ALL domains to ensure
+  // fresh credentials (like cf_clearance after login) replace stale ones in persistent profile.
+  // Otherwise (poll mode), only sync new domains to avoid redundant processing.
+  let hostKeys: string[];
+  let syncedDomains: string[];
+
+  if (syncMode === 'all-domains') {
+    hostKeys = arcDomains
+      .filter(d => !isHostileDomain(d.domain))
+      .map(d => d.domain)
+      .slice(0, 200);
+    syncedDomains = hostKeys;
+  } else {
+    const currentCookies = await context.cookies().catch(() => []);
+    const currentEtlds = new Set<string>();
+    for (const c of currentCookies) {
+      try {
+        const host = (c.domain || '').replace(/^\./, '');
+        currentEtlds.add(eTldPlusOne(host));
+      } catch {}
+    }
+
+    const { newHostKeys, newEtlds } = computeNewDomainsToSync(arcDomains, currentEtlds);
+    hostKeys = newHostKeys;
+    syncedDomains = newEtlds;
   }
 
-  const { newHostKeys, newEtlds } = computeNewDomainsToSync(arcDomains, currentEtlds);
-
-  if (newHostKeys.length === 0) {
+  if (hostKeys.length === 0) {
     return { importedCount: 0, newDomains: [], browser };
   }
 
-  const batch = newHostKeys.slice(0, 200);
   let result;
   try {
-    result = await importCookies(browser, batch);
+    result = await importCookies(browser, hostKeys);
   } catch {
-    return { importedCount: 0, newDomains: newEtlds.slice(0, batch.length), browser };
+    return { importedCount: 0, newDomains: syncedDomains.slice(0, hostKeys.length), browser };
   }
 
   if (result.cookies.length > 0) {
@@ -645,7 +661,7 @@ export async function syncAllCookies(
 
   return {
     importedCount: result.cookies.length,
-    newDomains: newEtlds.slice(0, batch.length),
+    newDomains: syncedDomains.slice(0, hostKeys.length),
     browser,
   };
 }

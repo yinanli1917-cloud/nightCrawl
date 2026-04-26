@@ -642,10 +642,12 @@ async function runBackgroundSync(trigger: 'poll' | 'watch' | 'manual' = 'poll') 
       recordSyncSkipped('no-context');
       return;
     }
-    const result = await syncAllCookies(context);
+    const syncMode = trigger === 'watch' ? 'all-domains' : 'new-domains-only';
+    const result = await syncAllCookies(context, undefined, syncMode);
     recordSyncSuccess(result);
     if (result.importedCount > 0) {
-      console.log(`[nightcrawl] Sync (${trigger}): imported ${result.importedCount} cookies for ${result.newDomains.length} new domain(s) from ${result.browser}.`);
+      const modeLabel = syncMode === 'all-domains' ? 'updated' : 'new';
+      console.log(`[nightcrawl] Sync (${trigger}): imported ${result.importedCount} cookies for ${result.newDomains.length} ${modeLabel} domain(s) from ${result.browser}.`);
       await persistStorage();
     }
   } catch (err: any) {
