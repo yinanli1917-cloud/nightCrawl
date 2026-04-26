@@ -631,9 +631,9 @@ export async function autoHandover(this: any, targetUrl?: string): Promise<strin
       const openUrl = testUrl !== loginUrl ? testUrl : loginUrl;
 
       const approval = await notifyWithAction(
-        `nightCrawl needs a hand`,
-        `I hit a login wall at ${domain}.\n\nHere's the plan:\n  1. Open your browser so you can log in\n  2. I'll watch for fresh cookies\n  3. Auto-resume and keep working\n\nShould only take a moment!`,
-        { label: "Let's go!", onClick: `open "${openUrl.replace(/"/g, '\\"')}"` },
+        `nightCrawl needs to log in`,
+        `${domain} requires authentication. nightCrawl will open your browser for a quick login and resume automatically.`,
+        { label: "Log In", onClick: `open "${openUrl.replace(/"/g, '\\"')}"` },
       );
 
       if (approval === 'rejected') {
@@ -738,10 +738,10 @@ export async function autoHandover(this: any, targetUrl?: string): Promise<strin
     const safeUrl = loginUrl.replace(/"/g, '\\"');
 
     const approval = await notifyWithAction(
-      `nightCrawl needs a hand`,
-      `I hit a login wall at ${domain}.\n\n${reason}\n\nHere's the plan:\n  1. Open CloakBrowser for a quick one-time login\n  2. I'll grab the fresh cookies\n  3. Auto-resume and keep working\n\nShould only take a moment!`,
+      `nightCrawl needs to log in`,
+      `${domain} requires authentication. ${reason} nightCrawl will open CloakBrowser for a one-time login and resume automatically.`,
       {
-        label: "Let's go!",
+        label: "Log In",
         onClick: `"${bunPath}" run "${cliPath}" open-handoff "${safeUrl}"`,
       },
     );

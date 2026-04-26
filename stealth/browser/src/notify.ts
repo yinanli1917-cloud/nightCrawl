@@ -1,32 +1,40 @@
 /**
- * [INPUT]: macOS osascript (system)
- * [OUTPUT]: notify() — passive notification; notifyWithAction() — modal dialog
- *          with Approve / Not now buttons that returns the user's choice
+ * [INPUT]: Native Swift alert app (~/.nightcrawl/NightCrawlNotify.app),
+ *          fallback to osascript
+ * [OUTPUT]: notify() — passive notification; notifyWithAction() — native
+ *          macOS alert with approve/reject buttons
  * [POS]: System notification + approval dialog within browser module
  *
- * Uses osascript `display dialog` for approval prompts — this is modal,
- * always visible (can't be silenced by Focus mode), and returns which
- * button the user pressed. terminal-notifier is NOT used (broken on
- * macOS 26 — clicking opens Script Editor instead of running the action).
+ * Uses a compiled Swift .app bundle (NSAlert, LSUIElement) for approval
+ * prompts. Looks identical to system alerts (Cursor "access Photos", etc.)
+ * — no Dock icon, floats on top, native Tahoe styling.
  *
- * Sound: "Tink" — warm and friendly, matching the "nightCrawl needs you" tone.
+ * Sound: "Tink" — warm and friendly.
  */
 
-import { spawn, spawnSync, execSync } from 'child_process';
+import { spawn } from 'child_process';
 import * as os from 'os';
+import * as path from 'path';
+import * as fs from 'fs';
 
 const IS_MAC = os.platform() === 'darwin';
 const SOUND = '/System/Library/Sounds/Tink.aiff';
+const NOTIFY_APP = path.join(
+  process.env.HOME || '/tmp',
+  '.nightcrawl',
+  'NightCrawlNotify.app',
+);
+const NOTIFY_BIN = path.join(NOTIFY_APP, 'Contents', 'MacOS', 'nightcrawl-notify');
 
 // ─── Helpers ─────────────────────────────────────────────
-
-const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 
 function playSound(): void {
   try {
     spawn('afplay', [SOUND], { stdio: 'ignore', detached: true }).unref();
   } catch {}
 }
+
+const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 
 // ─── Passive Notification ────────────────────────────────
 
@@ -56,16 +64,13 @@ export interface NotifyAction {
 export type ApprovalResult = 'approved' | 'rejected' | 'error';
 
 /**
- * Show a modal approval dialog with Approve / Not now buttons.
+ * Show a native macOS alert with approve/reject buttons.
  *
- * - Plays warm "Tink" sound to get attention without startling
- * - Shows a manifest: what happened, what will happen
- * - User clicks "Let's go!" → returns 'approved', runs onClick
- * - User clicks "Not now"   → returns 'rejected', does nothing
- * - Dialog is modal — always visible, can't be missed
+ * Uses the compiled Swift .app bundle for native Tahoe styling.
+ * Falls back to osascript if the .app is missing.
  *
- * Non-blocking from the caller's perspective (returns a Promise).
- * The daemon continues serving other requests while waiting.
+ * Returns 'approved' if user clicks the action button (runs onClick),
+ * 'rejected' if user clicks cancel/dismiss.
  */
 export async function notifyWithAction(
   title: string,
@@ -78,12 +83,48 @@ export async function notifyWithAction(
     return 'error';
   }
 
-  playSound();
+  if (fs.existsSync(NOTIFY_BIN)) {
+    return launchNativeAlert(title, body, action);
+  }
+  return launchOsascriptFallback(title, body, action);
+}
 
+async function launchNativeAlert(
+  title: string,
+  body: string,
+  action: NotifyAction,
+): Promise<ApprovalResult> {
+  return new Promise<ApprovalResult>((resolve) => {
+    const child = spawn('open', [
+      NOTIFY_APP,
+      '--args',
+      '--title', title,
+      '--body', body,
+      '--approve', action.label,
+      '--reject', 'Not Now',
+      '--on-approve', action.onClick,
+    ], { stdio: ['ignore', 'pipe', 'pipe'] });
+
+    let stdout = '';
+    child.stdout?.on('data', (d: Buffer) => { stdout += d.toString(); });
+
+    child.on('close', () => {
+      resolve(stdout.trim() === 'approved' ? 'approved' : 'rejected');
+    });
+    child.on('error', () => resolve('error'));
+  });
+}
+
+async function launchOsascriptFallback(
+  title: string,
+  body: string,
+  action: NotifyAction,
+): Promise<ApprovalResult> {
+  playSound();
   const script = [
     `display dialog "${esc(body)}"`,
     `with title "${esc(title)}"`,
-    `buttons {"Not now", "${esc(action.label)}"}`,
+    `buttons {"Not Now", "${esc(action.label)}"}`,
     `default button "${esc(action.label)}"`,
     `with icon note`,
   ].join(' ');
@@ -94,25 +135,18 @@ export async function notifyWithAction(
     });
 
     let stdout = '';
-    let stderr = '';
     child.stdout?.on('data', (d: Buffer) => { stdout += d.toString(); });
-    child.stderr?.on('data', (d: Buffer) => { stderr += d.toString(); });
 
     child.on('close', (code) => {
       if (code === 0 && stdout.includes(action.label)) {
-        // User clicked the approve button — run the action
         try {
-          const sh = spawn('sh', ['-c', action.onClick], {
-            stdio: 'ignore', detached: true,
-          });
-          sh.unref();
+          spawn('sh', ['-c', action.onClick], { stdio: 'ignore', detached: true }).unref();
         } catch {}
         resolve('approved');
       } else {
         resolve('rejected');
       }
     });
-
     child.on('error', () => resolve('error'));
   });
 }
