@@ -735,10 +735,11 @@ export async function autoHandover(this: any, targetUrl?: string): Promise<strin
   // a CloakBrowser window as soon as the agent's goto resolved. That
   // UX was "windows jumping in front of your work without consent" —
   // the exact thing the no-silent-pops rule forbids.
+  //
+  // CRITICAL: Pinned domains are NOT exempt from this rule. Even if
+  // Arc import is impossible, the user must still approve the window pop.
   const autoPop = process.env.BROWSE_AUTO_POP_HEADED === '1';
-  // Pinned domains have exactly one path — headed CloakBrowser.
-  // Arc import is proven impossible. Don't gate it behind an env var.
-  if (!autoPop && !isPinned(loginUrl)) {
+  if (!autoPop) {
     const domain = loginUrl ? eTldPlusOne(loginUrl) : 'site';
     const vendor = loginUrl ? pinnedVendor(loginUrl) : null;
     const body = vendor
