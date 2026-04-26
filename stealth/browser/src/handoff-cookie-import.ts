@@ -293,6 +293,22 @@ export async function replaceCookiesFor(
 ): Promise<void> {
   if (!cookies || cookies.length === 0) return;
 
+  // Deduplicate by (name, domain, path) — keep the last occurrence
+  // (which is the newest when cookies come from context.cookies() or
+  // from a merge of old-file + new-session). Without this, Playwright's
+  // addCookies stores every entry, and stale duplicates (e.g. an old
+  // cf_clearance from a previous session) get sent alongside the fresh
+  // one, causing Cloudflare and other bot-managers to reject the request.
+  const deduped = new Map<string, any>();
+  for (const c of cookies) {
+    const key = `${c.name}\0${c.domain}\0${c.path ?? '/'}`;
+    const existing = deduped.get(key);
+    if (!existing || (c.expires ?? 0) >= (existing.expires ?? 0)) {
+      deduped.set(key, c);
+    }
+  }
+  cookies = Array.from(deduped.values());
+
   const etlds = new Set<string>();
   for (const c of cookies) {
     const raw = typeof c?.domain === 'string' ? c.domain : '';
