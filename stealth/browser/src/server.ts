@@ -34,7 +34,7 @@ import {
 } from './update-executor';
 import { applyStealthPatches } from './stealth';
 import { startReinforcementLoop } from './stealth-reinforcement';
-import { notify, notifyWithAction } from './notify';
+import { notifyWithAction } from './notify';
 import { detectSensitivePage, CATEGORY_NOTIFICATIONS } from './sensitive-page';
 import { markPinnedObserved, isPinned, sniffVendor } from './fingerprint-pinned';
 import { isAuthenticated, markAuthenticated, invalidate } from './auth-cache';
@@ -1155,13 +1155,17 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
           // signal so the agent can ask the user before taking action.
           result += `\nCONSENT_REQUIRED: ${detection.domain}`;
           result += `\nNo window opened. Ask the user "Approve auto-handoff for ${detection.domain}?" — if yes, run 'grant-handoff ${detection.domain}'.`;
-          // Best-effort macOS notification so the user can react even if
-          // they're not watching the chat. Silent on non-macOS / opt-out
-          // via NIGHTCRAWL_NO_NOTIFY=1.
-          notify(
+          const consentDomain = detection.domain;
+          const cliPath = `${__dirname}/cli.ts`;
+          const bunPath = process.execPath;
+          notifyWithAction(
             'nightCrawl: login wall detected',
-            `${detection.domain} needs your approval to enable auto-handoff.`,
-          );
+            `${consentDomain} needs your approval to enable auto-handoff.`,
+            {
+              label: 'Grant Access',
+              onClick: `"${bunPath}" run "${cliPath}" grant-handoff "${consentDomain}"`,
+            },
+          ).catch(() => {});
         }
       } else {
         // No login wall — mark domain as authenticated for fast-path
@@ -1221,10 +1225,16 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
               });
             } else {
               console.log(`[nightcrawl] Late redirect to login detected on ${domain} (unapproved). Surfacing notification.`);
-              notify(
+              const lateCli = `${__dirname}/cli.ts`;
+              const lateBun = process.execPath;
+              notifyWithAction(
                 'nightCrawl: login wall detected',
-                `${domain} redirected to a login page. Run 'grant-handoff ${domain}' to enable auto-handoff.`,
-              );
+                `${domain} redirected to a login page.`,
+                {
+                  label: 'Grant Access',
+                  onClick: `"${lateBun}" run "${lateCli}" grant-handoff "${domain}"`,
+                },
+              ).catch(() => {});
             }
             return;
           }

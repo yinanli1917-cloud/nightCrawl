@@ -687,23 +687,18 @@ export async function handleMetaCommand(
     // If not, likely macOS permissions: System Settings → Notifications →
     // (osascript / terminal-notifier) → Allow Notifications.
     case 'notify-test': {
-      const { notify, notifyWithAction } = await import('./notify');
+      const { notifyWithAction } = await import('./notify');
       const ts = new Date().toISOString().replace('T', ' ').slice(0, 19);
-      notify('nightCrawl test', `Passive notification at ${ts}. If you see this, osascript works.`);
       notifyWithAction(
-        'nightCrawl test (clickable)',
-        `Actionable notification at ${ts}. Click to open nightcrawl.com.`,
+        'nightCrawl test',
+        `Notification at ${ts}. Click to open nightcrawl repo.`,
         { label: 'Open', onClick: 'open https://github.com/yinanli1917-cloud/nightCrawl' },
       );
       const lines = [
-        'Sent 2 test notifications:',
-        '  1. Passive (osascript) — should appear in Notification Center',
-        '  2. Actionable (terminal-notifier) — should appear and be clickable',
+        'Sent test notification (native Swift alert).',
         '',
-        'If you see neither: open System Settings → Notifications, find',
-        '  - "osascript" and/or "Script Editor" → Allow Notifications',
-        '  - "terminal-notifier" → Allow Notifications',
-        'Both apps must be enabled. nightCrawl piggybacks on whichever is installed.',
+        'If you see nothing: check ~/.nightcrawl/NightCrawlNotify.app exists.',
+        'Fallback uses osascript — System Settings → Notifications → Script Editor → Allow.',
         '',
         `NIGHTCRAWL_NO_NOTIFY env: ${process.env.NIGHTCRAWL_NO_NOTIFY === '1' ? 'SET (suppressing notifications)' : 'unset'}`,
       ];

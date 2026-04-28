@@ -15,7 +15,7 @@ import { isHostile, HostileDomainError } from './hostile-domains';
 import { eTldPlusOne, readConsent, isApproved, defaultConsentPath } from './handoff-consent';
 import { decidePoll, initialPollState, defaultPollOptions } from './handoff-poll';
 import { tryAutoImportForWall, collectLoginHostsFromPage } from './handoff-cookie-import';
-import { notify, notifyWithAction, focusAppAction } from './notify';
+import { notifyWithAction, focusAppAction } from './notify';
 import { isPinned, pinnedVendor, markPinnedObserved } from './fingerprint-pinned';
 import { parseEngineConfig } from './engine-config';
 import { launchCloakBrowser } from './cloakbrowser-engine';
@@ -782,12 +782,12 @@ export async function autoHandover(this: any, targetUrl?: string): Promise<strin
     : `[nightcrawl] BROWSE_AUTO_POP_HEADED=1 set — popping headed CloakBrowser for ${loginUrl}...`;
   console.log(logMsg);
 
-  // Informational — user already opted in via BROWSE_AUTO_POP_HEADED=1.
   const handoffDomain = eTldPlusOne(loginUrl);
-  notify(
+  notifyWithAction(
     'nightCrawl is on it',
     `Opening CloakBrowser for ${handoffDomain}. Log in and I'll take it from there!`,
-  );
+    focusAppAction('CloakBrowser', 'Focus Browser'),
+  ).catch(() => {});
 
   const handoffResult = await this.handoff(
     `Login wall detected. Please log in. Will auto-resume when done.`
