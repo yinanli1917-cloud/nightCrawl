@@ -126,12 +126,16 @@ export async function detectSensitivePage(
     // Payment text
     if (/credit\s*card|debit\s*card|card\s*number|信用卡|借记卡|银行卡/i.test(text))
       s.push('payment:text:card');
-    if (/place\s*order|complete\s*purchase|submit\s*payment|pay\s*now|confirm\s*payment|确认付款|提交订单|立即支付/i.test(text))
+    if (/place\s*order|complete\s*(your\s*)?(purchase|registration)|submit\s*payment|pay\s*now|confirm\s*payment|确认付款|提交订单|立即支付/i.test(text))
       s.push('payment:text:action');
-    if (/order\s*summary|order\s*total|subtotal|购物车|订单总额/i.test(text))
+    if (/order\s*summary|order\s*total|subtotal|total\s*[\$€£¥]|[\$€£¥]\s*\d+\.\d{2}|购物车|订单总额/i.test(text))
       s.push('payment:text:summary');
     if (/billing\s*address|shipping\s*address|付款地址|账单地址|收货地址/i.test(text))
       s.push('payment:text:address');
+    if (/select\s*payment|payment\s*method|add\s*payment|payment\s*option|选择支付/i.test(text))
+      s.push('payment:text:method');
+    if (/\bPayPal\b|\bVenmo\b|\bApple\s*Pay\b|\bGoogle\s*Pay\b/i.test(text))
+      s.push('payment:text:provider');
 
     // ── Personal info form fields ────────────────────
     const personalAuto = ['address-line1', 'postal-code', 'street-address'];
@@ -153,6 +157,15 @@ export async function detectSensitivePage(
         break;
       }
     }
+
+    // Detect personal info forms by visible label text near inputs.
+    // Catches Cloudflare checkout ("First name * Last name * Email *
+    // Phone * Address line 1 *") that doesn't use autocomplete attrs.
+    if (/first\s*name\s*\*|last\s*name\s*\*|姓名/i.test(text) &&
+        /email\s*\*|电子?邮[箱件]/i.test(text))
+      s.push('personal:text:identity');
+    if (/address\s*line\s*[12]|postal\s*code|zip\s*code|邮政编码|详细地址/i.test(text))
+      s.push('personal:text:address');
 
     // ── Account security ─────────────────────────────
     const pwFields = document.querySelectorAll('input[type="password"]');
