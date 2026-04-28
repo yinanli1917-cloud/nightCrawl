@@ -606,16 +606,22 @@ async function checkSensitivePage(_callerUrl: string): Promise<string> {
   extra += `\nSignals: ${detection.signals.join(', ')}`;
   extra += `\nRecommend: pause and ask the user before proceeding. Run 'open-handoff' to let the user complete this step manually.`;
 
-  // Use the CURRENT page URL, not the caller's stale URL — SPA navigations
-  // (js/evaluate commands) change the URL after the command runs.
+  // Use open-handoff (headed CloakBrowser), not open URL (Arc).
+  // Sensitive pages have session state (cart, form progress) that only
+  // exists in nightcrawl's browser context. Opening the URL in Arc
+  // starts a fresh session without that state (e.g., empty cart on
+  // Cloudflare checkout). Headed CloakBrowser shares the same profile
+  // so the user sees exactly what the agent sees.
   const liveUrl = browserManager.getCurrentUrl() || _callerUrl;
   const safeUrl = liveUrl.replace(/"/g, '\\"');
+  const cliPath = `${__dirname}/cli.ts`;
+  const bunPath = process.execPath;
   notifyWithAction(
     `nightCrawl: ${detection.category.replace(/_/g, ' ')}`,
     `${detection.domain}: ${CATEGORY_NOTIFICATIONS[detection.category]}`,
     {
       label: 'Take Over',
-      onClick: `open "${safeUrl}"`,
+      onClick: `"${bunPath}" run "${cliPath}" open-handoff "${safeUrl}"`,
     },
   ).catch(() => {});
 
