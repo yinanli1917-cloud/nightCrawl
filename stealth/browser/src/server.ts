@@ -930,7 +930,7 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
     // Auto-handover: check for login walls after navigation commands.
     // Wait briefly for SPA login overlays to render (XHS, WeChat, etc.)
     // then check. If detected, handover runs in background after response.
-    if (['goto', 'click'].includes(command)) {
+    if (['goto', 'click', 'js', 'evaluate'].includes(command)) {
       const currentUrl = browserManager.getCurrentUrl();
 
       // ─── Auth-cache fast path ────────────────────────────────
