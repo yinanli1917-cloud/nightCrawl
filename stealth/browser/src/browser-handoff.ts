@@ -631,18 +631,20 @@ export async function autoHandover(this: any, targetUrl?: string): Promise<strin
     const pinned = isPinned(loginUrl);
     const vendor = pinnedVendor(loginUrl);
 
-    // Pinned domain: cookie import from default browser is ARCHITECTURALLY
-    // useless (cookies are minted against the default browser's fingerprint,
-    // CloakBrowser replays with a different one, edge rejects). Skip the
-    // Arc-poll entirely and go straight to headed CloakBrowser — the only
-    // path that mints cookies the headless engine can actually reuse.
-    if (pinned) {
-      console.log(
-        `[nightcrawl] ${domain} is ${vendor}-protected (fingerprint-pinned). Skipping default-browser cookie import. Will auto-pop headed CloakBrowser.`,
-      );
-      // Fall through to the spawned-CloakBrowser block below.
-    } else {
-      console.log(`[nightcrawl] Opening ${domain} in your default browser for login...`);
+    // Even for pinned domains, try the default-browser path FIRST.
+    // Session 8 proved Cloudflare's auth cookies (vses2, __cf_logged_in)
+    // work fine when imported from Arc — only cf_clearance is fingerprint-
+    // bound, and the auth session doesn't depend on it. Skipping Arc
+    // import for pinned domains broke the seamless UX where the user logs
+    // in on their default browser and nightcrawl stays in sync.
+    {
+      if (pinned) {
+        console.log(
+          `[nightcrawl] ${domain} is ${vendor}-protected — trying Arc cookie import first (auth cookies may still work).`,
+        );
+      } else {
+        console.log(`[nightcrawl] Opening ${domain} in your default browser for login...`);
+      }
 
       // Open testUrl (the user's intended destination), NOT loginUrl.
       // loginUrl is a stale SSO redirect URL with a one-time execution token —

@@ -1033,9 +1033,9 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
             result += `\nTURNSTILE_DETECTED: Cloudflare Turnstile on login page — marking ${detection.domain} as fingerprint-pinned (Arc cookies cannot authenticate Turnstile-protected sessions).`;
           }
           if (siteIsPinned) {
-            result += `\nFINGERPRINT_PINNED: ${detection.domain} — Arc session tokens are fingerprint-bound and cannot authenticate here. Skipping Arc import, auto-opening CloakBrowser for one-time login instead.`;
+            result += `\nFINGERPRINT_PINNED: ${detection.domain} — trying Arc cookie import first (auth cookies may still work despite ${sniffVendor(wallUrl) || 'bot'} protection).`;
           }
-          if (page && !siteIsPinned) {
+          if (page) {
             try {
               const importResult = await tryAutoImportForWall(
                 targetUrl,
