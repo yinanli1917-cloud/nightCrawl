@@ -209,6 +209,13 @@ export async function handoff(this: any, message: string): Promise<string> {
   // saveState/restoreState needed for cookies.
   this.intentionalDisconnect = true;
   if (this.browser) this.browser.removeAllListeners('disconnected');
+  // Capture the Chromium PID before closing — if graceful close fails,
+  // we SIGKILL the process tree to guarantee the profile lock is released.
+  let chromiumPid: number | undefined;
+  try {
+    const browser = (this.context as any)?.browser?.();
+    chromiumPid = browser?.process?.()?.pid;
+  } catch {}
   try {
     if (this.context) {
       const browser = (this.context as any).browser?.();
@@ -224,9 +231,23 @@ export async function handoff(this: any, message: string): Promise<string> {
   this.pages.clear();
   this.intentionalDisconnect = false;
 
+  // Force-kill the Chromium process if it survived graceful close.
+  // context.close() + browser.close() can hang or leave zombies when
+  // CloakBrowser's persistent context doesn't shut down cleanly.
+  // Without this, the headed launch hits "Something went wrong when
+  // opening your profile" because two Chromium instances fight over
+  // the same user-data-dir.
+  if (chromiumPid) {
+    try {
+      process.kill(chromiumPid, 0); // test if alive
+      console.log(`[nightcrawl] Chromium PID ${chromiumPid} survived graceful close — sending SIGKILL`);
+      process.kill(chromiumPid, 'SIGKILL');
+    } catch {}
+    // Brief wait for OS to reap the process and release file locks
+    await new Promise(r => setTimeout(r, 800));
+  }
+
   // Clean up Chromium's SingletonLock from the persistent profile.
-  // The close above should release it, but belt-and-suspenders for
-  // macOS where lock files sometimes linger.
   try {
     const lockFile = path.join(engineConfig.profileDir, 'SingletonLock');
     if (fs.existsSync(lockFile)) fs.unlinkSync(lockFile);
