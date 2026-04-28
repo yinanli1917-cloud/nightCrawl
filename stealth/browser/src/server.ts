@@ -597,7 +597,7 @@ const flushInterval = setInterval(flushBuffers, 1000);
 // Runs after navigation to detect pages that need human attention
 // (payment, personal info, security, destructive actions).
 // Returns result text to append; fires notification as side effect.
-async function checkSensitivePage(currentUrl: string): Promise<string> {
+async function checkSensitivePage(_callerUrl: string): Promise<string> {
   const detection = await detectSensitivePage(browserManager.getPage());
   if (!detection) return '';
 
@@ -606,7 +606,10 @@ async function checkSensitivePage(currentUrl: string): Promise<string> {
   extra += `\nSignals: ${detection.signals.join(', ')}`;
   extra += `\nRecommend: pause and ask the user before proceeding. Run 'open-handoff' to let the user complete this step manually.`;
 
-  const safeUrl = currentUrl.replace(/"/g, '\\"');
+  // Use the CURRENT page URL, not the caller's stale URL — SPA navigations
+  // (js/evaluate commands) change the URL after the command runs.
+  const liveUrl = browserManager.getCurrentUrl() || _callerUrl;
+  const safeUrl = liveUrl.replace(/"/g, '\\"');
   notifyWithAction(
     `nightCrawl: ${detection.category.replace(/_/g, ' ')}`,
     `${detection.domain}: ${CATEGORY_NOTIFICATIONS[detection.category]}`,
