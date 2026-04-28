@@ -15,7 +15,8 @@ No existing tool combines: **local CLI + real browser cookies + stealth + persis
 | Competitor | What it lacks |
 |-----------|---------------|
 | OpenClaw | `web_fetch` fails on Cloudflare (#20375, closed "not planned"); ClawJacked vulnerability |
-| Browser Use | No stealth, no cookie import, stateless ("awkward middle ground") |
+| Browser Use (90K stars) | Has basic stealth flags + Chrome profile reuse + storage state persistence now, but no CDP/fingerprint patches in open-source (paywalled to cloud). Agent framework + fine-tuned model (bu-30b) is their moat. PostHog telemetry by default. |
+| Browser Harness (7.7K stars, 10 days) | 990-line CDP harness that attaches to user's running Chrome. Zero stealth (IS the real browser). No headless, no sandbox (raw exec), no handoff. Domain-skills flywheel is the interesting pattern. Same team as Browser Use. |
 | Browserbase | Cloud datacenter IPs detectable in 50ms |
 | Einstein AI | Shut down, cease-and-desist, no privacy (cloud-based) |
 | CloakBrowser | No agent framework, no cookie import, no session management (integration target for v0.2) |
