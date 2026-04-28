@@ -231,20 +231,25 @@ export async function handoff(this: any, message: string): Promise<string> {
   this.pages.clear();
   this.intentionalDisconnect = false;
 
-  // Force-kill the Chromium process if it survived graceful close.
-  // context.close() + browser.close() can hang or leave zombies when
-  // CloakBrowser's persistent context doesn't shut down cleanly.
-  // Without this, the headed launch hits "Something went wrong when
-  // opening your profile" because two Chromium instances fight over
-  // the same user-data-dir.
+  // If the Chromium process survived graceful close, escalate:
+  // SIGTERM first (lets Chromium flush cookies to SQLite), then
+  // SIGKILL as last resort. Without this, the headed launch hits
+  // "Something went wrong when opening your profile."
+  // SIGKILL alone was losing cookies — Arc-imported cookies in memory
+  // never flushed to disk, so headed CloakBrowser opened logged-out.
   if (chromiumPid) {
     try {
       process.kill(chromiumPid, 0); // test if alive
-      console.log(`[nightcrawl] Chromium PID ${chromiumPid} survived graceful close — sending SIGKILL`);
-      process.kill(chromiumPid, 'SIGKILL');
-    } catch {}
-    // Brief wait for OS to reap the process and release file locks
-    await new Promise(r => setTimeout(r, 800));
+      console.log(`[nightcrawl] Chromium PID ${chromiumPid} survived graceful close — sending SIGTERM`);
+      process.kill(chromiumPid, 'SIGTERM');
+      await new Promise(r => setTimeout(r, 2000));
+      try {
+        process.kill(chromiumPid, 0); // still alive?
+        console.log(`[nightcrawl] PID ${chromiumPid} survived SIGTERM — sending SIGKILL`);
+        process.kill(chromiumPid, 'SIGKILL');
+        await new Promise(r => setTimeout(r, 500));
+      } catch {} // dead after SIGTERM — good
+    } catch {} // dead after graceful close — good
   }
 
   // Clean up Chromium's SingletonLock from the persistent profile.
