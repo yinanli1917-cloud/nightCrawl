@@ -34,7 +34,8 @@ import {
 } from './update-executor';
 import { applyStealthPatches } from './stealth';
 import { startReinforcementLoop } from './stealth-reinforcement';
-import { notify } from './notify';
+import { notify, notifyWithAction } from './notify';
+import { detectSensitivePage, CATEGORY_NOTIFICATIONS } from './sensitive-page';
 import { markPinnedObserved, isPinned, sniffVendor } from './fingerprint-pinned';
 import { isAuthenticated, markAuthenticated, invalidate } from './auth-cache';
 import {
@@ -592,6 +593,32 @@ async function flushBuffers() {
 // Flush every 1 second
 const flushInterval = setInterval(flushBuffers, 1000);
 
+// ─── Sensitive Page Gate ─────────────────────────────────────
+// Runs after navigation to detect pages that need human attention
+// (payment, personal info, security, destructive actions).
+// Returns result text to append; fires notification as side effect.
+async function checkSensitivePage(currentUrl: string): Promise<string> {
+  const detection = await detectSensitivePage(browserManager.getPage());
+  if (!detection) return '';
+
+  let extra = `\nSENSITIVE_PAGE_DETECTED: ${detection.category}`;
+  extra += `\n${detection.reason}`;
+  extra += `\nSignals: ${detection.signals.join(', ')}`;
+  extra += `\nRecommend: pause and ask the user before proceeding. Run 'open-handoff' to let the user complete this step manually.`;
+
+  const safeUrl = currentUrl.replace(/"/g, '\\"');
+  notifyWithAction(
+    `nightCrawl: ${detection.category.replace(/_/g, ' ')}`,
+    `${detection.domain}: ${CATEGORY_NOTIFICATIONS[detection.category]}`,
+    {
+      label: 'Take Over',
+      onClick: `open "${safeUrl}"`,
+    },
+  ).catch(() => {});
+
+  return extra;
+}
+
 // ─── Cookie/Storage Persistence ──────────────────────────────
 // Persist browser cookies + localStorage to disk so they survive daemon restarts.
 // Called periodically (every 5 min) and on shutdown.
@@ -912,6 +939,7 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
       // high-frequency sites (Zhihu, Canvas, YouTube, etc.).
       // Cache is in-memory, 30-min TTL, auto-rebuilds as user browses.
       if (isAuthenticated(currentUrl)) {
+        result += await checkSensitivePage(currentUrl);
         browserManager.resetFailures();
         return new Response(result, {
           status: 200,
@@ -1138,6 +1166,9 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
       } else {
         // No login wall — mark domain as authenticated for fast-path
         markAuthenticated(currentUrl);
+
+        // ─── Sensitive page gate ──────────────────────────────
+        result += await checkSensitivePage(currentUrl);
 
         // Deferred redirect watcher: some sites (Cloudflare Dashboard,
         // certain SAML providers) issue a client-side redirect to /login
