@@ -36,16 +36,19 @@ Session 9 achieved seamless Cloudflare/Doubao/Canvas UX, built native macOS aler
 1. **Arc CDP for Tier-0 domains** — Connect to Arc via Chrome DevTools Protocol for Google/Apple/Microsoft. See previous HANDOFF (2026-04-26) for full plan: `arc-cdp.ts`, Tier-0 classifier, auto-fallback.
 2. **Fiction Works L2 fallback** — evolve-fiction skill already works with nightcrawl for Zhihu/Douban (verified). Global CLAUDE.md auto-escalation rule is in place. No code change needed — skills just need to follow the rule.
 
-### v0.3 (next milestone)
-3. **TLS/JA3 fingerprint masking** — CloakBrowser handles canvas/WebGL/audio but TLS fingerprint is still stock Chromium
-4. **Chinese internet tiers** — Xiaohongshu, Zhihu via separate identities (test accounts only, main accounts banned)
-5. **Proactive session refresh** — Monitor cookie expiry, auto-refresh before they expire during idle
-6. **NightCrawlNotify.app polish** — Custom app icon, UNUserNotificationCenter for non-blocking notifications alongside the modal alert
+### v0.3 (intelligence layer)
+3. **Domain-skills flywheel** — Site-specific playbooks (`~/.nightcrawl/domain-skills/`) that accumulate knowledge per domain (selectors, traps, API endpoints). nightCrawl gets smarter with every visit. (ref: Browser Harness pattern)
+4. **Self-healing learned patterns** — Read-only pattern store from successful visits. When a selector breaks, check if a newer pattern exists before failing. (ref: Browser Harness self-healing helpers, adapted as read-only for security)
+5. **Loop detection + stall replanning** — Rolling window of action hashes detects stuck loops; auto-replan after 3 consecutive failures instead of blindly retrying. (ref: Browser Use patterns)
+6. **TLS/JA3 fingerprint masking** — CloakBrowser handles canvas/WebGL/audio but TLS fingerprint is still stock Chromium
+7. **Chinese internet tiers** — Xiaohongshu, Zhihu via separate identities (test accounts only, main accounts banned)
+8. **Proactive session refresh** — Monitor cookie expiry, auto-refresh before they expire during idle
 
 ### v1.0 (product)
-7. **Passive observation via browsing history DB** — Analyze user's browsing patterns, suggest automations
-8. **Safety gates** — Read-only default, per-action confirm, audit log for all scenarios
-9. **Onboarding** — PRD's 3-mode onboarding (Full twin / Ask per domain / Manual)
+9. **Attach-to-running-browser** — CDP connect to user's actual Chrome/Arc (solves Google auth without Arc CDP from scratch). (ref: Browser Harness DevToolsActivePort discovery)
+10. **Passive observation via browsing history DB** — Analyze user's browsing patterns, suggest automations
+11. **Safety gates** — Read-only default, per-action confirm, audit log for all scenarios
+12. **Onboarding** — PRD's 3-mode onboarding (Full twin / Ask per domain / Manual). Second user is girlfriend — iOS-style permissions, real feedback.
 
 ## Key Files Changed This Session
 
