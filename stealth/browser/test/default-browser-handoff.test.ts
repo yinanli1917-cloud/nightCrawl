@@ -11,6 +11,9 @@ import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { BrowserManager } from '../src/browser-manager';
+import { handleWriteCommand } from '../src/write-commands';
+import { startTestServer } from './test-server';
 
 describe('default-browser handoff', () => {
   test('tryAutoImportForWall returns structured result', async () => {
@@ -46,11 +49,27 @@ describe('default-browser handoff', () => {
     const { eTldPlusOne } = await import('../src/handoff-consent');
     expect(eTldPlusOne('https://canvas.uw.edu/courses')).toBe('uw.edu');
     expect(eTldPlusOne('https://idp.u.washington.edu/idp')).toBe('washington.edu');
+    expect(eTldPlusOne('http://127.0.0.1:8765/login-wall.html')).toBe('127.0.0.1');
+    expect(eTldPlusOne('http://localhost:8765/login-wall.html')).toBe('localhost');
   });
 
   test('detectLoginWall returns structured detection', async () => {
     const { detectLoginWall } = await import('../src/browser-handoff');
     // Just verify the function is exported and callable
     expect(detectLoginWall).toBeFunction();
+  });
+
+  test('detectLoginWall ignores a plain password form that is page content', async () => {
+    const server = startTestServer(0);
+    const bm = new BrowserManager();
+    try {
+      await bm.launch();
+      await handleWriteCommand('goto', [`${server.url}/plain-login-form.html`], bm);
+      const detection = await bm.detectLoginWall();
+      expect(detection).toBeNull();
+    } finally {
+      try { server.server.stop(); } catch {}
+      await bm.close().catch(() => {});
+    }
   });
 });

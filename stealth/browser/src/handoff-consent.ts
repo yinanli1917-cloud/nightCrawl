@@ -17,6 +17,7 @@
  */
 
 import * as fs from 'fs';
+import * as net from 'net';
 import * as path from 'path';
 
 // ─── Types ──────────────────────────────────────────────────
@@ -80,8 +81,14 @@ export function eTldPlusOne(urlOrHost: string): string {
   // Strip port, userinfo, path, trailing dot
   host = host.split('/')[0];
   host = host.split('@').pop()!;
-  host = host.split(':')[0];
+  if (host.startsWith('[')) {
+    host = host.slice(1).split(']')[0];
+  } else if ((host.match(/:/g) || []).length === 1) {
+    host = host.split(':')[0];
+  }
   host = host.replace(/\.+$/, '');
+
+  if (net.isIP(host)) return host;
 
   const parts = host.split('.').filter(Boolean);
   if (parts.length <= 1) return host;

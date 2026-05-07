@@ -54,6 +54,7 @@ import {
 } from './sync-state';
 import { isFirstRun, runOnboarding } from './onboarding';
 import { emitActivity, subscribe, getActivityAfter, getActivityHistory, getSubscriberCount } from './activity';
+import { shouldRunPostCommandChecks } from './post-command-checks';
 // Bun.spawn used instead of child_process.spawn (compiled bun binaries
 // fail posix_spawn on all executables including /bin/bash)
 import * as fs from 'fs';
@@ -892,6 +893,7 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
 
   // Activity: emit command_start
   const startTime = Date.now();
+  const commandStartUrl = browserManager.getCurrentUrl();
   emitActivity({
     type: 'command_start',
     command,
@@ -961,7 +963,7 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
     // Auto-handover: check for login walls after navigation commands.
     // Wait briefly for SPA login overlays to render (XHS, WeChat, etc.)
     // then check. If detected, handover runs in background after response.
-    if (['goto', 'click', 'js', 'evaluate'].includes(command)) {
+    if (shouldRunPostCommandChecks(command, commandStartUrl, browserManager.getCurrentUrl())) {
       const currentUrl = browserManager.getCurrentUrl();
 
       // ─── Auth-cache fast path ────────────────────────────────

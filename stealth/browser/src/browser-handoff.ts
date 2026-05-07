@@ -553,7 +553,7 @@ export async function detectLoginWall(
     return /let us know you are human|verify you are human|cf-turnstile/i.test(text);
   }).catch(() => false);
 
-  if (/[/=](login|signin|sign-in|auth|captcha|verify|sso)\b/i.test(url)) {
+  if (/[/=](login|signin|sign-in|auth|captcha|verify|sso)([^a-z0-9]|$)/i.test(url)) {
     return withConsent(url, { detected: true, reason: `Login URL detected: ${url}`, turnstile: hasTurnstile || undefined });
   }
 
@@ -574,11 +574,15 @@ export async function detectLoginWall(
       const authInputs = doc.querySelectorAll('input[type="password"], input[type="tel"]');
       return Array.from(authInputs).some(input => isVisible(input));
     };
-    if (checkDoc(document)) return true;
+    const hasBlockingCopy = (doc: Document): boolean => {
+      const text = doc.body?.innerText?.slice(0, 2500) || '';
+      return /sign\s*in\s*to\s*continue|log\s*in\s*required|authentication\s*required|please\s*(sign|log)\s*in|请先登录|登录后|没有权限|扫码登录|验证码|captcha/i.test(text);
+    };
+    if (checkDoc(document) && hasBlockingCopy(document)) return true;
     for (const iframe of Array.from(document.querySelectorAll('iframe'))) {
       try {
         const iframeDoc = (iframe as HTMLIFrameElement).contentDocument;
-        if (iframeDoc && checkDoc(iframeDoc)) return true;
+        if (iframeDoc && checkDoc(iframeDoc) && hasBlockingCopy(iframeDoc)) return true;
       } catch {}
     }
     return false;

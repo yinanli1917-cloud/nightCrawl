@@ -42,6 +42,13 @@ describe('auth-cache', () => {
     expect(isAuthenticated('https://www.zhihu.com')).toBe(false);
   });
 
+  test('login-like paths invalidate same-domain fast path', () => {
+    markAuthenticated('http://127.0.0.1:8766/basic.html');
+    expect(isAuthenticated('http://127.0.0.1:8766/normal-page.html')).toBe(true);
+    expect(isAuthenticated('http://127.0.0.1:8766/login-wall.html')).toBe(false);
+    expect(isAuthenticated('http://127.0.0.1:8766/normal-page.html')).toBe(false);
+  });
+
   test('TTL expiry clears entry', () => {
     markAuthenticated('https://example.com', 1); // 1ms TTL
     // Wait for expiry

@@ -36,7 +36,7 @@ const cache = new Map<string, AuthEntry>();
 // Path patterns that signal a login wall even on an "authenticated" eTLD+1.
 // A stale session can redirect dash.cloudflare.com/foo → dash.cloudflare.com/login
 // (same eTLD+1). Without this guard the fast path hides the wall from the agent.
-const LOGIN_PATH_RE = /(^|\/)(login|signin|sign-in|signon|sign-on|auth|sso|session|logon|log-in)(\/|$|\?)/i;
+const LOGIN_PATH_RE = /(^|\/)(login|signin|sign-in|signon|sign-on|auth|sso|session|logon|log-in)([^a-z0-9]|$)/i;
 
 /**
  * Check if a URL's domain is cached as authenticated.
