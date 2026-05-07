@@ -16,12 +16,18 @@ import { consoleBuffer, networkBuffer, dialogBuffer, addConsoleEntry, addNetwork
 import * as fs from 'fs';
 import { spawn } from 'child_process';
 import * as path from 'path';
+import * as os from 'os';
 
 let testServer: ReturnType<typeof startTestServer>;
 let bm: BrowserManager;
 let baseUrl: string;
+let testProfileDir: string;
+let originalProfileDir: string | undefined;
 
 beforeAll(async () => {
+  originalProfileDir = process.env.BROWSE_PROFILE_DIR;
+  testProfileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nightcrawl-commands-profile-'));
+  process.env.BROWSE_PROFILE_DIR = testProfileDir;
   testServer = startTestServer(0);
   baseUrl = testServer.url;
 
@@ -32,6 +38,8 @@ beforeAll(async () => {
 afterAll(() => {
   // Force kill browser instead of graceful close (avoids hang)
   try { testServer.server.stop(); } catch {}
+  if (originalProfileDir === undefined) delete process.env.BROWSE_PROFILE_DIR;
+  else process.env.BROWSE_PROFILE_DIR = originalProfileDir;
   // bm.close() can hang — just let process exit handle it
   setTimeout(() => process.exit(0), 500);
 });
@@ -726,6 +734,7 @@ describe('CLI lifecycle', () => {
       if (v !== undefined) cliEnv[k] = v;
     }
     cliEnv.BROWSE_STATE_FILE = stateFile;
+    cliEnv.BROWSE_PROFILE_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'nightcrawl-cli-profile-'));
     const result = await new Promise<{ code: number; stdout: string; stderr: string }>((resolve) => {
       const proc = spawn('bun', ['run', cliPath, 'status'], {
         timeout: 15000,
@@ -746,6 +755,7 @@ describe('CLI lifecycle', () => {
     if (restartedPid) {
       try { process.kill(restartedPid, 'SIGTERM'); } catch {}
     }
+    try { fs.rmSync(cliEnv.BROWSE_PROFILE_DIR, { recursive: true, force: true }); } catch {}
 
     expect(result.code).toBe(0);
     expect(result.stdout).toContain('Status: healthy');

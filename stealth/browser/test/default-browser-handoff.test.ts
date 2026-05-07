@@ -62,6 +62,9 @@ describe('default-browser handoff', () => {
   test('detectLoginWall ignores a plain password form that is page content', async () => {
     const server = startTestServer(0);
     const bm = new BrowserManager();
+    const previousProfileDir = process.env.BROWSE_PROFILE_DIR;
+    const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nightcrawl-default-handoff-profile-'));
+    process.env.BROWSE_PROFILE_DIR = profileDir;
     try {
       await bm.launch();
       await handleWriteCommand('goto', [`${server.url}/plain-login-form.html`], bm);
@@ -70,6 +73,9 @@ describe('default-browser handoff', () => {
     } finally {
       try { server.server.stop(); } catch {}
       await bm.close().catch(() => {});
+      if (previousProfileDir === undefined) delete process.env.BROWSE_PROFILE_DIR;
+      else process.env.BROWSE_PROFILE_DIR = previousProfileDir;
+      try { fs.rmSync(profileDir, { recursive: true, force: true }); } catch {}
     }
   });
 });
