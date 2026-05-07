@@ -150,6 +150,7 @@ export class BrowserManager {
     const path = require('path');
     const home = process.env.HOME || '';
     const candidates = [
+      path.resolve(__dirname, '..', '..', 'extensions', 'bypass-paywalls-chrome'),
       path.resolve(__dirname, '..', '..', 'extension'),
       path.join(home, '.claude', 'skills', 'nightcrawl', 'extension'),
       path.join(home, '.codex', 'skills', 'nightcrawl', 'extension'),

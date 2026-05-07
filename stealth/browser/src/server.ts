@@ -1848,6 +1848,17 @@ async function start() {
         } catch {}
 
         const headed = process.env.BROWSE_HEADED === '1';
+        if (process.env.BROWSE_EXTENSIONS !== 'none' && process.env.BROWSE_EXTENSION_AUTO_UPDATE !== '0') {
+          try {
+            const { updateBypassPaywallsExtension } = await import('./extension-updater');
+            const extUpdate = await updateBypassPaywallsExtension({ stateDir: config.stateDir });
+            if (extUpdate.updated) {
+              console.log(`[nightcrawl] Bypass Paywalls extension updated to ${extUpdate.latestVersion}`);
+            }
+          } catch (err: any) {
+            console.error(`[nightcrawl] Bypass Paywalls extension update skipped: ${err?.message || err}`);
+          }
+        }
         if (headed) {
           await browserManager.launchHeaded(AUTH_TOKEN);
           console.log(`[browse] Launched headed Chromium with extension`);

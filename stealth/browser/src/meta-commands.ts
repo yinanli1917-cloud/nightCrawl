@@ -765,6 +765,46 @@ export async function handleMetaCommand(
       return 'Usage: sync (status|now)';
     }
 
+    // ─── Extension Update ───────────────────────────────────────
+    case 'extension-update': {
+      const sub = args[0] || 'status';
+      const cfg = resolveConfig();
+      const { updateBypassPaywallsExtension, BPC_EXTENSION_DIR, BPC_UPDATE_URL } = await import('./extension-updater');
+
+      if (sub === 'status') {
+        let manifest: any = null;
+        try {
+          manifest = JSON.parse(fs.readFileSync(path.join(BPC_EXTENSION_DIR, 'manifest.json'), 'utf-8'));
+        } catch {}
+        const lines = [
+          'Bypass Paywalls extension',
+          `  Directory: ${BPC_EXTENSION_DIR}`,
+          `  Version: ${manifest?.version ?? '(missing)'}`,
+          `  Update feed: ${manifest?.update_url ?? BPC_UPDATE_URL}`,
+          '  NightCrawl updater: enabled on daemon startup; use extension-update now to force.',
+        ];
+        return lines.join('\n');
+      }
+
+      if (sub === 'check' || sub === 'now') {
+        const result = await updateBypassPaywallsExtension({
+          stateDir: cfg.stateDir,
+          force: sub === 'now',
+        });
+        const lines = [
+          `Bypass Paywalls extension update ${result.updated ? 'installed' : 'checked'}`,
+          `  Current before check: ${result.currentVersion ?? '(missing)'}`,
+          `  Latest: ${result.latestVersion ?? '(unknown)'}`,
+          `  Updated: ${result.updated ? 'yes' : 'no'}`,
+        ];
+        if (result.reason) lines.push(`  Reason: ${result.reason}`);
+        if (result.codebase) lines.push(`  CRX: ${result.codebase}`);
+        return lines.join('\n');
+      }
+
+      return 'Usage: extension-update (status|check|now)';
+    }
+
     default:
       throw new Error(`Unknown meta command: ${command}`);
   }

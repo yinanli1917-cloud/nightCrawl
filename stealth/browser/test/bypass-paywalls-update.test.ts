@@ -7,6 +7,7 @@
 import { describe, test, expect } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
+import { parseBypassPaywallsUpdateXml } from '../src/extension-updater';
 
 const EXT_DIR = path.resolve(
   import.meta.dir, '../../extensions/bypass-paywalls-chrome'
@@ -34,21 +35,34 @@ describe('bypass-paywalls-chrome manifest', () => {
     expect(manifest.description).toContain('Bypass Paywalls');
   });
 
-  test('version is 4.3.4.0 or newer', () => {
+  test('version is 4.3.6.5', () => {
     const manifest = JSON.parse(
       fs.readFileSync(path.join(EXT_DIR, 'manifest.json'), 'utf-8')
     );
-    const parts = manifest.version.split('.').map(Number);
-    // Compare as [major, minor, patch, build] >= [4, 3, 4, 0]
-    const min = [4, 3, 4, 0];
-    let cmp = 0;
-    for (let i = 0; i < 4; i++) {
-      const a = parts[i] || 0;
-      const b = min[i] || 0;
-      if (a > b) { cmp = 1; break; }
-      if (a < b) { cmp = -1; break; }
-    }
-    expect(cmp).toBeGreaterThanOrEqual(0);
+    expect(manifest.version).toBe('4.3.6.5');
+  });
+
+  test('declares upstream CRX update feed', () => {
+    const manifest = JSON.parse(
+      fs.readFileSync(path.join(EXT_DIR, 'manifest.json'), 'utf-8')
+    );
+    expect(manifest.update_url).toBe('https://gitflic.ru/project/magnolia1234/bpc_updates/blob/raw?file=updates.xml');
+  });
+});
+
+describe('bypass-paywalls-chrome update feed', () => {
+  test('parses upstream gupdate XML', () => {
+    const xml = `<?xml version='1.0' encoding='UTF-8'?>
+<gupdate xmlns='http://www.google.com/update2/response' protocol='2.0'>
+  <app appid='lkbebcjgcmobigpeffafkodonchffocl'>
+    <updatecheck codebase='https://gitflic.ru/project/magnolia1234/bpc_uploads/blob/raw?file=bypass-paywalls-chrome-clean-4.3.6.5.crx' version='4.3.6.5' />
+  </app>
+</gupdate>`;
+    expect(parseBypassPaywallsUpdateXml(xml)).toEqual({
+      appId: 'lkbebcjgcmobigpeffafkodonchffocl',
+      codebase: 'https://gitflic.ru/project/magnolia1234/bpc_uploads/blob/raw?file=bypass-paywalls-chrome-clean-4.3.6.5.crx',
+      version: '4.3.6.5',
+    });
   });
 });
 

@@ -41,6 +41,7 @@ export const META_COMMANDS = new Set([
   'frame',
   'health',
   'sync',
+  'extension-update',
   'notify-test',
 ]);
 
@@ -148,6 +149,8 @@ export const COMMAND_DESCRIPTIONS: Record<string, { category: string; descriptio
   'health':  { category: 'Server', description: 'Plain-English daemon snapshot (engine, browser, sync, handoff). Add `stealth` for deep verifier (~25s).', usage: 'health [stealth]' },
   // Sync
   'sync':    { category: 'Server', description: 'Inspect or trigger background Arc→nightCrawl cookie sync', usage: 'sync (status|now)' },
+  // Extension updater
+  'extension-update': { category: 'Server', description: 'Inspect or trigger Bypass Paywalls CRX feed mirroring into the unpacked extension directory', usage: 'extension-update (status|check|now)' },
   // Notify test
   'notify-test': { category: 'Server', description: 'Fire a test notification to verify macOS Notification Center delivery', usage: 'notify-test' },
 };
