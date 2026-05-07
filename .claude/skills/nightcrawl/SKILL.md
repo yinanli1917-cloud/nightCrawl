@@ -28,7 +28,7 @@ from a real browser. First call auto-starts the server (~3s), then commands are 
 ```bash
 export PATH="$HOME/.bun/bin:$PATH"
 NC="/Users/yinanli/Documents/nightCrawl/stealth/browser"
-export BROWSE_EXTENSIONS=none BROWSE_EXTENSIONS_DIR= BROWSE_IGNORE_HTTPS_ERRORS=1
+export BROWSE_EXTENSIONS=all BROWSE_IGNORE_HTTPS_ERRORS=1
 alias nc="bun run $NC/src/cli.ts"
 nc status
 ```

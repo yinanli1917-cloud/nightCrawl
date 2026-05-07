@@ -26,3 +26,10 @@ stealth/browser/dist/browse.bak
 stealth/browser/dist/find-browse
 stealth/extensions/bypass-paywalls-chrome/
 subtitles/
+
+# Claude workflow state (hook-enforced, not part of codebase)
+.claude/workflow.md
+.claude/tasks/
+
+# Codex workflow state (session/task runtime, not project source)
+.codex/runtime/

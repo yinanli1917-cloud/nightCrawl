@@ -32,9 +32,20 @@ function needsBlockWrapper(code: string): boolean {
 function wrapForEvaluate(code: string): string {
   if (!hasAwait(code)) return code;
   const trimmed = code.trim();
+  if (/^await\b/.test(trimmed)) {
+    return `(async()=>(${trimmed}))()`;
+  }
   return needsBlockWrapper(trimmed)
     ? `(async()=>{\n${code}\n})()`
     : `(async()=>(${trimmed}))()`;
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer!));
 }
 
 // Security: Path validation to prevent path traversal attacks
@@ -156,8 +167,15 @@ export async function handleReadCommand(
     }
 
     case 'accessibility': {
-      const snapshot = await target.locator("body").ariaSnapshot();
-      return snapshot;
+      try {
+        return await withTimeout(target.locator("body").ariaSnapshot(), 5000, 'accessibility snapshot');
+      } catch (err: any) {
+        const text = await getCleanText(target).catch(() => '');
+        return [
+          `(accessibility snapshot unavailable: ${err.message || String(err)})`,
+          text.trim(),
+        ].filter(Boolean).join('\n');
+      }
     }
 
     case 'js': {

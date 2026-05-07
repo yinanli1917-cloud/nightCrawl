@@ -4,6 +4,27 @@ import * as path from 'path';
 
 const polyfillPath = path.resolve(import.meta.dir, '../src/bun-polyfill.cjs');
 
+
+function isPortPermissionError(err: NodeJS.ErrnoException): boolean {
+  return err.code === 'EACCES' || err.code === 'EPERM';
+}
+
+function describePortBindPermissionError(port: number, hostname: string, err: NodeJS.ErrnoException): Error {
+  const code = err.code || 'UNKNOWN';
+  return new Error(
+    `[browse] Cannot test or bind ${hostname}:${port}: ${code}. ` +
+    `The local execution environment denied listening sockets. ` +
+    `Run nightCrawl through an approved launcher or outside the sandbox.`
+  );
+}
+
+function testPortErrorHandler(port: number, hostname: string, err: NodeJS.ErrnoException): boolean | Error {
+  if (isPortPermissionError(err)) {
+    return describePortBindPermissionError(port, hostname, err);
+  }
+  return false;
+}
+
 // Helper: bind a port and hold it open, returning a cleanup function
 function occupyPort(port: number): Promise<() => Promise<void>> {
   return new Promise((resolve, reject) => {
@@ -188,4 +209,20 @@ describe('findPort / isPortAvailable', () => {
     // All 5 checks should succeed — no leaked sockets
     expect(results).toEqual([true, true, true, true, true]);
   });
+
+
+  test('permission-denied bind errors are not reported as busy ports', () => {
+    const result = testPortErrorHandler(34567, '127.0.0.1', { code: 'EPERM' } as NodeJS.ErrnoException);
+
+    expect(result).toBeInstanceOf(Error);
+    expect(String(result)).toContain('Cannot test or bind 127.0.0.1:34567: EPERM');
+    expect(String(result)).toContain('approved launcher or outside the sandbox');
+  });
+
+  test('ordinary bind errors still mean the port is unavailable', () => {
+    const result = testPortErrorHandler(34567, '127.0.0.1', { code: 'EADDRINUSE' } as NodeJS.ErrnoException);
+
+    expect(result).toBe(false);
+  });
+
 });

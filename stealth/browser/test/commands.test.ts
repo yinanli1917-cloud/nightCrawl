@@ -149,6 +149,14 @@ describe('Inspection', () => {
     expect(result).toBe('42');
   });
 
+  test('js returns awaited async object expressions with inner statements', async () => {
+    const code = 'await (async () => { const out = { ok: true }; out.value = 7; return out; })()';
+    const result = await handleReadCommand('js', [code], bm);
+    const obj = JSON.parse(result);
+    expect(obj.ok).toBe(true);
+    expect(obj.value).toBe(7);
+  });
+
   test('js does not false-positive on await substring', async () => {
     const result = await handleReadCommand('js', ['(() => { const awaitable = 5; return awaitable })()'], bm);
     expect(result).toBe('5');

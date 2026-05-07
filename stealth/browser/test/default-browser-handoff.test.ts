@@ -48,12 +48,6 @@ describe('default-browser handoff', () => {
     expect(eTldPlusOne('https://idp.u.washington.edu/idp')).toBe('washington.edu');
   });
 
-  test('notify does not throw', async () => {
-    const { notify } = await import('../src/notify');
-    // Should be fire-and-forget, never throw
-    expect(() => notify('Test', 'Default browser handoff test')).not.toThrow();
-  });
-
   test('detectLoginWall returns structured detection', async () => {
     const { detectLoginWall } = await import('../src/browser-handoff');
     // Just verify the function is exported and callable

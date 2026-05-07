@@ -33,7 +33,7 @@ export function generateLaunchAgentPlist(bunPath: string, serverPath: string): s
   <key>EnvironmentVariables</key>
   <dict>
     <key>BROWSE_EXTENSIONS</key>
-    <string>none</string>
+    <string>all</string>
     <key>BROWSE_IDLE_TIMEOUT</key>
     <string>3600000</string>
   </dict>

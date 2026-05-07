@@ -490,7 +490,7 @@ youtube b站视频搜索，需要接入metaso吗
 （后台进程不和你抢电脑+以你的身份浏览，如何放大这个优势？）
 → Core positioning: "background process that acts as you"
   Researched: OpenClaw can't bypass Cloudflare, Browser Use is stateless,
-  Claude CUA steals your screen. nightCrawl runs silently in background.
+  Claude CUA uses the active screen. nightCrawl runs silently in background.
 
 初始化onboardding，包含了文件夹路径什（或者更多需要考虑的），
 cookie项给几个选项（类似iOS问定位地址，按需导入还是全部导入，如何说服用户安全放心）

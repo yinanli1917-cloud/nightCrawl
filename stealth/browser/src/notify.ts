@@ -1,8 +1,6 @@
 /**
- * [INPUT]: Native Swift alert app (~/.nightcrawl/NightCrawlNotify.app),
- *          fallback to osascript
- * [OUTPUT]: notify() — passive notification; notifyWithAction() — native
- *          macOS alert with approve/reject buttons
+ * [INPUT]: Native Swift alert app (~/.nightcrawl/NightCrawlNotify.app)
+ * [OUTPUT]: notifyWithAction() — native macOS alert with approve/reject buttons
  * [POS]: System notification + approval dialog within browser module
  *
  * Uses a compiled Swift .app bundle (NSAlert, LSUIElement) for approval
@@ -34,25 +32,7 @@ function playSound(): void {
   } catch {}
 }
 
-const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-
-// ─── Passive Notification ────────────────────────────────
-
-export function notify(title: string, body: string): void {
-  if (!IS_MAC) return;
-  if (process.env.NIGHTCRAWL_NO_NOTIFY === '1') return;
-
-  playSound();
-  const script = `display notification "${esc(body)}" with title "${esc(title)}"`;
-  try {
-    const child = spawn('osascript', ['-e', script], {
-      stdio: ['ignore', 'ignore', 'ignore'],
-      detached: true,
-    });
-    child.on('error', () => {});
-    child.unref();
-  } catch {}
-}
+const shellQuote = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
 
 // ─── Approval Dialog ─────────────────────────────────────
 
@@ -67,7 +47,6 @@ export type ApprovalResult = 'approved' | 'rejected' | 'error';
  * Show a native macOS alert with approve/reject buttons.
  *
  * Uses the compiled Swift .app bundle for native Tahoe styling.
- * Falls back to osascript if the .app is missing.
  *
  * Returns 'approved' if user clicks the action button (runs onClick),
  * 'rejected' if user clicks cancel/dismiss.
@@ -86,7 +65,8 @@ export async function notifyWithAction(
   if (fs.existsSync(NOTIFY_BIN)) {
     return launchNativeAlert(title, body, action);
   }
-  return launchOsascriptFallback(title, body, action);
+  console.error(`[nightcrawl] Native notification app missing: ${NOTIFY_BIN}`);
+  return 'error';
 }
 
 async function launchNativeAlert(
@@ -115,42 +95,6 @@ async function launchNativeAlert(
   });
 }
 
-async function launchOsascriptFallback(
-  title: string,
-  body: string,
-  action: NotifyAction,
-): Promise<ApprovalResult> {
-  playSound();
-  const script = [
-    `display dialog "${esc(body)}"`,
-    `with title "${esc(title)}"`,
-    `buttons {"Not Now", "${esc(action.label)}"}`,
-    `default button "${esc(action.label)}"`,
-    `with icon note`,
-  ].join(' ');
-
-  return new Promise<ApprovalResult>((resolve) => {
-    const child = spawn('osascript', ['-e', script], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-
-    let stdout = '';
-    child.stdout?.on('data', (d: Buffer) => { stdout += d.toString(); });
-
-    child.on('close', (code) => {
-      if (code === 0 && stdout.includes(action.label)) {
-        try {
-          spawn('sh', ['-c', action.onClick], { stdio: 'ignore', detached: true }).unref();
-        } catch {}
-        resolve('approved');
-      } else {
-        resolve('rejected');
-      }
-    });
-    child.on('error', () => resolve('error'));
-  });
-}
-
 function printActionable(title: string, body: string, action: NotifyAction): void {
   try {
     console.error(`[nightcrawl] ${title}: ${body}`);
@@ -161,14 +105,12 @@ function printActionable(title: string, body: string, action: NotifyAction): voi
 // ─── Action Helpers ──────────────────────────────────────
 
 export function focusAppAction(appName: string, label?: string): NotifyAction {
-  const safe = appName.replace(/"/g, '\\"');
   return {
     label: label ?? `Focus ${appName}`,
-    onClick: `osascript -e 'tell application "${safe}" to activate'`,
+    onClick: `open -a ${shellQuote(appName)}`,
   };
 }
 
 export function openUrlAction(url: string, label: string): NotifyAction {
-  const safe = url.replace(/"/g, '\\"');
-  return { label, onClick: `open "${safe}"` };
+  return { label, onClick: `open ${shellQuote(url)}` };
 }

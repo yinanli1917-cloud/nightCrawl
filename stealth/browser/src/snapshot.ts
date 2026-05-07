@@ -22,6 +22,8 @@ import type { BrowserManager, RefEntry } from './browser-manager';
 import * as Diff from 'diff';
 import { TEMP_DIR, isPathWithin } from './platform';
 
+const ARIA_SNAPSHOT_TIMEOUT_MS = 5000;
+
 // Roles considered "interactive" for the -i flag
 const INTERACTIVE_ROLES = new Set([
   'button', 'link', 'textbox', 'checkbox', 'radio', 'combobox',
@@ -73,6 +75,83 @@ interface ParsedNode {
   props: string;      // e.g., "[level=1]"
   children: string;   // inline text content after ":"
   rawLine: string;
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer!));
+}
+
+async function buildDomInteractiveFallback(
+  target: Page | Frame,
+  bm: BrowserManager,
+  reason: string
+): Promise<string> {
+  const elements = await target.evaluate(() => {
+    const candidates = [
+      ...document.querySelectorAll('a[href], button, input, select, textarea, summary, [role="button"], [role="link"], [onclick], [tabindex]:not([tabindex="-1"])'),
+    ];
+    const results: Array<{ selector: string; role: string; text: string }> = [];
+
+    for (const el of candidates) {
+      const html = el as HTMLElement;
+      const rect = html.getBoundingClientRect();
+      const style = getComputedStyle(html);
+      if (rect.width <= 0 || rect.height <= 0) continue;
+      if (style.visibility === 'hidden' || style.display === 'none') continue;
+
+      const parts: string[] = [];
+      let current: Element | null = el;
+      while (current && current !== document.documentElement) {
+        const parent = current.parentElement;
+        if (!parent) break;
+        const siblings = [...parent.children];
+        const index = siblings.indexOf(current) + 1;
+        parts.unshift(`${current.tagName.toLowerCase()}:nth-child(${index})`);
+        current = parent;
+      }
+
+      const text = (
+        html.innerText ||
+        html.getAttribute('aria-label') ||
+        html.getAttribute('title') ||
+        (html as HTMLInputElement).placeholder ||
+        (html as HTMLInputElement).value ||
+        html.tagName.toLowerCase()
+      ).trim().replace(/\s+/g, ' ').slice(0, 100);
+
+      let role = html.getAttribute('role') || html.tagName.toLowerCase();
+      if (html.tagName === 'A') role = 'link';
+      if (html.tagName === 'BUTTON') role = 'button';
+      if (['INPUT', 'TEXTAREA'].includes(html.tagName)) role = 'textbox';
+      if (html.tagName === 'SELECT') role = 'combobox';
+      results.push({ selector: parts.join(' > '), role, text });
+    }
+
+    return results.slice(0, 200);
+  });
+
+  const refMap = new Map<string, RefEntry>();
+  const output = [`(accessibility snapshot unavailable: ${reason})`, '── DOM interactive fallback ──'];
+  let refCounter = 1;
+  for (const elem of elements) {
+    const ref = `e${refCounter++}`;
+    refMap.set(ref, {
+      locator: target.locator(elem.selector),
+      role: elem.role,
+      name: elem.text,
+    });
+    output.push(`@${ref} [${elem.role}] "${elem.text}"`);
+  }
+
+  bm.setRefMap(refMap);
+  if (elements.length === 0) {
+    return `(accessibility snapshot unavailable: ${reason})\n(no interactive DOM elements found)`;
+  }
+  return output.join('\n');
 }
 
 /**
@@ -150,7 +229,30 @@ export async function handleSnapshot(
     rootLocator = target.locator('body');
   }
 
-  const ariaText = await rootLocator.ariaSnapshot();
+  if (opts.annotate) {
+    const screenshotPath = opts.outputPath || `${TEMP_DIR}/browse-annotated.png`;
+    const resolvedPath = require('path').resolve(screenshotPath);
+    const safeDirs = [TEMP_DIR, process.cwd()];
+    if (!safeDirs.some((dir: string) => isPathWithin(resolvedPath, dir))) {
+      throw new Error(`Path must be within: ${safeDirs.join(', ')}`);
+    }
+  }
+
+  let ariaText: string;
+  try {
+    ariaText = await withTimeout(
+      rootLocator.ariaSnapshot(),
+      ARIA_SNAPSHOT_TIMEOUT_MS,
+      'accessibility snapshot'
+    );
+  } catch (err: any) {
+    const fallback = await buildDomInteractiveFallback(target, bm, err.message || String(err));
+    if (inFrame) {
+      const frameUrl = bm.getFrame()?.url() ?? 'unknown';
+      return `[Context: iframe src="${frameUrl}"]\n${fallback}`;
+    }
+    return fallback;
+  }
   if (!ariaText || ariaText.trim().length === 0) {
     bm.setRefMap(new Map());
     return '(no accessible elements found)';

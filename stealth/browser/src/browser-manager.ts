@@ -44,6 +44,15 @@ export { DEFAULT_USER_AGENT } from './stealth';
 export { isPatchCurrent } from './stealth';
 export { generateLaunchAgentPlist } from './launch-agent';
 
+function exitOnUnexpectedDisconnect(code: number): void {
+  if (process.env.NIGHTCRAWL_NO_EXIT_ON_DISCONNECT === '1') return;
+  process.exit(code);
+}
+
+function noExitOnUnexpectedDisconnect(): boolean {
+  return process.env.NIGHTCRAWL_NO_EXIT_ON_DISCONNECT === '1';
+}
+
 export interface RefEntry {
   locator: Locator;
   role: string;
@@ -139,9 +148,12 @@ export class BrowserManager {
   findExtensionPath(): string | null {
     const fs = require('fs');
     const path = require('path');
+    const home = process.env.HOME || '';
     const candidates = [
       path.resolve(__dirname, '..', '..', 'extension'),
-      path.join(process.env.HOME || '', '.claude', 'skills', 'nightcrawl', 'extension'),
+      path.join(home, '.claude', 'skills', 'nightcrawl', 'extension'),
+      path.join(home, '.codex', 'skills', 'nightcrawl', 'extension'),
+      path.join(home, 'Downloads', 'bypass-paywalls-chrome-clean-master'),
       (() => {
         const stateFile = process.env.BROWSE_STATE_FILE || '';
         if (stateFile) {
@@ -177,7 +189,14 @@ export class BrowserManager {
     const engineConfig = parseEngineConfig(process.env);
 
     const extensionMode = process.env.BROWSE_EXTENSIONS || 'all';
-    const extensionsDir = extensionMode !== 'none' ? process.env.BROWSE_EXTENSIONS_DIR : undefined;
+    const extensionsDir = extensionMode !== 'none'
+      ? (process.env.BROWSE_EXTENSIONS_DIR || this.findExtensionPath() || undefined)
+      : undefined;
+    if (extensionsDir) {
+      console.log(`[nightcrawl] Extensions: ${extensionsDir}`);
+    } else if (extensionMode !== 'none') {
+      console.log('[nightcrawl] Extensions: enabled, but no extension directory found');
+    }
     const ua = this.customUserAgent || DEFAULT_USER_AGENT;
 
     // Resolve locale once at launch: BROWSE_LOCALE env var takes precedence,
@@ -214,9 +233,13 @@ export class BrowserManager {
     // telling the site the user's real locale instead of engine default.
     // Chromium crash -> exit with clear message
     this.browser!.on('disconnected', () => {
-      console.error('[nightcrawl] FATAL: Chromium process crashed or was killed. Server exiting.');
-      console.error('[nightcrawl] Console/network logs flushed to .nightcrawl/browse-*.log');
-      process.exit(1);
+      if (noExitOnUnexpectedDisconnect()) {
+        console.error('[nightcrawl] Browser disconnected; process exit suppressed by NIGHTCRAWL_NO_EXIT_ON_DISCONNECT.');
+      } else {
+        console.error('[nightcrawl] FATAL: Chromium process crashed or was killed. Server exiting.');
+        console.error('[nightcrawl] Console/network logs flushed to .nightcrawl/browse-*.log');
+      }
+      exitOnUnexpectedDisconnect(1);
     });
 
     // Stealth: sync UA at HTTP header level
@@ -503,13 +526,22 @@ export class BrowserManager {
     }
   }
 
-  async restoreState(state: BrowserState): Promise<void> {
+  async restoreState(
+    state: BrowserState,
+    opts: { restoreCookies?: boolean; cookieMode?: 'replace' | 'add' } = {},
+  ): Promise<void> {
     if (!this.context) throw new Error('Browser not launched');
 
     // SAFETY: filter hostile cookies before any restore (see hostile-domains.ts).
-    const safeCookies = filterHostileCookies(state.cookies);
-    if (safeCookies.length > 0) {
-      await replaceCookiesFor(this.context, safeCookies);
+    if (opts.restoreCookies !== false) {
+      const safeCookies = filterHostileCookies(state.cookies);
+      if (safeCookies.length > 0) {
+        if (opts.cookieMode === 'add') {
+          await this.context.addCookies(safeCookies);
+        } else {
+          await replaceCookiesFor(this.context, safeCookies);
+        }
+      }
     }
 
     let activeId: number | null = null;

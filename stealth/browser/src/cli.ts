@@ -13,6 +13,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { resolveConfig, ensureStateDir, readVersionHash } from './config';
 import { findInstalledBrowsers } from './cookie-import-browser';
+import { notifyWithAction } from './notify';
 
 const config = resolveConfig();
 const IS_WINDOWS = process.platform === 'win32';
@@ -210,6 +211,33 @@ function isProcessAlive(pid: number): boolean {
  * HTTP health check — definitive proof the server is alive and responsive.
  * Supports both UDS (socket path) and TCP (port) transports.
  */
+function isLocalSocketPermissionError(err: any): boolean {
+  return err?.code === 'EACCES' || err?.code === 'EPERM';
+}
+
+function sandboxSocketDeniedMessage(err: any): string {
+  const code = err?.code || 'UNKNOWN';
+  return `[browse] Cannot start or restart nightCrawl here: ${code}. ` +
+    `This local execution environment denied server sockets. ` +
+    `Run nightCrawl through an approved launcher or outside the sandbox.`;
+}
+
+async function assertCanStartLocalServer(): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const srv = require('net').createServer();
+    srv.once('error', (err: any) => {
+      if (isLocalSocketPermissionError(err)) {
+        reject(new Error(sandboxSocketDeniedMessage(err)));
+        return;
+      }
+      resolve();
+    });
+    srv.listen(0, '127.0.0.1', () => {
+      srv.close(() => resolve());
+    });
+  });
+}
+
 export async function isServerHealthy(portOrState: number | ServerState): Promise<boolean> {
   try {
     const state: ServerState = typeof portOrState === 'number'
@@ -331,7 +359,7 @@ async function startServer(extraEnv?: Record<string, string>): Promise<ServerSta
       .filter(([, v]) => v !== undefined)
       .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
       .join(' ');
-    Bun.spawnSync(['sh', '-c', `nohup env BROWSE_STATE_FILE=${JSON.stringify(config.stateFile)} bun run ${JSON.stringify(SERVER_SCRIPT)} </dev/null >/dev/null 2>&1 &`], {
+    Bun.spawnSync(['sh', '-c', `nohup env ${envStr} bun run ${JSON.stringify(SERVER_SCRIPT)} </dev/null >/dev/null 2>&1 &`], {
       stdio: ['ignore', 'ignore', 'ignore'],
       env: { ...process.env, BROWSE_STATE_FILE: config.stateFile, ...extraEnv },
     });
@@ -448,6 +476,10 @@ async function ensureServer(): Promise<ServerState> {
     if (freshState && await isServerHealthy(freshState)) {
       return freshState;
     }
+
+    // If this environment cannot create local server sockets, fail before
+    // deleting state or killing an outside-sandbox daemon that may be healthy.
+    await assertCanStartLocalServer();
 
     // Kill the old server to avoid orphaned chromium processes
     if (state && state.pid) {
@@ -623,6 +655,16 @@ Refs:           After 'snapshot', use @e1, @e2... as selectors:
       }
     }
 
+    const approval = await notifyWithAction(
+      'nightCrawl handoff',
+      'Open the headed digital-twin browser and sync cookies from your default browser first?',
+      { label: 'Open Browser', onClick: ':' },
+    );
+    if (approval !== 'approved') {
+      console.log('Connect cancelled. No headed browser opened.');
+      process.exit(0);
+    }
+
     // Kill ANY existing server (SIGTERM → wait 2s → SIGKILL)
     if (existingState && isProcessAlive(existingState.pid)) {
       try { process.kill(existingState.pid, 'SIGTERM'); } catch {}
@@ -735,6 +777,41 @@ Refs:           After 'snapshot', use @e1, @e2... as selectors:
       process.exit(1);
     }
     process.exit(0);
+  }
+
+  // ─── Stop (pre-server command) ───────────────────────────────
+  // stop must not auto-start a daemon just to shut it down. This matters in
+  // restricted agent sandboxes where server socket creation is denied.
+  if (command === 'stop') {
+    const existingState = readState();
+    if (!existingState) {
+      console.log('nightCrawl is not running.');
+      process.exit(0);
+    }
+
+    try {
+      const resp = await fetch(serverUrl(existingState, '/command'), {
+        ...fetchOptions(existingState),
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${existingState.token}`,
+        },
+        body: JSON.stringify({ command: 'stop', args: [] }),
+        signal: AbortSignal.timeout(3000),
+      });
+      const text = await resp.text();
+      if (text) console.log(text);
+      process.exit(resp.ok ? 0 : 1);
+    } catch {
+      if (existingState.pid && isProcessAlive(existingState.pid)) {
+        try { process.kill(existingState.pid, 'SIGTERM'); } catch {}
+      }
+      try { fs.unlinkSync(config.stateFile); } catch {}
+      if (existingState.socket) { try { fs.unlinkSync(existingState.socket); } catch {} }
+      console.log('nightCrawl was not responding; cleaned stale state.');
+      process.exit(0);
+    }
   }
 
   // ─── Headed Disconnect (pre-server command) ─────────────────

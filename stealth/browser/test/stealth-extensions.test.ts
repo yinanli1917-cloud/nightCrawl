@@ -53,8 +53,9 @@ describe('BROWSE_EXTENSIONS handling (source audit)', () => {
 describe('BROWSE_EXTENSIONS=none behavior (source audit)', () => {
   test('launch() sets extensionsDir to undefined when mode is none', () => {
     const launchBlock = sliceBetween(BROWSER_MANAGER_SRC, 'async launch()', 'async close()');
-    // Pattern: extensionMode !== 'none' ? <something> : undefined
-    expect(launchBlock).toMatch(/extensionMode\s*!==\s*'none'\s*\?\s*\S+\s*:\s*undefined/);
+    expect(launchBlock).toContain("extensionMode !== 'none'");
+    expect(launchBlock).toContain('this.findExtensionPath()');
+    expect(launchBlock).toMatch(/:\s*undefined;/);
   });
 
   test('launchHeaded() sets extensionPath to null when mode is none', () => {
@@ -77,5 +78,15 @@ describe('BROWSE_EXTENSIONS=none behavior (source audit)', () => {
     const headedBlock = sliceBetween(BROWSER_HANDOFF_SRC, 'export async function launchHeaded', 'export async function handoff');
     // The extension loading block is gated by: if (extensionPath)
     expect(headedBlock).toMatch(/if\s*\(extensionPath\)/);
+  });
+});
+
+// ─── Headed Indicator Compatibility ─────────────────────────────
+
+describe('headed handoff indicator compatibility (source audit)', () => {
+  test('launchHeaded does not call context.addInitScript for visual indicator', () => {
+    const headedBlock = sliceBetween(BROWSER_HANDOFF_SRC, 'export async function launchHeaded', 'export async function handoff');
+    expect(headedBlock).not.toContain('context.addInitScript(indicatorScript)');
+    expect(headedBlock).toContain('page.evaluate(indicatorScript)');
   });
 });

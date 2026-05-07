@@ -385,8 +385,15 @@ export async function handleMetaCommand(
     case 'resume': {
       const resumeMsg = await bm.resume();
       // Re-snapshot to capture current page state after human interaction
-      const snapshot = await handleSnapshot(['-i'], bm);
-      return `RESUMED\n${resumeMsg}\n${wrapUntrustedContent(snapshot, bm.getCurrentUrl())}`;
+      try {
+        const snapshot = await Promise.race([
+          handleSnapshot(['-i'], bm),
+          new Promise<string>((_, reject) => setTimeout(() => reject(new Error('snapshot timed out after resume')), 3000)),
+        ]);
+        return `RESUMED\n${resumeMsg}\n${wrapUntrustedContent(snapshot, bm.getCurrentUrl())}`;
+      } catch (err: any) {
+        return `RESUMED\n${resumeMsg}\nSNAPSHOT_SKIPPED: ${err?.message || err}`;
+      }
     }
 
     // ─── Handoff consent (per-eTLD+1 approval store) ───────────
@@ -471,7 +478,7 @@ export async function handleMetaCommand(
         let activated = false;
         for (const appName of appNames) {
           try {
-            execSync(`osascript -e 'tell application "${appName}" to activate'`, { stdio: 'pipe', timeout: 3000 });
+            execSync(`open -a ${JSON.stringify(appName)}`, { stdio: 'pipe', timeout: 3000 });
             activated = true;
             break;
           } catch {
@@ -682,10 +689,8 @@ export async function handleMetaCommand(
     }
 
     // ─── Notify Test ─────────────────────────────────
-    // Diagnostic: fire a passive notification + an actionable one. If the
-    // user sees them in Notification Center, the stack works end-to-end.
-    // If not, likely macOS permissions: System Settings → Notifications →
-    // (osascript / terminal-notifier) → Allow Notifications.
+    // Diagnostic: fire the native SwiftUI actionable notifier. If the user
+    // sees it, the handoff approval stack works end-to-end.
     case 'notify-test': {
       const { notifyWithAction } = await import('./notify');
       const ts = new Date().toISOString().replace('T', ' ').slice(0, 19);
@@ -698,7 +703,7 @@ export async function handleMetaCommand(
         'Sent test notification (native Swift alert).',
         '',
         'If you see nothing: check ~/.nightcrawl/NightCrawlNotify.app exists.',
-        'Fallback uses osascript — System Settings → Notifications → Script Editor → Allow.',
+        'Approval prompts use the native NightCrawlNotify app only.',
         '',
         `NIGHTCRAWL_NO_NOTIFY env: ${process.env.NIGHTCRAWL_NO_NOTIFY === '1' ? 'SET (suppressing notifications)' : 'unset'}`,
       ];

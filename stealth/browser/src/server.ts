@@ -34,7 +34,7 @@ import {
 } from './update-executor';
 import { applyStealthPatches } from './stealth';
 import { startReinforcementLoop } from './stealth-reinforcement';
-import { notifyWithAction } from './notify';
+import { notifyWithAction, focusAppAction } from './notify';
 import { detectSensitivePage, CATEGORY_NOTIFICATIONS } from './sensitive-page';
 import { markPinnedObserved, isPinned, sniffVendor } from './fingerprint-pinned';
 import { isAuthenticated, markAuthenticated, invalidate } from './auth-cache';
@@ -654,12 +654,15 @@ const storageFlushInterval = setInterval(persistStorage, 5 * 60_000);
 //   2. 10-min poll fallback — covers FSEvents drops on macOS
 // First run triggers the Keychain dialog once; "Always Allow" makes
 // every subsequent sync silent.
-async function runBackgroundSync(trigger: 'poll' | 'watch' | 'manual' = 'poll') {
+async function runBackgroundSync(
+  trigger: 'poll' | 'watch' | 'manual' = 'poll',
+  opts: { allowHeaded?: boolean; syncMode?: 'new-domains-only' | 'all-domains' } = {},
+) {
   if (process.env.BROWSE_INCOGNITO === '1') {
     recordSyncSkipped('incognito-mode');
     return;
   }
-  if (browserManager.getConnectionMode() === 'headed') {
+  if (browserManager.getConnectionMode() === 'headed' && !opts.allowHeaded) {
     recordSyncSkipped('headed-mode');
     return;
   }
@@ -678,7 +681,7 @@ async function runBackgroundSync(trigger: 'poll' | 'watch' | 'manual' = 'poll') 
       recordSyncSkipped('no-context');
       return;
     }
-    const syncMode = trigger === 'watch' ? 'all-domains' : 'new-domains-only';
+    const syncMode = opts.syncMode ?? (trigger === 'watch' ? 'all-domains' : 'new-domains-only');
     const result = await syncAllCookies(context, undefined, syncMode);
     recordSyncSuccess(result);
     if (result.importedCount > 0) {
@@ -761,10 +764,29 @@ const browserReady = new Promise<void>((resolve, reject) => {
 // Uses net.createServer instead of Bun.serve to avoid a race condition
 // in the Node.js polyfill where listen/close are async but the caller
 // expects synchronous bind semantics. See: #486
+function isPortPermissionError(err: NodeJS.ErrnoException): boolean {
+  return err.code === 'EACCES' || err.code === 'EPERM';
+}
+
+function describePortBindPermissionError(port: number, hostname: string, err: NodeJS.ErrnoException): Error {
+  const code = err.code || 'UNKNOWN';
+  return new Error(
+    `[browse] Cannot test or bind ${hostname}:${port}: ${code}. ` +
+    `The local execution environment denied listening sockets. ` +
+    `Run nightCrawl through an approved launcher or outside the sandbox.`
+  );
+}
+
 function isPortAvailable(port: number, hostname: string = '127.0.0.1'): Promise<boolean> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const srv = net.createServer();
-    srv.once('error', () => resolve(false));
+    srv.once('error', (err: NodeJS.ErrnoException) => {
+      if (isPortPermissionError(err)) {
+        reject(describePortBindPermissionError(port, hostname, err));
+        return;
+      }
+      resolve(false);
+    });
     srv.listen(port, hostname, () => {
       srv.close(() => resolve(true));
     });
@@ -1144,9 +1166,9 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
           // actionable message now. Otherwise stay silent to avoid duplicates.
           const stepTwoPinned = isPinned(wallUrl);
           if (stepTwoPinned && !siteIsPinned) {
-            result += `\nFINGERPRINT_PINNED: ${detection.domain} — Arc cookies imported but wall persisted (empirical fingerprint-pinning). Auto-opening CloakBrowser for one-time login.`;
+            result += `\nFINGERPRINT_PINNED: ${detection.domain} — Arc cookies imported but wall persisted (empirical fingerprint-pinning). Requesting native approval for CloakBrowser handoff.`;
           } else if (!stepTwoPinned) {
-            result += `\nOpening ${detection.domain} in your default browser for login. Will auto-resume when cookies are imported.`;
+            result += `\nRequesting native approval to open ${detection.domain} in your default browser. Will auto-resume when cookies are imported.`;
           }
           browserManager.autoHandover(targetUrl).then(async handoverResult => {
             if (handoverResult) console.log(`[nightcrawl] Auto-handover complete: ${handoverResult}`);
@@ -1352,6 +1374,7 @@ function emergencyCleanup() {
 }
 process.on('uncaughtException', (err) => {
   console.error('[browse] FATAL uncaught exception:', err.message);
+  if (err?.stack) console.error(err.stack);
   emergencyCleanup();
   process.exit(1);
 });
@@ -1369,7 +1392,11 @@ async function start() {
   try { fs.unlinkSync(NETWORK_LOG_PATH); } catch {}
   try { fs.unlinkSync(DIALOG_LOG_PATH); } catch {}
 
-  const port = await findPort();
+  // UDS is the normal local-agent path. Do not probe TCP first in UDS
+  // mode: restricted agent sandboxes can deny listening sockets, and that
+  // should not prevent the primary Unix-socket daemon from starting.
+  const useUds = !BROWSE_PORT && config.socketPath;
+  const port = useUds ? 0 : await findPort();
 
   // ─── Parallel Startup ──────────────────────────────────────
   // Start HTTP server FIRST so the CLI can discover port/token immediately.
@@ -1378,7 +1405,6 @@ async function start() {
 
   const startTime = Date.now();
   // UDS by default (3x lower latency), TCP fallback when BROWSE_PORT is set
-  const useUds = !BROWSE_PORT && config.socketPath;
   if (useUds) {
     // Clean up stale socket from previous crash
     try { fs.unlinkSync(config.socketPath); } catch {}
@@ -1386,9 +1412,11 @@ async function start() {
   const serverOptions: any = useUds
     ? { unix: config.socketPath }
     : { port, hostname: '127.0.0.1' };
-  const server = Bun.serve({
-    ...serverOptions,
-    fetch: async (req) => {
+  let server: ReturnType<typeof Bun.serve>;
+  try {
+    server = Bun.serve({
+      ...serverOptions,
+      fetch: async (req) => {
       const url = new URL(req.url);
 
       // Onboarding routes — permission chooser page, no auth (localhost-only)
@@ -1715,8 +1743,19 @@ async function start() {
       }
 
       return new Response('Not found', { status: 404 });
-    },
-  });
+      },
+    });
+  } catch (err: any) {
+    if (err?.code === 'EACCES' || err?.code === 'EPERM') {
+      const target = useUds ? config.socketPath : `127.0.0.1:${port}`;
+      throw new Error(
+        `[browse] Cannot listen on ${target}: ${err.code}. ` +
+        `The local execution environment denied server sockets. ` +
+        `Run nightCrawl through an approved launcher or outside the sandbox.`
+      );
+    }
+    throw err;
+  }
 
   // Write state file IMMEDIATELY (atomic: write .tmp then rename)
   // CLI discovers port/token from this file — write it before browser launch
@@ -1815,6 +1854,13 @@ async function start() {
         } else {
           await browserManager.launch();
         }
+        try {
+          const currentState = JSON.parse(fs.readFileSync(config.stateFile, 'utf-8'));
+          currentState.mode = browserManager.getConnectionMode();
+          const modeTmpFile = config.stateFile + '.tmp';
+          fs.writeFileSync(modeTmpFile, JSON.stringify(currentState, null, 2), { mode: 0o600 });
+          fs.renameSync(modeTmpFile, config.stateFile);
+        } catch {}
 
         // Cookie restoration: the persistent profile (userDataDir) now
         // handles cookie persistence natively via Chromium's SQLite.
@@ -1850,6 +1896,23 @@ async function start() {
           } catch (err: any) {
             console.error(`[browse] Onboarding error (non-fatal): ${err?.message ?? err}`);
           }
+        }
+
+        // Digital-twin contract: sync the user's default-browser cookies
+        // immediately on startup, before any agent command can run. The
+        // watcher keeps cookies fresh later, but the first command must not
+        // race a 10-minute poll or wait for Arc to write a new cookie event.
+        // In headed startup this runs before the user takes over the window.
+        await runBackgroundSync('manual', {
+          allowHeaded: headed,
+          syncMode: 'all-domains',
+        });
+        if (headed) {
+          notifyWithAction(
+            'nightCrawl handoff ready',
+            'Default-browser cookies are synced. CloakBrowser is ready for takeover.',
+            focusAppAction('CloakBrowser', 'Focus Browser'),
+          ).catch(() => {});
         }
 
         console.log(`[browse] Browser warm in ${Date.now() - browserLaunchStart}ms`);

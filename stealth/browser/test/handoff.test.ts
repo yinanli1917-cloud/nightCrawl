@@ -6,6 +6,9 @@
  */
 
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { startTestServer } from './test-server';
 import { BrowserManager, type BrowserState } from '../src/browser-manager';
 import { handleWriteCommand } from '../src/write-commands';
@@ -14,8 +17,14 @@ import { handleMetaCommand } from '../src/meta-commands';
 let testServer: ReturnType<typeof startTestServer>;
 let bm: BrowserManager;
 let baseUrl: string;
+let originalProfileDir: string | undefined;
+let originalNoExitOnDisconnect: string | undefined;
 
 beforeAll(async () => {
+  originalProfileDir = process.env.BROWSE_PROFILE_DIR;
+  originalNoExitOnDisconnect = process.env.NIGHTCRAWL_NO_EXIT_ON_DISCONNECT;
+  process.env.NIGHTCRAWL_NO_EXIT_ON_DISCONNECT = '1';
+  process.env.BROWSE_PROFILE_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'nightcrawl-handoff-shared-'));
   testServer = startTestServer(0);
   baseUrl = testServer.url;
 
@@ -24,9 +33,30 @@ beforeAll(async () => {
 });
 
 afterAll(() => {
+  const sharedProfileDir = process.env.BROWSE_PROFILE_DIR;
+  if (originalProfileDir === undefined) delete process.env.BROWSE_PROFILE_DIR;
+  else process.env.BROWSE_PROFILE_DIR = originalProfileDir;
+  if (originalNoExitOnDisconnect === undefined) delete process.env.NIGHTCRAWL_NO_EXIT_ON_DISCONNECT;
+  else process.env.NIGHTCRAWL_NO_EXIT_ON_DISCONNECT = originalNoExitOnDisconnect;
+  if (sharedProfileDir?.includes('nightcrawl-handoff-shared-')) {
+    try { fs.rmSync(sharedProfileDir, { recursive: true, force: true }); } catch {}
+  }
   try { testServer.server.stop(); } catch {}
   setTimeout(() => process.exit(0), 500);
 });
+
+async function withIsolatedProfile<T>(fn: () => Promise<T>): Promise<T> {
+  const previous = process.env.BROWSE_PROFILE_DIR;
+  const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nightcrawl-handoff-case-'));
+  process.env.BROWSE_PROFILE_DIR = profileDir;
+  try {
+    return await fn();
+  } finally {
+    if (previous === undefined) delete process.env.BROWSE_PROFILE_DIR;
+    else process.env.BROWSE_PROFILE_DIR = previous;
+    try { fs.rmSync(profileDir, { recursive: true, force: true }); } catch {}
+  }
+}
 
 // ─── Unit Tests: Failure Tracking (no browser needed) ────────────
 
@@ -171,6 +201,7 @@ describe('handoff edge cases', () => {
 
 describe('handoff integration', () => {
   test('full handoff: cookies preserved, headed mode active, commands work', async () => {
+    await withIsolatedProfile(async () => {
     const hbm = new BrowserManager();
     await hbm.launch();
 
@@ -178,6 +209,12 @@ describe('handoff integration', () => {
       // Set up state
       await handleWriteCommand('goto', [baseUrl + '/basic.html'], hbm);
       await handleWriteCommand('cookie', ['handoff_test=preserved'], hbm);
+      const originalRestoreState = hbm.restoreState.bind(hbm);
+      let cookieModeDuringHandoff: string | undefined;
+      hbm.restoreState = async (state: BrowserState, opts?: { restoreCookies?: boolean; cookieMode?: 'replace' | 'add' }) => {
+        cookieModeDuringHandoff = opts?.cookieMode;
+        return originalRestoreState(state, opts);
+      };
 
       // Handoff
       const result = await hbm.handoff('Testing handoff');
@@ -185,6 +222,7 @@ describe('handoff integration', () => {
       expect(result).toContain('Testing handoff');
       expect(result).toContain('resume');
       expect(hbm.getIsHeaded()).toBe(true);
+      expect(cookieModeDuringHandoff).toBe('add');
 
       // Verify cookies survived
       const { handleReadCommand } = await import('../src/read-commands');
@@ -201,9 +239,11 @@ describe('handoff integration', () => {
     } finally {
       await hbm.close();
     }
+    });
   }, 45000);
 
   test('multi-tab handoff preserves all tabs', async () => {
+    await withIsolatedProfile(async () => {
     const hbm = new BrowserManager();
     await hbm.launch();
 
@@ -218,9 +258,11 @@ describe('handoff integration', () => {
     } finally {
       await hbm.close();
     }
+    });
   }, 45000);
 
   test('handoff meta command joins args as message', async () => {
+    await withIsolatedProfile(async () => {
     const hbm = new BrowserManager();
     await hbm.launch();
 
@@ -231,5 +273,6 @@ describe('handoff integration', () => {
     } finally {
       await hbm.close();
     }
+    });
   }, 45000);
 });

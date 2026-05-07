@@ -17,6 +17,7 @@ No existing tool combines: **local CLI + real browser cookies + stealth + persis
 | OpenClaw | `web_fetch` fails on Cloudflare (#20375, closed "not planned"); ClawJacked vulnerability |
 | Browser Use (90K stars) | Has basic stealth flags + Chrome profile reuse + storage state persistence now, but no CDP/fingerprint patches in open-source (paywalled to cloud). Agent framework + fine-tuned model (bu-30b) is their moat. PostHog telemetry by default. |
 | Browser Harness (7.7K stars, 10 days) | 990-line CDP harness that attaches to user's running Chrome. Zero stealth (IS the real browser). No headless, no sandbox (raw exec), no handoff. Domain-skills flywheel is the interesting pattern. Same team as Browser Use. |
+| Browser Use Box / bux (same team) | 24/7 VPS agent: Telegram bot → Claude Code → Browser Harness → BU Cloud. Zero stealth, no cookie import, cloud-dependent, bypassPermissions. Narrative threat: "text your agent from phone" UX. |
 | Browserbase | Cloud datacenter IPs detectable in 50ms |
 | Einstein AI | Shut down, cease-and-desist, no privacy (cloud-based) |
 | CloakBrowser | No agent framework, no cookie import, no session management (integration target for v0.2) |
@@ -59,7 +60,7 @@ No existing tool combines: **local CLI + real browser cookies + stealth + persis
 10. **Fingerprint profiles** — `BROWSE_FINGERPRINT_SEED` or per-identity seeds in `~/.nightcrawl/identities/`. Deterministic fingerprints across all surfaces.
 11. **Behavioral humanization** — `BROWSE_HUMANIZE=1` enables CloakBrowser's built-in Bezier mouse, typing jitter, non-linear scroll (Tier 4-5 sites only)
 12. **Fingerprint-pinned domain classifier** — `fingerprint-pinned.ts` detects sites whose bot-management vendor pins sessions to the solving browser's fingerprint (Cloudflare `cf-mitigated`, DataDome, Kasada, PerimeterX). Persists to `~/.nightcrawl/state/fingerprint-pinned.json`. Header-sniffed on `document` responses OR marked observationally when Arc cookie import fails to clear the wall. Shortens the default-browser poll from 5 min → 30 s for pinned domains and routes straight to headed CloakBrowser.
-13. **Actionable notifications** — `notify.ts` adds `notifyWithAction(title, body, action)` using optional `terminal-notifier` (`brew install terminal-notifier`). Clickable buttons for "Focus browser" / "Focus CloakBrowser". Degrades to passive `notify()` when terminal-notifier absent.
+13. **Actionable notifications** — `notify.ts` adds `notifyWithAction(title, body, action)` using the native SwiftUI `~/.nightcrawl/NightCrawlNotify.app`. Handoff/approval prompts must use this native app; if it is missing, fail loudly instead of falling back to terminal-style notification paths.
 14. **Persistent fingerprint seed** — `engine-config.ts` persists the CloakBrowser fingerprint seed to `~/.nightcrawl/state/engine-seed.json`. Every headless AND headed launch on this machine uses the SAME seed so bot-managed sites (CF/Akamai/etc) see a consistent fingerprint across sessions and headless↔headed transitions. Previously each launch picked a random seed, invalidating cookies each time.
 15. **CloakBrowser for headed handoff** — `browser-handoff.ts` routes both `launchHeaded` and the `handoff` relaunch through `launchCloakBrowser`. Fixes the v0.2 gap where headless was CloakBrowser but handoff was Chrome-for-Testing, breaking the whole fingerprint-match premise.
 16. **Late-redirect watcher** — `server.ts` runs a 20-second background URL watcher after every goto whose initial detection returned null. If the URL settles on a login path (CF dash takes ~10s to client-redirect `/` → `/login`), invalidates auth-cache, marks the domain as observed-pinned, and fires auto-handover or a consent notification.
@@ -91,7 +92,7 @@ No existing tool combines: **local CLI + real browser cookies + stealth + persis
 - Auto-handover off by default — set `BROWSE_AUTO_HANDOVER=1` to opt in. Otherwise login walls are reported back to the agent without popping a window.
 - Cookies auto-persisted after handoff/resume + every 5 min + on shutdown
 - Handoff consent: `grant-handoff <domain>` / `revoke-handoff <domain>` / `list-handoff` — per-eTLD+1 approval with 30-day default TTL
-- macOS notifications: `notify()` in `src/notify.ts` (best-effort, opt-out via `NIGHTCRAWL_NO_NOTIFY=1`)
+- macOS handoff approvals: `notifyWithAction()` in `src/notify.ts` uses the native SwiftUI `NightCrawlNotify.app` only (opt-out via `NIGHTCRAWL_NO_NOTIFY=1`)
 
 ## Key References
 
@@ -101,3 +102,18 @@ No existing tool combines: **local CLI + real browser cookies + stealth + persis
 - Patchright: github.com/Kaliiiiiiiiii-Vinyzu/patchright
 - Camoufox: github.com/Bin-Huang/camoufox-cli
 - gstack: github.com/garrytan/gstack (foundation)
+
+## Codex Harness
+
+Codex does not receive Claude hook injections automatically. Treat `.codex/workflow.md` and `scripts/codex_harness.py context` as the native pull-based context layer.
+
+Common commands:
+
+```bash
+python3 scripts/codex_harness.py context
+python3 scripts/codex_harness.py health
+python3 scripts/codex_harness.py task create "<title>"
+python3 scripts/codex_harness.py task start <slug-or-dir>
+python3 scripts/codex_harness.py task finish [slug-or-dir]
+python3 scripts/codex_harness.py task archive <slug-or-dir>
+```

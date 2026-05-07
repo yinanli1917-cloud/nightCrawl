@@ -5,7 +5,7 @@ This document captures the user requirements (from project memory + Apple Notes
 default-browser → nightCrawl cookie sync, the design that satisfies them, and
 the failure modes to watch for.
 
-Last updated: 2026-04-24.
+Last updated: 2026-05-07.
 
 ---
 
@@ -30,45 +30,34 @@ Two strict invariants follow:
 
 ## 2. Notification system — design
 
-### Two surfaces, one fallback
+### Native Approval Surface
 
 | Function | Backend | When to use |
 |---|---|---|
-| `notify(title, body)` | `osascript -e 'display notification ...'` | Status pings, "we just did X" — passive, no action button |
-| `notifyWithAction(title, body, action)` | `terminal-notifier -execute / -open` | Whenever the notification *means something the user might want to act on*: "doubao needs login — click to open" |
+| `notifyWithAction(title, body, action)` | Native SwiftUI `~/.nightcrawl/NightCrawlNotify.app` | Handoff and approval prompts: login walls, consent grants, headed takeover, sensitive-page takeover |
 
-**Always-on fallback**: `notifyWithAction` *also* prints the actionable
-command to stderr, every time. So even if the notification never reaches
-Notification Center (permissions denied, Focus mode, terminal-notifier
-uninstalled, unsigned-binary block on macOS 14+), the user still has a
-copy-pasteable command in the daemon log. **Notifications are best-effort
-delight, never load-bearing.**
+**No alternate fallback for approval prompts.** Handoff and approval
+prompts must use the native SwiftUI app. If the app is missing, the command
+fails loudly and prints the actionable command to stderr for diagnostics; it
+does not silently degrade to another notification mechanism.
 
-### The `-group` flag (current behavior, double-edged)
-
-`notifyWithAction` passes `-group nightcrawl-handoff` to terminal-notifier,
-which causes new notifications in the same group to *replace* the previous
-one. Pro: prevents 5 stale "doubao needs login" pings stacking up. Con: if
-two unrelated handoffs fire within seconds, the second silently overwrites
-the first. **Acceptable today; revisit if real users hit this.**
+The native app is load-bearing for UX: it gives a real macOS approval surface
+before any disruptive window opens.
 
 ### Diagnostic: `nc notify-test`
 
-Fires both kinds (passive + actionable) with a timestamp and prints a
-permissions checklist. Shipped 2026-04-24 in commit `cad9f3f`.
+Fires the native SwiftUI actionable notifier with a timestamp and prints a
+short diagnostic checklist.
 
 If the user runs `nc notify-test` and sees nothing, the issue is downstream
 of our code:
 
-1. **macOS Notification Center permissions** — System Settings →
-   Notifications → look for `osascript`, `Script Editor`, `terminal-notifier`.
-   Each must be set to "Allow Notifications."
+1. **Native app presence** — `~/.nightcrawl/NightCrawlNotify.app` must exist
+   and contain `Contents/MacOS/nightcrawl-notify`.
 2. **Focus / Do Not Disturb** — silently suppresses everything.
 3. **`NIGHTCRAWL_NO_NOTIFY=1`** — env var kill switch (unset by default).
-4. **macOS 14+ entitlements** — unsigned binaries spawned from a non-app
-   process can hit a hard wall here. We have no good workaround beyond
-   asking the user to grant osascript notifications system-wide (which they
-   may resist for privacy reasons).
+4. **macOS app notification permissions** — System Settings → Notifications
+   must allow the NightCrawl notifier app.
 
 ---
 

@@ -20,6 +20,15 @@ import { isPinned, pinnedVendor, markPinnedObserved } from './fingerprint-pinned
 import { parseEngineConfig } from './engine-config';
 import { launchCloakBrowser } from './cloakbrowser-engine';
 
+function exitOnUnexpectedDisconnect(code: number): void {
+  if (process.env.NIGHTCRAWL_NO_EXIT_ON_DISCONNECT === '1') return;
+  process.exit(code);
+}
+
+function noExitOnUnexpectedDisconnect(): boolean {
+  return process.env.NIGHTCRAWL_NO_EXIT_ON_DISCONNECT === '1';
+}
+
 // ─── SSO Redirect Stripper ──────────────────────────────────
 // SSO redirect URLs carry one-time query tokens (SAML execution keys,
 // OAuth state/code pairs, Shibboleth SAMLRequest nonces).  Re-navigating
@@ -143,8 +152,6 @@ export async function launchHeaded(this: any, authToken?: string): Promise<void>
       injectIndicator();
     }
   };
-  await this.context.addInitScript(indicatorScript);
-
   // Persistent context opens a default page -- adopt it
   const existingPages = this.context.pages();
   if (existingPages.length > 0) {
@@ -163,7 +170,7 @@ export async function launchHeaded(this: any, authToken?: string): Promise<void>
       if (this.intentionalDisconnect) return;
       console.error('[browse] Real browser disconnected (user closed or crashed).');
       console.error('[browse] Run `$B connect` to reconnect.');
-      process.exit(2);
+      exitOnUnexpectedDisconnect(2);
     });
   }
 
@@ -192,6 +199,7 @@ export async function handoff(this: any, message: string): Promise<string> {
   }
 
   const currentUrl = this.getCurrentUrl();
+  const stateBeforeHandoff = await this.saveState().catch(() => null);
 
   // SAFETY: refuse handoff to headed mode for hostile platforms.
   if (currentUrl && isHostile(currentUrl) && process.env.BROWSE_INCOGNITO !== '1') {
@@ -203,10 +211,10 @@ export async function handoff(this: any, message: string): Promise<string> {
   const path = require('path');
   const engineConfig = parseEngineConfig();
 
-  // Close headless FIRST to release the profile lock. Both headless
-  // and headed use the same persistent profile (engineConfig.profileDir)
-  // so Chromium's native cookie SQLite persists everything — no manual
-  // saveState/restoreState needed for cookies.
+  // Close headless FIRST to release the profile lock. The persistent profile
+  // handles durable browser state, but we also captured the in-memory context
+  // above because recently imported cookies, sessionStorage, and SPA tab state
+  // may not have flushed to Chromium's SQLite yet.
   this.intentionalDisconnect = true;
   if (this.browser) this.browser.removeAllListeners('disconnected');
   // Capture the Chromium PID before closing — if graceful close fails,
@@ -310,7 +318,10 @@ export async function handoff(this: any, message: string): Promise<string> {
       if (this.browser) {
         this.browser.on('disconnected', () => {
           if (this.intentionalDisconnect) return;
-          process.exit(1);
+          if (noExitOnUnexpectedDisconnect()) {
+            console.error('[nightcrawl] Browser disconnected during recovery; process exit suppressed by NIGHTCRAWL_NO_EXIT_ON_DISCONNECT.');
+          }
+          exitOnUnexpectedDisconnect(1);
         });
       }
     } catch {}
@@ -332,20 +343,34 @@ export async function handoff(this: any, message: string): Promise<string> {
   if (this.browser) {
     this.browser.on('disconnected', () => {
       if (this.intentionalDisconnect) return;
-      console.error('[browse] FATAL: Chromium process crashed or was killed. Server exiting.');
-      process.exit(1);
+      if (noExitOnUnexpectedDisconnect()) {
+        console.error('[browse] Browser disconnected; process exit suppressed by NIGHTCRAWL_NO_EXIT_ON_DISCONNECT.');
+      } else {
+        console.error('[browse] FATAL: Chromium process crashed or was killed. Server exiting.');
+      }
+      exitOnUnexpectedDisconnect(1);
     });
   }
 
-  // Navigate the headed browser to where the user was.
-  // Cookies are already in the profile — no restoreState needed.
-  const page = newContext.pages()[0] || await newContext.newPage();
-  const tabId = this.nextTabId++;
-  this.pages.set(tabId, page);
-  this.activeTabId = tabId;
-  this.wirePageEvents(page);
-  if (currentUrl && currentUrl !== 'about:blank') {
-    try { await page.goto(currentUrl, { waitUntil: 'load', timeout: 15000 }); } catch {}
+  if (stateBeforeHandoff?.pages?.length) {
+    for (const page of newContext.pages()) {
+      await page.close().catch(() => {});
+    }
+    // Headless and headed use the same persistent Chromium profile, so we must
+    // not clear-and-replace the profile's whole cookie jar during handoff. That
+    // can stall the headed transition. Upsert the saved in-memory cookies only
+    // so fresh cookies that have not flushed to SQLite are still preserved.
+    await this.restoreState(stateBeforeHandoff, { cookieMode: 'add' });
+  } else {
+    // Navigate the headed browser to where the user was.
+    const page = newContext.pages()[0] || await newContext.newPage();
+    const tabId = this.nextTabId++;
+    this.pages.set(tabId, page);
+    this.activeTabId = tabId;
+    this.wirePageEvents(page);
+    if (currentUrl && currentUrl !== 'about:blank') {
+      try { await page.goto(currentUrl, { waitUntil: 'load', timeout: 15000 }); } catch {}
+    }
   }
 
   return [
@@ -372,6 +397,7 @@ export async function resume(this: any): Promise<string> {
   }
 
   const currentUrl = this.getCurrentUrl();
+  const stateBeforeResume = await this.saveState().catch(() => null);
 
   try {
     this.intentionalDisconnect = true;
@@ -402,12 +428,15 @@ export async function resume(this: any): Promise<string> {
     this.headedUserDataDir = null;
 
     const engineConfig = parseEngineConfig();
-    // Clean up SingletonLock before re-launching.
+    // Clean up Chromium profile locks before re-launching. Headed shutdown can
+    // leave any of these behind long enough for the immediate headless relaunch
+    // to fail with "SingletonLock: File exists".
     try {
       const fs = require('fs');
       const path = require('path');
-      const lockFile = path.join(engineConfig.profileDir, 'SingletonLock');
-      if (fs.existsSync(lockFile)) fs.unlinkSync(lockFile);
+      for (const lockFile of ['SingletonLock', 'SingletonSocket', 'SingletonCookie']) {
+        try { fs.unlinkSync(path.join(engineConfig.profileDir, lockFile)); } catch {}
+      }
     } catch {}
 
     const { context } = await launchCloakBrowser({
@@ -423,20 +452,30 @@ export async function resume(this: any): Promise<string> {
     if (this.browser) {
       this.browser.on('disconnected', () => {
         if (this.intentionalDisconnect) return;
-        console.error('[nightcrawl] FATAL: Chromium process crashed or was killed. Server exiting.');
-        process.exit(1);
+        if (noExitOnUnexpectedDisconnect()) {
+          console.error('[nightcrawl] Browser disconnected after resume; process exit suppressed by NIGHTCRAWL_NO_EXIT_ON_DISCONNECT.');
+        } else {
+          console.error('[nightcrawl] FATAL: Chromium process crashed or was killed. Server exiting.');
+        }
+        exitOnUnexpectedDisconnect(1);
       });
     }
 
-    // Navigate to where the user was. Cookies are in the shared
-    // persistent profile — no manual restoreState needed.
-    const page = context.pages()[0] || await context.newPage();
-    const tabId = this.nextTabId++;
-    this.pages.set(tabId, page);
-    this.activeTabId = tabId;
-    this.wirePageEvents(page);
-    if (currentUrl && currentUrl !== 'about:blank') {
-      try { await page.goto(currentUrl, { waitUntil: 'load', timeout: 15000 }); } catch {}
+    if (stateBeforeResume?.pages?.length) {
+      for (const page of context.pages()) {
+        await page.close().catch(() => {});
+      }
+      await this.restoreState(stateBeforeResume, { cookieMode: 'add' });
+    } else {
+      // Navigate to where the user was.
+      const page = context.pages()[0] || await context.newPage();
+      const tabId = this.nextTabId++;
+      this.pages.set(tabId, page);
+      this.activeTabId = tabId;
+      this.wirePageEvents(page);
+      if (currentUrl && currentUrl !== 'about:blank') {
+        try { await page.goto(currentUrl, { waitUntil: 'load', timeout: 15000 }); } catch {}
+      }
     }
 
     console.log(`[nightcrawl] Resumed headless at ${currentUrl} — cookies persisted via Chromium profile`);
@@ -519,10 +558,21 @@ export async function detectLoginWall(
   }
 
   const hasLoginForm = await page.evaluate(() => {
+    const isVisible = (el: Element): boolean => {
+      const style = window.getComputedStyle(el);
+      if (
+        style.display === 'none' ||
+        style.visibility === 'hidden' ||
+        style.opacity === '0' ||
+        (el as HTMLElement).hidden ||
+        el.getAttribute('aria-hidden') === 'true'
+      ) return false;
+      const rect = el.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    };
     const checkDoc = (doc: Document): boolean => {
-      const pwInputs = doc.querySelectorAll('input[type="password"]');
-      const telInputs = doc.querySelectorAll('input[type="tel"]');
-      return pwInputs.length > 0 || telInputs.length > 0;
+      const authInputs = doc.querySelectorAll('input[type="password"], input[type="tel"]');
+      return Array.from(authInputs).some(input => isVisible(input));
     };
     if (checkDoc(document)) return true;
     for (const iframe of Array.from(document.querySelectorAll('iframe'))) {
@@ -539,11 +589,26 @@ export async function detectLoginWall(
   }
 
   const hasQrLogin = await page.evaluate(() => {
+    const isVisible = (el: Element): boolean => {
+      const style = window.getComputedStyle(el);
+      if (
+        style.display === 'none' ||
+        style.visibility === 'hidden' ||
+        style.opacity === '0' ||
+        (el as HTMLElement).hidden ||
+        el.getAttribute('aria-hidden') === 'true'
+      ) return false;
+      const rect = el.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    };
     const qrSelectors = [
       'canvas[class*="qrcode"]', 'img[class*="qrcode"]', 'img[class*="qr-"]',
       '[class*="qrcode"]', '[class*="login-qrcode"]', '[id*="qrcode"]',
     ];
-    return qrSelectors.some(sel => document.querySelector(sel) !== null);
+    return qrSelectors.some(sel => {
+      const node = document.querySelector(sel);
+      return node !== null && isVisible(node);
+    });
   }).catch(() => false);
 
   if (hasQrLogin) {
@@ -552,7 +617,7 @@ export async function detectLoginWall(
 
   const hasAuthBarrier = await page.evaluate(() => {
     const text = document.body?.innerText?.slice(0, 2000) || '';
-    return /请登录|请先登录|登录后|扫码登录|没有权限|sign\s*in\s*to\s*continue|log\s*in\s*required|authentication\s*required|验证码|captcha/i.test(text);
+    return /请登录|请先登录|登录后|登录\/注册后|扫码登录|关注公众号立即登录|手机号码登录|没有权限|sign\s*in\s*to\s*continue|log\s*in\s*required|authentication\s*required|验证码|captcha/i.test(text);
   }).catch(() => false);
 
   if (hasAuthBarrier) {
@@ -666,6 +731,7 @@ export async function autoHandover(this: any, targetUrl?: string): Promise<strin
 
       if (approval === 'rejected') {
         console.log(`[nightcrawl] User declined handoff for ${domain}.`);
+        return `HANDOFF_DECLINED: ${domain} still requires authentication. No browser was opened.`;
       }
     }
 
