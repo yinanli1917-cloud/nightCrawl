@@ -53,6 +53,7 @@ import {
   recordSyncSkipped,
 } from './sync-state';
 import { isFirstRun, runOnboarding } from './onboarding';
+import { persistBrowserStorage } from './persist-storage';
 import { emitActivity, subscribe, getActivityAfter, getActivityHistory, getSubscriberCount } from './activity';
 import { shouldRunPostCommandChecks } from './post-command-checks';
 // Bun.spawn used instead of child_process.spawn (compiled bun binaries
@@ -632,17 +633,25 @@ async function checkSensitivePage(_callerUrl: string): Promise<string> {
 // ─── Cookie/Storage Persistence ──────────────────────────────
 // Persist browser cookies + localStorage to disk so they survive daemon restarts.
 // Called periodically (every 5 min) and on shutdown.
+
+/** Headed handover/popups are opt-in; default UX is headless sync + agent errors only. */
+function isAutoHandoverEnabled(): boolean {
+  return process.env.BROWSE_AUTO_HANDOVER === '1';
+}
+
+const loginWallNotifyAt = new Map<string, number>();
+const LOGIN_WALL_NOTIFY_COOLDOWN_MS = 5 * 60_000;
+
+function shouldNotifyLoginWall(domain: string): boolean {
+  const now = Date.now();
+  const last = loginWallNotifyAt.get(domain) ?? 0;
+  if (now - last < LOGIN_WALL_NOTIFY_COOLDOWN_MS) return false;
+  loginWallNotifyAt.set(domain, now);
+  return true;
+}
+
 async function persistStorage() {
-  if (process.env.BROWSE_INCOGNITO === '1') return; // Incognito: never persist cookies
-  try {
-    const state = await browserManager.saveState();
-    if (state.cookies.length === 0) return;
-    const tmpFile = config.storageFile + '.tmp';
-    fs.writeFileSync(tmpFile, JSON.stringify(state, null, 2), { mode: 0o600 });
-    fs.renameSync(tmpFile, config.storageFile);
-  } catch {
-    // Non-fatal — best-effort persistence
-  }
+  await persistBrowserStorage(browserManager);
 }
 
 const storageFlushInterval = setInterval(persistStorage, 5 * 60_000);
@@ -1163,42 +1172,42 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
               console.error(`[nightcrawl] Auto-import error: ${err?.message ?? err}`);
             }
           }
-          // STEP 2: Fall through to autoHandover. If we haven't already
-          // explained the fingerprint-pinned situation (STEP 1 gate), add the
-          // actionable message now. Otherwise stay silent to avoid duplicates.
-          const stepTwoPinned = isPinned(wallUrl);
-          if (stepTwoPinned && !siteIsPinned) {
-            result += `\nFINGERPRINT_PINNED: ${detection.domain} — Arc cookies imported but wall persisted (empirical fingerprint-pinning). Requesting native approval for CloakBrowser handoff.`;
-          } else if (!stepTwoPinned) {
-            result += `\nRequesting native approval to open ${detection.domain} in your default browser. Will auto-resume when cookies are imported.`;
+          // STEP 2: Headed/auto-handover is opt-in (BROWSE_AUTO_HANDOVER=1).
+          // Default UX: agent sees LOGIN_REQUIRED and user logs in Arc + sync now.
+          if (isAutoHandoverEnabled()) {
+            const stepTwoPinned = isPinned(wallUrl);
+            if (stepTwoPinned && !siteIsPinned) {
+              result += `\nFINGERPRINT_PINNED: ${detection.domain} — Arc cookies imported but wall persisted. Starting opt-in auto-handover.`;
+            } else if (!stepTwoPinned) {
+              result += `\nRequesting opt-in auto-handover for ${detection.domain}.`;
+            }
+            browserManager.autoHandover(targetUrl).then(async handoverResult => {
+              if (handoverResult) console.log(`[nightcrawl] Auto-handover complete: ${handoverResult}`);
+              await persistStorage();
+            }).catch(err => {
+              console.error(`[nightcrawl] Auto-handover failed: ${err.message}`);
+            });
+          } else {
+            result += `\nLOGIN_REQUIRED: ${detection.domain} — log in via Arc/Chrome, run 'nc sync now', then retry. Headed handover is disabled (set BROWSE_AUTO_HANDOVER=1 to opt in).`;
           }
-          browserManager.autoHandover(targetUrl).then(async handoverResult => {
-            if (handoverResult) console.log(`[nightcrawl] Auto-handover complete: ${handoverResult}`);
-            // Persist cookies immediately after ANY successful handover —
-            // both Arc-import ("Zero windows") AND CloakBrowser headed login.
-            // Without this, cookies from headed sessions are only in memory
-            // and lost on daemon crash/restart (the 5-min periodic flush
-            // may never fire if the process exits first).
-            await persistStorage();
-          }).catch(err => {
-            console.error(`[nightcrawl] Auto-handover failed: ${err.message}`);
-          });
         } else {
           // Unknown domain: never pop a window. Surface a CONSENT_REQUIRED
           // signal so the agent can ask the user before taking action.
           result += `\nCONSENT_REQUIRED: ${detection.domain}`;
           result += `\nNo window opened. Ask the user "Approve auto-handoff for ${detection.domain}?" — if yes, run 'grant-handoff ${detection.domain}'.`;
           const consentDomain = detection.domain;
-          const cliPath = `${__dirname}/cli.ts`;
-          const bunPath = process.execPath;
-          notifyWithAction(
-            'nightCrawl: login wall detected',
-            `${consentDomain} needs your approval to enable auto-handoff.`,
-            {
-              label: 'Grant Access',
-              onClick: `"${bunPath}" run "${cliPath}" grant-handoff "${consentDomain}"`,
-            },
-          ).catch(() => {});
+          if (shouldNotifyLoginWall(consentDomain)) {
+            const cliPath = `${__dirname}/cli.ts`;
+            const bunPath = process.execPath;
+            notifyWithAction(
+              'nightCrawl: login wall detected',
+              `${consentDomain} needs your approval to enable auto-handoff.`,
+              {
+                label: 'Grant Access',
+                onClick: `"${bunPath}" run "${cliPath}" grant-handoff "${consentDomain}"`,
+              },
+            ).catch(() => {});
+          }
         }
       } else {
         // No login wall — mark domain as authenticated for fast-path
@@ -1249,14 +1258,14 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
               : lateCookies.some(c => c.name === '_dd_s' || c.name === 'datadome') ? 'datadome'
               : null;
             if (lateVendor) markPinnedObserved(origUrl, lateVendor);
-            if (detection.approved) {
+            if (detection.approved && isAutoHandoverEnabled()) {
               console.log(`[nightcrawl] Late redirect to ${url}. Auto-handover starting for ${domain}.`);
               browserManager.autoHandover(origUrl).then(async () => {
                 await persistStorage();
               }).catch(err => {
                 console.error(`[nightcrawl] Auto-handover failed: ${err?.message ?? err}`);
               });
-            } else {
+            } else if (!detection.approved && shouldNotifyLoginWall(domain)) {
               console.log(`[nightcrawl] Late redirect to login detected on ${domain} (unapproved). Surfacing notification.`);
               const lateCli = `${__dirname}/cli.ts`;
               const lateBun = process.execPath;
@@ -1268,6 +1277,8 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
                   onClick: `"${lateBun}" run "${lateCli}" grant-handoff "${domain}"`,
                 },
               ).catch(() => {});
+            } else if (detection.approved) {
+              console.log(`[nightcrawl] Late redirect login on ${domain}; headless-only mode (no BROWSE_AUTO_HANDOVER).`);
             }
             return;
           }
@@ -1882,19 +1893,19 @@ async function start() {
         if (process.env.BROWSE_INCOGNITO === '1') {
           console.log(`[browse] Incognito mode — no cookies restored`);
         } else {
-          const nativeCookies = await browserManager.saveState().then(s => s.cookies.length).catch(() => 0);
-          if (nativeCookies > 100) {
-            console.log(`[browse] ${nativeCookies} cookies loaded natively from Chromium profile`);
-          } else {
-            // Profile is empty or new — seed from JSON backup
+          let nativeCookies = await browserManager.saveState().then(s => s.cookies.length).catch(() => 0);
+          if (nativeCookies < 50) {
             try {
               const raw = fs.readFileSync(config.storageFile, 'utf-8');
               const saved = JSON.parse(raw);
               if (saved.cookies?.length > 0) {
                 await browserManager.restoreCookies(saved.cookies);
+                nativeCookies = saved.cookies.length;
                 console.log(`[browse] Seeded ${saved.cookies.length} cookies from JSON backup into Chromium profile`);
               }
             } catch {}
+          } else {
+            console.log(`[browse] ${nativeCookies} cookies loaded natively from Chromium profile`);
           }
         }
 

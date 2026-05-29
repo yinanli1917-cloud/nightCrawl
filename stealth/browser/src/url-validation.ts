@@ -1,11 +1,13 @@
 /**
  * URL validation for navigation commands — blocks dangerous schemes, cloud metadata
- * endpoints, and IPv6 private/reserved ranges that could be SSRF vectors.
+ * endpoints, hostile platforms, and IPv6 private/reserved ranges that could be SSRF vectors.
  *
  * [INPUT]: Raw URL string from navigation commands
  * [OUTPUT]: Throws on blocked URLs, resolves on safe ones
  * [POS]: Security gate before any Playwright navigation
  */
+
+import { assertSafeNavigation, HostileDomainError } from './hostile-domains';
 
 const BLOCKED_METADATA_HOSTS = new Set([
   '169.254.169.254',  // AWS/GCP/Azure instance metadata
@@ -128,6 +130,13 @@ export function escapeRegExp(input: string): string {
 }
 
 export async function validateNavigationUrl(url: string): Promise<void> {
+  try {
+    assertSafeNavigation(url, process.env);
+  } catch (err) {
+    if (err instanceof HostileDomainError) throw err;
+    throw err;
+  }
+
   let parsed: URL;
   try {
     parsed = new URL(url);

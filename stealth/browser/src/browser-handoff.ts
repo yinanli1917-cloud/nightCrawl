@@ -201,6 +201,14 @@ export async function handoff(this: any, message: string): Promise<string> {
   const currentUrl = this.getCurrentUrl();
   const stateBeforeHandoff = await this.saveState().catch(() => null);
 
+  try {
+    const { persistBrowserStorage } = await import('./persist-storage');
+    const n = await persistBrowserStorage(this);
+    if (n > 0) {
+      console.log(`[nightcrawl] Flushed ${n} cookies to disk before handoff close`);
+    }
+  } catch {}
+
   // SAFETY: refuse handoff to headed mode for hostile platforms.
   if (currentUrl && isHostile(currentUrl) && process.env.BROWSE_INCOGNITO !== '1') {
     const err = new HostileDomainError(currentUrl);
