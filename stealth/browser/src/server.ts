@@ -1406,9 +1406,15 @@ async function handleBridgeRoute(url: URL, req: Request): Promise<Response | nul
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       start(controller) {
-        bridgeHub.attach((cmd) => {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(cmd)}\n\n`));
-        });
+        // Flush a byte immediately so the client's fetch() resolves its
+        // Response now — Bun.serve withholds headers until the first chunk, and
+        // the host's fetch (unlike curl) waits for that first byte to connect.
+        controller.enqueue(encoder.encode(`: bridge connected\n\n`));
+        // Connection-scoped sink: detach() below only fires if THIS sink is
+        // still the live one, so a stale connection aborting during a restart
+        // can't clobber a newer connection's attach.
+        const sink = (cmd: any) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(cmd)}\n\n`));
+        bridgeHub.attach(sink);
         console.log('[nightcrawl] Real-browser bridge connected.');
         const heartbeat = setInterval(() => {
           try { controller.enqueue(encoder.encode(`: heartbeat\n\n`)); }
@@ -1416,8 +1422,7 @@ async function handleBridgeRoute(url: URL, req: Request): Promise<Response | nul
         }, 15000);
         req.signal.addEventListener('abort', () => {
           clearInterval(heartbeat);
-          bridgeHub.detach();
-          console.log('[nightcrawl] Real-browser bridge disconnected.');
+          bridgeHub.detach(sink);
           try { controller.close(); } catch {}
         });
       },

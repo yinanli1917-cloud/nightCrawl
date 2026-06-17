@@ -44,8 +44,14 @@ export class BridgeHub {
     this.send = send;
   }
 
-  /** Disconnect: reject everything in flight so no caller hangs. */
-  detach(): void {
+  /**
+   * Disconnect. Connection-scoped: if `send` is given and is NOT the current
+   * sink, this is a STALE connection's teardown (e.g. an old SSE aborting after
+   * a newer one already attached during a daemon restart) — ignore it so it
+   * can't clobber the live connection. With no arg, force a full disconnect.
+   */
+  detach(send?: (cmd: BridgeCommand) => void): void {
+    if (send && send !== this.send) return; // stale teardown — a newer sink is live
     this.send = null;
     for (const [, p] of this.pending) {
       clearTimeout(p.timer);

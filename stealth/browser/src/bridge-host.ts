@@ -16,8 +16,19 @@
  * Run standalone: `bun run bridge-host.ts` (the install script wraps this).
  */
 
+import * as fs from 'fs';
+import * as path from 'path';
 import { encodeMessage, FrameDecoder } from './bridge-protocol';
 import { readBridgeEndpoint } from './bridge-endpoint';
+
+// ─── Diagnostic log ─────────────────────────────────────────
+// The host is spawned by Chrome/Arc with stdout reserved for framed messages and
+// stderr swallowed, so debug goes to a file. Lets us see, post-hoc, whether the
+// browser spawned the host, found the daemon, and connected.
+const LOG_FILE = path.join(process.env.HOME || '/tmp', '.nightcrawl', 'bridge-host.log');
+function hlog(msg: string): void {
+  try { fs.appendFileSync(LOG_FILE, `${new Date().toISOString()} ${msg}\n`); } catch {}
+}
 
 // ─── stdout: write framed messages to the extension ─────────
 function sendToExtension(obj: unknown): void {
@@ -50,6 +61,7 @@ async function streamCommands(
   port: number,
   token: string,
   onCommand: (cmd: any) => void,
+  onConnect: () => void,
   signal: AbortSignal,
 ): Promise<void> {
   const resp = await fetch(`http://127.0.0.1:${port}/bridge/stream?token=${encodeURIComponent(token)}`, {
@@ -57,6 +69,7 @@ async function streamCommands(
     signal,
   });
   if (!resp.ok || !resp.body) throw new Error(`bridge stream HTTP ${resp.status}`);
+  onConnect();
 
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();
@@ -84,37 +97,52 @@ async function streamCommands(
 
 // ─── Main loop ──────────────────────────────────────────────
 export async function runBridgeHost(): Promise<void> {
-  const ep = readBridgeEndpoint();
-  if (!ep) {
-    sendToExtension({ type: 'bridge-error', error: 'no daemon endpoint — start nightcrawl first' });
-    return;
-  }
+  hlog(`host spawned (argv: ${process.argv.slice(2).join(' ') || 'none'})`);
+  const abort = new AbortController();
+  // The CURRENT daemon endpoint. Re-read every loop iteration so the host
+  // follows a daemon restart (the port changes each run) — the bug a real-Arc
+  // E2E surfaced: reading once at startup left the host pinned to a dead port.
+  let currentEp = readBridgeEndpoint();
 
   // stdin → extension results → daemon. The extension frames each result as
-  // {id, ok, result, error}; we relay it to the daemon's /bridge/result.
+  // {id, ok, result, error}; we relay it to whatever daemon we're bound to now.
   const decoder = new FrameDecoder();
   process.stdin.on('data', (chunk: Buffer) => {
     for (const msg of decoder.push(chunk)) {
-      if (msg && typeof msg.id === 'string') {
-        void postResult(ep.port, ep.token, msg);
+      if (msg && typeof msg.id === 'string' && currentEp) {
+        void postResult(currentEp.port, currentEp.token, msg);
       }
     }
   });
-
-  // daemon → command stream → extension, with reconnect-on-drop (graceful, NOT
-  // Kimi's tight 5s loop: a fixed backoff, and the connection lives here in the
-  // host process, so a service-worker eviction doesn't kill it).
-  const abort = new AbortController();
   process.stdin.on('end', () => abort.abort());
   process.on('SIGTERM', () => abort.abort());
   process.on('SIGINT', () => abort.abort());
 
-  sendToExtension({ type: 'bridge-ready' });
+  sendToExtension({ type: 'bridge-ready' }); // host process is up (not yet daemon-connected)
+
+  // daemon → command stream → extension, with calm reconnect (NOT Kimi's tight
+  // 5s thrash): the durable link lives in THIS process, and we re-discover the
+  // daemon endpoint on every attempt so restarts are handled transparently.
   while (!abort.signal.aborted) {
+    currentEp = readBridgeEndpoint();
+    if (!currentEp) {
+      hlog('no daemon endpoint yet — waiting');
+      await new Promise((r) => setTimeout(r, 2000)); // no daemon yet — wait, don't exit
+      continue;
+    }
     try {
-      await streamCommands(ep.port, ep.token, (cmd) => sendToExtension(cmd), abort.signal);
+      hlog(`connecting to daemon :${currentEp.port}`);
+      await streamCommands(
+        currentEp.port,
+        currentEp.token,
+        (cmd) => sendToExtension(cmd),
+        () => { hlog('connected'); sendToExtension({ type: 'bridge-connected' }); },
+        abort.signal,
+      );
+      hlog('stream ended');
     } catch (err: any) {
       if (abort.signal.aborted) break;
+      hlog(`stream error: ${String(err?.message ?? err)}`);
       sendToExtension({ type: 'bridge-reconnect', error: String(err?.message ?? err) });
     }
     if (abort.signal.aborted) break;

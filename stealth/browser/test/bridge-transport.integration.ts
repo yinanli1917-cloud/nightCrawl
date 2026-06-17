@@ -79,8 +79,8 @@ async function nextFrame(predicate: (f: any) => boolean, timeoutMs = 8000): Prom
   }
 }
 
-await nextFrame((f) => f.type === 'bridge-ready');
-console.log('   ✓ host connected to daemon SSE (bridge-ready)');
+await nextFrame((f) => f.type === 'bridge-connected');
+console.log('   ✓ host connected to daemon SSE (bridge-connected)');
 
 console.log('3. dispatching `goto --engine=real` (daemon → host push)...');
 const realCmd = sh(cli, ['goto', 'https://example.com', '--engine=real']);
@@ -97,7 +97,40 @@ if (!realOut.includes('NAV-OK-REAL-BROWSER')) {
 }
 console.log('   ✓ --engine=real resolved with the real-browser result');
 
-console.log('\n✅ PASS: daemon↔host bridge transport works end-to-end (Chrome hop excluded).');
+// ── Rediscover scenario (the real-Arc bug): the SAME long-lived host must pick
+//    up a NEW daemon endpoint after a daemon restart (ports change each run).
+console.log('5. restarting daemon (new port) — host must rediscover...');
+try { const pid = JSON.parse(fs.readFileSync(env.BROWSE_STATE_FILE, 'utf-8')).pid; process.kill(pid); } catch {}
+fs.rmSync(endpointFile, { force: true });
+await Bun.sleep(1500);
+await out(sh(cli, ['goto', 'https://example.com']));   // fresh daemon, new endpoint
+let w2 = 0; while (!fs.existsSync(endpointFile) && w2 < 5000) { await Bun.sleep(200); w2 += 200; }
+// Wait for the host to REDISCOVER the new daemon (a 2nd bridge-connected) — this
+// is the fix under test: a long-lived host re-reads the endpoint each reconnect.
+let recon = 0;
+while (frames.filter((f) => f.type === 'bridge-connected').length < 2 && recon < 14000) { await Bun.sleep(300); recon += 300; }
+if (frames.filter((f) => f.type === 'bridge-connected').length < 2) fail('host did not reconnect to the restarted daemon (no 2nd bridge-connected)');
+console.log('   ✓ host re-read endpoint and reconnected to the new daemon');
+// The new daemon has a fresh hub, so its first command id is also "b1" — match
+// by NEW frame arrival (after this point), not by id.
+const beforeIdx = frames.length;
+const realCmd2 = sh(cli, ['goto', 'https://example.com', '--engine=real']);
+let cmdFrame2 = null, w3 = 0;
+while (!cmdFrame2 && w3 < 12000) {
+  cmdFrame2 = frames.slice(beforeIdx).find((f) => f.command === 'goto');
+  if (!cmdFrame2) { await Bun.sleep(200); w3 += 200; }
+}
+if (!cmdFrame2) {
+  const diag = await out(realCmd2).catch(() => '(no output)');
+  fail(`post-restart goto command never reached the host.\nrealCmd2 output:\n${diag}`);
+}
+hostStdin.write(encodeMessage({ id: cmdFrame2.id, ok: true, result: 'NAV-AFTER-RESTART' }));
+hostStdin.flush();
+const realOut2 = await out(realCmd2);
+if (!realOut2.includes('NAV-AFTER-RESTART')) fail(`host did not rediscover the restarted daemon. Got:\n${realOut2}`);
+console.log('   ✓ host rediscovered the restarted daemon and the command resolved');
+
+console.log('\n✅ PASS: daemon↔host bridge transport works end-to-end + survives daemon restart (Chrome hop excluded).');
 try { host.kill(); } catch {}
 cleanup();
 process.exit(0);

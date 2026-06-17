@@ -61,4 +61,16 @@ describe('BridgeHub', () => {
     hub.attach(() => {});
     expect(() => hub.deliver('nonexistent', { ok: true })).not.toThrow();
   });
+
+  test('a STALE connection detach does not clobber a newer attach (restart race)', () => {
+    const hub = new BridgeHub();
+    const sinkA = () => {};
+    const sinkB = () => {};
+    hub.attach(sinkA);
+    hub.attach(sinkB);          // a newer SSE connection supersedes the old one
+    hub.detach(sinkA);          // the OLD connection finally aborts
+    expect(hub.isConnected()).toBe(true);  // still live via sinkB
+    hub.detach(sinkB);          // the live connection aborts
+    expect(hub.isConnected()).toBe(false);
+  });
 });
