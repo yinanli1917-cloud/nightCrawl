@@ -1,15 +1,18 @@
 /**
  * Daemon↔host bridge transport integration check (NO Chrome).
  *
- * Proves the reliability-critical path that Kimi got wrong, end-to-end minus the
- * chrome.debugger hop: a `--engine=real` command dispatched by the daemon is
- * pushed over SSE to the native-messaging host, framed to its stdout (where the
- * extension would read it); we simulate the extension by framing a result back
- * to the host's stdin; the host POSTs it to /bridge/result and the original
- * command resolves with that result.
+ * Proves the reliability-critical path Kimi got wrong, end-to-end minus the
+ * chrome.debugger hop: --engine=real commands flow daemon → SSE → native host →
+ * (simulated extension) → /bridge/result → resolved. Also proves a long-lived
+ * host REDISCOVERS the daemon after a restart (ports change per run) — the bug a
+ * real-Arc E2E surfaced.
  *
- * Not a *.test.ts (it orchestrates real subprocesses) — run directly:
- *   bun test/bridge-transport.integration.ts
+ * The "extension" is simulated by an auto-replier that answers every command the
+ * host forwards on its stdout with a result on its stdin. The assertions poll
+ * the real `--engine=real` round-trip, so they tolerate reconnect latency
+ * instead of racing on connection-event ordering.
+ *
+ * Not a *.test.ts (orchestrates real subprocesses) — run: bun test/bridge-transport.integration.ts
  */
 
 import * as fs from 'fs';
@@ -33,104 +36,78 @@ const env = {
 };
 fs.mkdirSync(path.join(TMP, 'state'), { recursive: true });
 
-function sh(cmd: string, args: string[]) {
-  return Bun.spawn(['bun', 'run', cmd, ...args], { env, stdout: 'pipe', stderr: 'pipe', stdin: 'pipe' });
+function sh(args: string[]) {
+  return Bun.spawn(['bun', 'run', cli, ...args], { env, stdout: 'pipe', stderr: 'pipe', stdin: 'pipe' });
 }
 async function out(proc: any): Promise<string> {
   return (await new Response(proc.stdout).text()) + (await new Response(proc.stderr).text());
 }
+function bootDaemon() { return out(sh(['goto', 'https://example.com'])); }
+function daemonPid(): number | undefined {
+  try { return JSON.parse(fs.readFileSync(env.BROWSE_STATE_FILE, 'utf-8')).pid; } catch { return undefined; }
+}
 function fail(msg: string): never { console.error(`\n❌ FAIL: ${msg}`); cleanup(); process.exit(1); }
 function cleanup() {
-  try { const pid = JSON.parse(fs.readFileSync(env.BROWSE_STATE_FILE, 'utf-8')).pid; process.kill(pid); } catch {}
+  const pid = daemonPid(); if (pid) { try { process.kill(pid); } catch {} }
+  try { host?.kill(); } catch {}
   try { fs.rmSync(TMP, { recursive: true, force: true }); } catch {}
 }
 
-console.log('1. booting daemon...');
-const bootOut = await out(sh(cli, ['goto', 'https://example.com']));
-// Endpoint is written during server startup; poll briefly in case of races.
-let waited = 0;
-while (!fs.existsSync(endpointFile) && waited < 5000) { await Bun.sleep(200); waited += 200; }
-if (!fs.existsSync(endpointFile)) fail(`daemon did not publish bridge-endpoint.json.\nboot output:\n${bootOut}`);
-console.log('   ✓ endpoint published:', fs.readFileSync(endpointFile, 'utf-8'));
+// ── Run `--engine=real` and report whether it round-tripped through the bridge.
+async function realRoundTrips(): Promise<boolean> {
+  const o = await out(sh(['goto', 'https://example.com', '--engine=real']));
+  return o.includes('[real-browser]');
+}
+async function pollReal(label: string, timeoutMs: number) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (await realRoundTrips()) { console.log(`   ✓ ${label}`); return; }
+    await Bun.sleep(500);
+  }
+  fail(`${label} — --engine=real never round-tripped within ${timeoutMs}ms`);
+}
 
-console.log('2. spawning native-messaging host (simulating Chrome)...');
-const host = Bun.spawn(['bun', 'run', hostScript], { env, stdout: 'pipe', stderr: 'pipe', stdin: 'pipe' });
+let host: any;
+
+console.log('1. booting daemon...');
+await bootDaemon();
+let w = 0; while (!fs.existsSync(endpointFile) && w < 5000) { await Bun.sleep(200); w += 200; }
+if (!fs.existsSync(endpointFile)) fail('daemon did not publish bridge-endpoint.json');
+console.log('   ✓ endpoint published');
+
+console.log('2. spawning native host + auto-replier (simulating the extension)...');
+host = Bun.spawn(['bun', 'run', hostScript], { env, stdout: 'pipe', stderr: 'pipe', stdin: 'pipe' });
 const dec = new FrameDecoder();
 const reader = host.stdout.getReader();
-const hostStdin = host.stdin; // Bun FileSink: .write()/.flush()
-
-// Pump host stdout frames into a queue.
-const frames: any[] = [];
-let resolveFrame: (() => void) | null = null;
+// Auto-replier: answer every command the host forwards. This is the "extension".
 (async () => {
   for (;;) {
     const { value, done } = await reader.read();
     if (done) break;
-    for (const f of dec.push(Buffer.from(value))) { frames.push(f); resolveFrame?.(); }
+    for (const f of dec.push(Buffer.from(value))) {
+      if (f && typeof f.id === 'string' && f.command) {
+        host.stdin.write(encodeMessage({ id: f.id, ok: true, result: `SIM-OK:${f.command}` }));
+        host.stdin.flush();
+      }
+    }
   }
 })();
-async function nextFrame(predicate: (f: any) => boolean, timeoutMs = 8000): Promise<any> {
-  const start = Date.now();
-  for (;;) {
-    const hit = frames.find(predicate);
-    if (hit) return hit;
-    if (Date.now() - start > timeoutMs) fail('timed out waiting for a host stdout frame');
-    await new Promise<void>((r) => { resolveFrame = r; setTimeout(r, 200); });
-  }
+
+console.log('3. --engine=real round-trips daemon → host → (extension) → daemon...');
+await pollReal('round-trip works', 15000);
+
+console.log('4. restarting daemon (new port) — host must REDISCOVER...');
+const oldPid = daemonPid();
+if (oldPid) {
+  try { process.kill(oldPid); } catch {}
+  let k = 0; while (k < 10000) { try { process.kill(oldPid, 0); } catch { break; } await Bun.sleep(200); k += 200; }
 }
-
-await nextFrame((f) => f.type === 'bridge-connected');
-console.log('   ✓ host connected to daemon SSE (bridge-connected)');
-
-console.log('3. dispatching `goto --engine=real` (daemon → host push)...');
-const realCmd = sh(cli, ['goto', 'https://example.com', '--engine=real']);
-const cmdFrame = await nextFrame((f) => f.command === 'goto' && typeof f.id === 'string');
-console.log('   ✓ command reached host stdout:', JSON.stringify(cmdFrame));
-
-console.log('4. simulating extension result (host stdin → daemon /bridge/result)...');
-hostStdin.write(encodeMessage({ id: cmdFrame.id, ok: true, result: 'NAV-OK-REAL-BROWSER' }));
-hostStdin.flush();
-
-const realOut = await out(realCmd);
-if (!realOut.includes('NAV-OK-REAL-BROWSER')) {
-  fail(`--engine=real did not return the bridge result. Got:\n${realOut}`);
-}
-console.log('   ✓ --engine=real resolved with the real-browser result');
-
-// ── Rediscover scenario (the real-Arc bug): the SAME long-lived host must pick
-//    up a NEW daemon endpoint after a daemon restart (ports change each run).
-console.log('5. restarting daemon (new port) — host must rediscover...');
-try { const pid = JSON.parse(fs.readFileSync(env.BROWSE_STATE_FILE, 'utf-8')).pid; process.kill(pid); } catch {}
 fs.rmSync(endpointFile, { force: true });
-await Bun.sleep(1500);
-await out(sh(cli, ['goto', 'https://example.com']));   // fresh daemon, new endpoint
+await Bun.sleep(500);
+await bootDaemon();
 let w2 = 0; while (!fs.existsSync(endpointFile) && w2 < 5000) { await Bun.sleep(200); w2 += 200; }
-// Wait for the host to REDISCOVER the new daemon (a 2nd bridge-connected) — this
-// is the fix under test: a long-lived host re-reads the endpoint each reconnect.
-let recon = 0;
-while (frames.filter((f) => f.type === 'bridge-connected').length < 2 && recon < 14000) { await Bun.sleep(300); recon += 300; }
-if (frames.filter((f) => f.type === 'bridge-connected').length < 2) fail('host did not reconnect to the restarted daemon (no 2nd bridge-connected)');
-console.log('   ✓ host re-read endpoint and reconnected to the new daemon');
-// The new daemon has a fresh hub, so its first command id is also "b1" — match
-// by NEW frame arrival (after this point), not by id.
-const beforeIdx = frames.length;
-const realCmd2 = sh(cli, ['goto', 'https://example.com', '--engine=real']);
-let cmdFrame2 = null, w3 = 0;
-while (!cmdFrame2 && w3 < 12000) {
-  cmdFrame2 = frames.slice(beforeIdx).find((f) => f.command === 'goto');
-  if (!cmdFrame2) { await Bun.sleep(200); w3 += 200; }
-}
-if (!cmdFrame2) {
-  const diag = await out(realCmd2).catch(() => '(no output)');
-  fail(`post-restart goto command never reached the host.\nrealCmd2 output:\n${diag}`);
-}
-hostStdin.write(encodeMessage({ id: cmdFrame2.id, ok: true, result: 'NAV-AFTER-RESTART' }));
-hostStdin.flush();
-const realOut2 = await out(realCmd2);
-if (!realOut2.includes('NAV-AFTER-RESTART')) fail(`host did not rediscover the restarted daemon. Got:\n${realOut2}`);
-console.log('   ✓ host rediscovered the restarted daemon and the command resolved');
+await pollReal('host rediscovered the restarted daemon (new port) and round-trips again', 25000);
 
-console.log('\n✅ PASS: daemon↔host bridge transport works end-to-end + survives daemon restart (Chrome hop excluded).');
-try { host.kill(); } catch {}
+console.log('\n✅ PASS: daemon↔host transport works + survives daemon restart (Chrome hop excluded).');
 cleanup();
 process.exit(0);

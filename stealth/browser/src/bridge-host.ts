@@ -35,7 +35,12 @@ function sendToExtension(obj: unknown): void {
   try {
     process.stdout.write(encodeMessage(obj));
   } catch {
-    // Extension gone — Chrome will close us; nothing to recover here.
+    // stdout pipe broke = Chrome closed the port (extension/SW gone). THIS is
+    // the real "disconnected" signal — exit cleanly. We deliberately do NOT key
+    // exit off stdin 'end' (it fires spuriously when Chrome/Arc spawns the host,
+    // which caused a connect→exit→reconnect thrash loop).
+    hlog('stdout pipe closed — exiting');
+    process.exit(0);
   }
 }
 
@@ -114,7 +119,9 @@ export async function runBridgeHost(): Promise<void> {
       }
     }
   });
-  process.stdin.on('end', () => abort.abort());
+  // NB: deliberately NOT aborting on stdin 'end' — it fires spuriously under the
+  // browser's spawn and caused a connect→exit→reconnect thrash. The host exits
+  // when Chrome closes the port (SIGTERM, or EPIPE on the next stdout write).
   process.on('SIGTERM', () => abort.abort());
   process.on('SIGINT', () => abort.abort());
 
