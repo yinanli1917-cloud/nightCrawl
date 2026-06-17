@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "nightCrawl Bridge",
+  "version": "0.1.0",
+  "description": "Lets your local nightCrawl daemon drive THIS real browser as Engine R \u2014 your real fingerprint and live sessions, used in the background.",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "debugger",
+    "tabs",
+    "scripting",
+    "nativeMessaging",
+    "storage",
+    "alarms"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "nightCrawl Bridge"
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqtpeN5g6e7ycOo8zLr/JjeQmaDzgm7yksVM93UUtDxep+36ErGJ+dBz4aC4/1nJktJXWYRNfYZRu3DTvzg7yBRR0ZRXc2zh0WOiZrM+ovDSoSpxKOYcpI5ys+kHN2IT69sJWMOKxgDHiJ35M2A4qCnIxmpXcf0GmH+QwGvYKbN/zbKD4pJCA1aGhqhhUVvC9TQB8P+eVoY+jFBdz5w9x59VyyXk0ZjlnhdsG3tleZ502bUD9UZ8yS4nYLA0wR2KnEwgdQQ29fEihJXhzvXDOmlz7BRZR5qUEnj05iM/iI8tbnzEH5gVGNQN5j5JdBoFOr9jBco1y+V8rzu9n0XJ9EQIDAQAB"
+}

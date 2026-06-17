@@ -1,0 +1,87 @@
+/**
+ * [INPUT]: None (in-memory correlation; the transport is injected via attach()).
+ * [OUTPUT]: Exports BridgeCommand, BridgeResult, BridgeHub.
+ * [POS]: Phase-3B bridge transport — the daemon-side brain that pushes a command
+ *        to the connected real-browser bridge and awaits its result.
+ *
+ * Reliability contract (the fix for Kimi's lost-on-reconnect failure): every
+ * dispatch() promise is GUARANTEED to settle — it resolves on deliver(), rejects
+ * on timeout, and rejects on detach() (disconnect). It never hangs and never
+ * silently drops an in-flight command. The hub is transport-agnostic: server.ts
+ * attaches an SSE writer as the `send` sink and routes /bridge/result to deliver().
+ */
+
+export interface BridgeCommand {
+  id: string;
+  command: string;
+  args: string[];
+}
+
+export interface BridgeResult {
+  ok: boolean;
+  result?: any;
+  error?: string;
+}
+
+interface Pending {
+  resolve: (r: any) => void;
+  reject: (e: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+}
+
+export class BridgeHub {
+  private send: ((cmd: BridgeCommand) => void) | null = null;
+  private pending = new Map<string, Pending>();
+  private seq = 0;
+
+  /** True when a real-browser bridge is connected and able to take commands. */
+  isConnected(): boolean {
+    return this.send !== null;
+  }
+
+  /** Connect a transport sink (the SSE writer that pushes commands to the host). */
+  attach(send: (cmd: BridgeCommand) => void): void {
+    this.send = send;
+  }
+
+  /** Disconnect: reject everything in flight so no caller hangs. */
+  detach(): void {
+    this.send = null;
+    for (const [, p] of this.pending) {
+      clearTimeout(p.timer);
+      p.reject(new Error('bridge disconnected'));
+    }
+    this.pending.clear();
+  }
+
+  /** Push a command to the bridge and await its result (always settles). */
+  dispatch(command: string, args: string[], timeoutMs = 30000): Promise<any> {
+    if (!this.send) return Promise.reject(new Error('real-browser bridge is offline'));
+    const id = `b${++this.seq}`;
+    const send = this.send;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error(`bridge command timeout (${timeoutMs}ms)`));
+      }, timeoutMs);
+      this.pending.set(id, { resolve, reject, timer });
+      try {
+        send({ id, command, args });
+      } catch (err) {
+        clearTimeout(timer);
+        this.pending.delete(id);
+        reject(err instanceof Error ? err : new Error(String(err)));
+      }
+    });
+  }
+
+  /** Settle the matching dispatch with a result or error. Unknown id → ignored. */
+  deliver(id: string, result: any, error?: string): void {
+    const p = this.pending.get(id);
+    if (!p) return;
+    clearTimeout(p.timer);
+    this.pending.delete(id);
+    if (error) p.reject(new Error(error));
+    else p.resolve(result);
+  }
+}
