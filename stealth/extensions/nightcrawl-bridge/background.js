@@ -1,63 +1,75 @@
 /**
  * nightCrawl Bridge — MV3 service worker (Engine R).
  *
- * Connects to the native-messaging host (com.nightcrawl.bridge), which holds the
- * durable link to the local daemon. Receives {id, command, args} commands and
- * executes them against the bound tab via chrome.debugger (CDP), posting back
- * {id, ok, result|error}. Chrome frames native-messaging objects for us — the
- * manual 4-byte framing lives in the host, not here.
+ * Transport (reverse-engineered from Kimi WebBridge, which solved this exact
+ * problem): this service worker dials OUT to the nightCrawl daemon's local
+ * WebSocket server and drives the active page via chrome.debugger (CDP). There
+ * is NO native-messaging host — those die under Chrome's bare spawn env and
+ * can't keep an MV3 worker alive. An outbound WS + chrome.alarms keepalive makes
+ * the inevitable SW-eviction reconnect harmless and self-healing.
  *
- * Why this design beats Kimi's: the durable daemon connection lives in the host
- * PROCESS, not in this evictable service worker. If the worker is evicted, the
- * native port closes and we simply reconnect on the next wake (a chrome.alarms
- * keepalive limits eviction) — a calm reconnect, not a 5-second thrash loop.
+ * Protocol over the socket:
+ *   → {type:'hello', payload:{extensionVersion}}     (we send on open)
+ *   ← {type:'hello_ack'}
+ *   ← {type:'tool_call', requestId, payload:{name,args}}
+ *   → {type:'tool_result', responseToRequestId, payload:{data|error}}
+ *   →/← {type:'ping'} / {type:'pong'}
  *
- * NOTE: this file is plain JS (extensions can't import the TS modules); the
- * command→CDP mapping and tab-rebind logic mirror src/bridge-commands.ts and
- * src/bridge-session.ts, which ARE unit-tested.
+ * Page-control (toCdp) and tab-rebind logic mirror the unit-tested
+ * src/bridge-commands.ts and src/bridge-session.ts.
  */
 
 'use strict';
 
-const HOST_NAME = 'com.nightcrawl.bridge';
-let port = null;
+const WS_URL = 'ws://127.0.0.1:10087/'; // must match bridge-ws.ts BRIDGE_WS_PORT
+let ws = null;
 /** @type {{tabId:number, windowId:number, url:string, title:string}|null} */
 let bound = null;
 
-// ─── Native-messaging host connection ───────────────────────
+// ─── WebSocket transport + keepalive ────────────────────────
 function connect() {
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
   try {
-    port = chrome.runtime.connectNative(HOST_NAME);
+    ws = new WebSocket(WS_URL);
   } catch (e) {
-    console.error('[bridge] connectNative failed:', e);
-    port = null;
+    console.warn('[bridge] ws construct failed:', e);
+    scheduleReconnect();
     return;
   }
-  port.onMessage.addListener(onHostMessage);
-  port.onDisconnect.addListener(() => {
-    console.warn('[bridge] host disconnected:', chrome.runtime.lastError?.message);
-    port = null;
-    // Calm reconnect (not a thrash loop). The next alarm/wake also reconnects.
-    setTimeout(connect, 2000);
-  });
-  console.log('[bridge] connected to native host');
+  ws.onopen = () => {
+    console.log('[bridge] ws connected');
+    send({ type: 'hello', payload: { extensionVersion: chrome.runtime.getManifest().version } });
+  };
+  ws.onmessage = (ev) => onMessage(ev.data);
+  ws.onclose = () => { console.warn('[bridge] ws closed'); ws = null; scheduleReconnect(); };
+  ws.onerror = () => { try { ws && ws.close(); } catch {} };
+}
+function send(obj) {
+  try { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj)); } catch {}
+}
+function scheduleReconnect() {
+  // Calm fixed backoff (NOT a tight thrash). The alarm below also revives us
+  // after the SW is evicted, which setTimeout alone cannot survive.
+  setTimeout(connect, 3000);
 }
 
-async function onHostMessage(msg) {
-  if (!msg || !msg.command) return; // control frame (bridge-ready/reconnect/error)
-  const { id, command, args } = msg;
-  try {
-    const result = await execute(command, args || []);
-    port?.postMessage({ id, ok: true, result });
-  } catch (e) {
-    port?.postMessage({ id, ok: false, error: String((e && e.message) || e) });
+async function onMessage(raw) {
+  let m;
+  try { m = JSON.parse(raw); } catch { return; }
+  if (m.type === 'tool_call') {
+    const { requestId, payload } = m;
+    try {
+      const data = await execute(payload.name, payload.args || []);
+      send({ type: 'tool_result', responseToRequestId: requestId, payload: { data } });
+    } catch (e) {
+      send({ type: 'tool_result', responseToRequestId: requestId, payload: { error: String((e && e.message) || e) } });
+    }
   }
+  // hello_ack / pong: nothing to do.
 }
 
 // ─── Command → CDP (mirror of src/bridge-commands.ts) ───────
-function evaluate(expression) {
-  return { method: 'Runtime.evaluate', params: { expression, returnByValue: true } };
-}
+function evaluate(expression) { return { method: 'Runtime.evaluate', params: { expression, returnByValue: true } }; }
 function toCdp(command, args) {
   switch (command) {
     case 'goto': return { method: 'Page.navigate', params: { url: args[0] || '' } };
@@ -72,8 +84,7 @@ function toCdp(command, args) {
       return evaluate(`(() => { const el = document.querySelector(${sel}); if (!el) throw new Error('no element: ' + ${sel}); el.scrollIntoView({block:'center'}); el.click(); return true; })()`);
     }
     case 'fill': {
-      const sel = JSON.stringify(args[0] || '');
-      const val = JSON.stringify(args[1] || '');
+      const sel = JSON.stringify(args[0] || ''); const val = JSON.stringify(args[1] || '');
       return evaluate(`(() => { const el = document.querySelector(${sel}); if (!el) throw new Error('no element: ' + ${sel}); el.focus(); el.value = ${val}; el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); return true; })()`);
     }
     default: throw new Error(`command '${command}' not supported by the bridge`);
@@ -90,11 +101,9 @@ function resolveBoundTab(stored, tabs) {
   urlMatches.sort((a, b) => score(b) - score(a));
   return urlMatches[0].id;
 }
-
-async function ensureBoundTab(command, args) {
+async function ensureBoundTab(command) {
   const tabs = await chrome.tabs.query({});
-  // goto with no live bound tab → bind a fresh owned background tab.
-  if (command === 'goto' && (!bound || !resolveBoundTab(bound, tabs))) {
+  if (command === 'goto' && (!bound || resolveBoundTab(bound, tabs) == null)) {
     const tab = await chrome.tabs.create({ url: 'about:blank', active: false });
     bound = { tabId: tab.id, windowId: tab.windowId, url: tab.url || '', title: tab.title || '' };
     await attach(tab.id);
@@ -102,7 +111,7 @@ async function ensureBoundTab(command, args) {
   }
   if (!bound) throw new Error('SESSION_LOST: no bound tab — run a goto first');
   const tabId = resolveBoundTab(bound, tabs);
-  if (tabId == null) throw new Error('SESSION_LOST: bound tab is gone (closed) — run a goto to re-bind');
+  if (tabId == null) throw new Error('SESSION_LOST: bound tab is gone — run a goto to re-bind');
   if (tabId !== bound.tabId) { bound.tabId = tabId; await attach(tabId); }
   return tabId;
 }
@@ -127,31 +136,30 @@ function sendCdp(tabId, method, params) {
     });
   });
 }
-
 async function execute(command, args) {
-  const tabId = await ensureBoundTab(command, args);
+  const tabId = await ensureBoundTab(command);
   const cdp = toCdp(command, args);
   const res = await sendCdp(tabId, cdp.method, cdp.params);
-  // Refresh bound metadata after navigation.
   if (command === 'goto') {
     try { const t = await chrome.tabs.get(tabId); bound.url = t.url || args[0]; bound.title = t.title || ''; } catch {}
     return `navigated to ${args[0] || ''}`;
   }
   if (cdp.method === 'Runtime.evaluate') {
-    if (res?.exceptionDetails) throw new Error(res.exceptionDetails.text || 'evaluate error');
-    return res?.result?.value ?? '';
+    if (res && res.exceptionDetails) throw new Error(res.exceptionDetails.text || 'evaluate error');
+    return (res && res.result && res.result.value) ?? '';
   }
-  if (cdp.method === 'Page.captureScreenshot') return res?.data ?? '';
+  if (cdp.method === 'Page.captureScreenshot') return (res && res.data) || '';
   return res;
 }
-
-// Detach cleanup: if the user opens DevTools or the tab closes, drop the binding.
 chrome.debugger.onDetach.addListener(({ tabId }) => { attached.delete(tabId); });
-chrome.tabs.onRemoved.addListener((tabId) => { attached.delete(tabId); if (bound?.tabId === tabId) bound = null; });
+chrome.tabs.onRemoved.addListener((tabId) => { attached.delete(tabId); if (bound && bound.tabId === tabId) bound = null; });
 
-// ─── Lifecycle: connect + keepalive ─────────────────────────
+// ─── Lifecycle: connect + alarms keepalive ──────────────────
 chrome.runtime.onStartup.addListener(connect);
 chrome.runtime.onInstalled.addListener(connect);
-chrome.alarms.create('bridge-keepalive', { periodInMinutes: 0.4 }); // ~24s < SW eviction
-chrome.alarms.onAlarm.addListener(() => { if (!port) connect(); });
+chrome.alarms.create('bridge-keepalive', { periodInMinutes: 0.5 }); // ~30s: revive SW + ping
+chrome.alarms.onAlarm.addListener(() => {
+  if (!ws || ws.readyState !== WebSocket.OPEN) connect();
+  else send({ type: 'ping' });
+});
 connect();

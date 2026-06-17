@@ -59,7 +59,7 @@ import { recordWin } from './domain-strategy';
 import type { Engine } from './strategy-advisor';
 import { BridgeHub } from './bridge-hub';
 import { isBridgeCommand } from './bridge-commands';
-import { writeBridgeEndpoint, clearBridgeEndpoint } from './bridge-endpoint';
+import { startBridgeWsServer } from './bridge-ws';
 import { emitActivity, subscribe, getActivityAfter, getActivityHistory, getSubscriberCount } from './activity';
 import { shouldRunPostCommandChecks } from './post-command-checks';
 // Bun.spawn used instead of child_process.spawn (compiled bun binaries
@@ -79,10 +79,13 @@ const tokenRegistry = new TokenRegistry();
 const mainToken = tokenRegistry.createFullAccessToken(AUTH_TOKEN);
 
 // ─── Engine R: real-browser bridge hub ──────────────────────────
-// One hub per daemon. The native-messaging host subscribes via /bridge/stream
-// and posts results to /bridge/result; --engine=real commands dispatch through
-// it. Connection lives in the OS-managed host process, not an evictable SW.
+// One hub per daemon. The MV3 extension dials OUT to our WebSocket server
+// (bridge-ws.ts) and drives pages via chrome.debugger; --engine=real commands
+// dispatch through the hub to that connection. (Reverse-engineered from Kimi
+// WebBridge — native messaging hosts die under Chrome's spawn env and can't keep
+// an MV3 SW alive; an outbound WS sidesteps both.)
 const bridgeHub = new BridgeHub();
+let bridgeWs: { stop: () => void; port: number } | null = null;
 const BROWSE_PORT = parseInt(process.env.BROWSE_PORT || '0', 10);
 const IDLE_TIMEOUT_MS = parseInt(process.env.BROWSE_IDLE_TIMEOUT || '1800000', 10); // 30 min
 // Sidebar chat is always enabled in headed mode (ungated in v0.12.0)
@@ -1390,66 +1393,6 @@ async function appendEngineGuidance(resp: Response, body: any): Promise<Response
 }
 
 /**
- * Serve the real-browser bridge transport endpoints. Reachable over TCP (the
- * main server when port-mode, or the sidecar when UDS-mode) so the
- * Chrome-spawned native-messaging host can connect.
- *   GET  /bridge/stream  — SSE; the host subscribes, the hub pushes commands.
- *   POST /bridge/result  — the host delivers a command's result back to the hub.
- * Returns null for non-bridge paths so callers fall through to other routes.
- */
-async function handleBridgeRoute(url: URL, req: Request): Promise<Response | null> {
-  if (url.pathname === '/bridge/stream') {
-    const streamToken = url.searchParams.get('token');
-    if (!validateAuth(req) && streamToken !== AUTH_TOKEN) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
-    }
-    const encoder = new TextEncoder();
-    const stream = new ReadableStream({
-      start(controller) {
-        // Flush a byte immediately so the client's fetch() resolves its
-        // Response now — Bun.serve withholds headers until the first chunk, and
-        // the host's fetch (unlike curl) waits for that first byte to connect.
-        controller.enqueue(encoder.encode(`: bridge connected\n\n`));
-        // Connection-scoped sink: detach() below only fires if THIS sink is
-        // still the live one, so a stale connection aborting during a restart
-        // can't clobber a newer connection's attach.
-        const sink = (cmd: any) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(cmd)}\n\n`));
-        bridgeHub.attach(sink);
-        console.log('[nightcrawl] Real-browser bridge connected.');
-        const heartbeat = setInterval(() => {
-          try { controller.enqueue(encoder.encode(`: heartbeat\n\n`)); }
-          catch { clearInterval(heartbeat); }
-        }, 15000);
-        req.signal.addEventListener('abort', () => {
-          clearInterval(heartbeat);
-          bridgeHub.detach(sink);
-          try { controller.close(); } catch {}
-        });
-      },
-    });
-    return new Response(stream, {
-      status: 200,
-      headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' },
-    });
-  }
-
-  if (url.pathname === '/bridge/result' && req.method === 'POST') {
-    if (!validateAuth(req)) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
-    }
-    try {
-      const body = await req.json();
-      if (body && typeof body.id === 'string') {
-        bridgeHub.deliver(body.id, body.result, body.ok === false ? (body.error || 'bridge error') : undefined);
-      }
-    } catch {}
-    return new Response('ok', { status: 200 });
-  }
-
-  return null;
-}
-
-/**
  * Route an --engine=real command through the bridge hub to the user's real
  * browser. Records the 'real' win on success; surfaces a 502 with the hub's
  * reason (offline / timeout / SESSION_LOST) on failure — never hangs.
@@ -1473,7 +1416,7 @@ async function shutdown() {
   isShuttingDown = true;
 
   console.log('[browse] Shutting down...');
-  clearBridgeEndpoint();
+  if (bridgeWs) { bridgeWs.stop(); bridgeWs = null; }
   // Stop watch mode if active
   if (browserManager.isWatching()) browserManager.stopWatch();
   killAgent();
@@ -1901,9 +1844,6 @@ async function start() {
         });
       }
 
-      const bridgeResp = await handleBridgeRoute(url, req);
-      if (bridgeResp) return bridgeResp;
-
       if (url.pathname === '/command' && req.method === 'POST') {
         resetIdleTimer();  // Only commands reset idle timer
         const body = await req.json();
@@ -1961,10 +1901,6 @@ async function start() {
         hostname: '127.0.0.1',
         fetch: async (req) => {
           const url = new URL(req.url);
-          // Bridge transport must be TCP-reachable; in UDS mode the main server
-          // isn't, so the sidecar carries /bridge/* for the native-messaging host.
-          const bridgeResp = await handleBridgeRoute(url, req);
-          if (bridgeResp) return bridgeResp;
           if (url.pathname.startsWith('/onboarding')) {
             const res = await handleOnboardingRoute(req);
             if (res) return res;
@@ -1972,7 +1908,7 @@ async function start() {
           if (url.pathname.startsWith('/cookie-picker')) {
             return handleCookiePickerRoute(url, req, browserManager, AUTH_TOKEN);
           }
-          return new Response('Not found (sidecar serves /cookie-picker, /onboarding, /bridge only)', { status: 404 });
+          return new Response('Not found (sidecar serves /cookie-picker + /onboarding only)', { status: 404 });
         },
       });
       tcpSidecarPort = sidecar.port;
@@ -2003,13 +1939,11 @@ async function start() {
   fs.writeFileSync(tmpFile, JSON.stringify(state, null, 2), { mode: 0o600 });
   fs.renameSync(tmpFile, config.stateFile);
 
-  // Publish the TCP endpoint for the real-browser bridge host (spawned by Chrome
-  // with no project context). webPort is always TCP-reachable: the sidecar in
-  // UDS mode, else the main port.
-  const bridgeWebPort = useUds ? tcpSidecarPort : port;
-  if (bridgeWebPort) {
-    writeBridgeEndpoint({ port: bridgeWebPort, token: AUTH_TOKEN, pid: process.pid });
-  }
+  // Start the real-browser bridge WebSocket server (Engine R). The MV3 extension
+  // dials this fixed localhost port and drives pages via chrome.debugger. Only
+  // one daemon binds it; others skip gracefully (see bridge-ws.ts).
+  bridgeWs = startBridgeWsServer(bridgeHub, { log: (m) => console.log(`[nightcrawl] ${m}`) });
+  if (bridgeWs) console.log(`[browse] Real-browser bridge WS on 127.0.0.1:${bridgeWs.port}`);
 
   console.log(`[browse] Server running on ${useUds ? `unix:${config.socketPath}` : `http://127.0.0.1:${port}`} (PID: ${process.pid})`);
   console.log(`[browse] State file: ${config.stateFile}`);

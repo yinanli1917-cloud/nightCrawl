@@ -1,38 +1,36 @@
 /**
- * Daemon↔host bridge transport integration check (NO Chrome).
+ * Engine-R WebSocket transport integration check (NO Chrome).
  *
- * Proves the reliability-critical path Kimi got wrong, end-to-end minus the
- * chrome.debugger hop: --engine=real commands flow daemon → SSE → native host →
- * (simulated extension) → /bridge/result → resolved. Also proves a long-lived
- * host REDISCOVERS the daemon after a restart (ports change per run) — the bug a
- * real-Arc E2E surfaced.
+ * Proves the daemon↔extension path end-to-end minus chrome.debugger: a
+ * --engine=real command flows daemon → hub → WS server → (simulated extension
+ * WS client) → tool_result → resolved. Also proves the client REDISCOVERS the
+ * daemon after a restart (the extension's reconnect behavior).
  *
- * The "extension" is simulated by an auto-replier that answers every command the
- * host forwards on its stdout with a result on its stdin. The assertions poll
- * the real `--engine=real` round-trip, so they tolerate reconnect latency
- * instead of racing on connection-event ordering.
+ * The "extension" is a WebSocket CLIENT (mirroring the real MV3 extension, which
+ * dials out) that auto-replies to every tool_call. Assertions poll the real
+ * --engine=real round-trip, so they tolerate reconnect timing.
  *
- * Not a *.test.ts (orchestrates real subprocesses) — run: bun test/bridge-transport.integration.ts
+ * Run: BRIDGE_WS_ALLOW_ANY_ORIGIN=1 bun test/bridge-transport.integration.ts
  */
 
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { encodeMessage, FrameDecoder } from '../src/bridge-protocol';
 
 const browserDir = path.resolve(import.meta.dir, '..');
 const cli = path.join(browserDir, 'src/cli.ts');
-const hostScript = path.join(browserDir, 'src/bridge-host.ts');
+const WS_PORT = 18791; // unique test port (real default is 10087)
+const WS_URL = `ws://127.0.0.1:${WS_PORT}/`;
 
-const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'nc-bridge-int-'));
-const endpointFile = path.join(TMP, 'bridge-endpoint.json');
+const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'nc-wsbridge-'));
 const env = {
   ...process.env,
   PATH: `${process.env.HOME}/.bun/bin:${process.env.PATH}`,
   BROWSE_STATE_FILE: path.join(TMP, 'state', 'browse.json'),
   BROWSE_PROFILE_DIR: path.join(TMP, 'profile'),
-  BRIDGE_ENDPOINT_FILE: endpointFile,
   BROWSE_AUTO_HANDOVER: '0',
+  BRIDGE_WS_PORT: String(WS_PORT),
+  BRIDGE_WS_ALLOW_ANY_ORIGIN: '1',
 };
 fs.mkdirSync(path.join(TMP, 'state'), { recursive: true });
 
@@ -49,11 +47,26 @@ function daemonPid(): number | undefined {
 function fail(msg: string): never { console.error(`\n❌ FAIL: ${msg}`); cleanup(); process.exit(1); }
 function cleanup() {
   const pid = daemonPid(); if (pid) { try { process.kill(pid); } catch {} }
-  try { host?.kill(); } catch {}
+  try { client?.close(); } catch {}
   try { fs.rmSync(TMP, { recursive: true, force: true }); } catch {}
 }
 
-// ── Run `--engine=real` and report whether it round-tripped through the bridge.
+// ── Simulated extension: a self-reconnecting WS client that auto-replies. ──
+let client: WebSocket | null = null;
+function startClient() {
+  let c: WebSocket;
+  try { c = new (globalThis as any).WebSocket(WS_URL); } catch { setTimeout(startClient, 500); return; }
+  client = c;
+  c.onmessage = (ev: any) => {
+    let m: any; try { m = JSON.parse(ev.data); } catch { return; }
+    if (m.type === 'tool_call') {
+      c.send(JSON.stringify({ type: 'tool_result', responseToRequestId: m.requestId, payload: { data: `SIM-OK:${m.payload?.name}` } }));
+    }
+  };
+  c.onclose = () => { setTimeout(startClient, 500); };  // reconnect like the real extension
+  c.onerror = () => { try { c.close(); } catch {} };
+}
+
 async function realRoundTrips(): Promise<boolean> {
   const o = await out(sh(['goto', 'https://example.com', '--engine=real']));
   return o.includes('[real-browser]');
@@ -67,47 +80,27 @@ async function pollReal(label: string, timeoutMs: number) {
   fail(`${label} — --engine=real never round-tripped within ${timeoutMs}ms`);
 }
 
-let host: any;
-
-console.log('1. booting daemon...');
+console.log('1. booting daemon (starts WS bridge server)...');
 await bootDaemon();
-let w = 0; while (!fs.existsSync(endpointFile) && w < 5000) { await Bun.sleep(200); w += 200; }
-if (!fs.existsSync(endpointFile)) fail('daemon did not publish bridge-endpoint.json');
-console.log('   ✓ endpoint published');
+console.log('   ✓ daemon up');
 
-console.log('2. spawning native host + auto-replier (simulating the extension)...');
-host = Bun.spawn(['bun', 'run', hostScript], { env, stdout: 'pipe', stderr: 'pipe', stdin: 'pipe' });
-const dec = new FrameDecoder();
-const reader = host.stdout.getReader();
-// Auto-replier: answer every command the host forwards. This is the "extension".
-(async () => {
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    for (const f of dec.push(Buffer.from(value))) {
-      if (f && typeof f.id === 'string' && f.command) {
-        host.stdin.write(encodeMessage({ id: f.id, ok: true, result: `SIM-OK:${f.command}` }));
-        host.stdin.flush();
-      }
-    }
-  }
-})();
+console.log('2. connecting simulated extension (WS client + auto-replier)...');
+startClient();
+await Bun.sleep(800);
 
-console.log('3. --engine=real round-trips daemon → host → (extension) → daemon...');
+console.log('3. --engine=real round-trips daemon → WS → (extension) → daemon...');
 await pollReal('round-trip works', 15000);
 
-console.log('4. restarting daemon (new port) — host must REDISCOVER...');
+console.log('4. restarting daemon — extension must reconnect + rediscover...');
 const oldPid = daemonPid();
 if (oldPid) {
   try { process.kill(oldPid); } catch {}
   let k = 0; while (k < 10000) { try { process.kill(oldPid, 0); } catch { break; } await Bun.sleep(200); k += 200; }
 }
-fs.rmSync(endpointFile, { force: true });
 await Bun.sleep(500);
 await bootDaemon();
-let w2 = 0; while (!fs.existsSync(endpointFile) && w2 < 5000) { await Bun.sleep(200); w2 += 200; }
-await pollReal('host rediscovered the restarted daemon (new port) and round-trips again', 25000);
+await pollReal('extension reconnected to the restarted daemon and round-trips again', 25000);
 
-console.log('\n✅ PASS: daemon↔host transport works + survives daemon restart (Chrome hop excluded).');
+console.log('\n✅ PASS: Engine-R WebSocket transport works + survives daemon restart (Chrome hop excluded).');
 cleanup();
 process.exit(0);

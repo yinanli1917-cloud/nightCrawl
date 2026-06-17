@@ -8,7 +8,6 @@
     "debugger",
     "tabs",
     "scripting",
-    "nativeMessaging",
     "storage",
     "alarms"
   ],
