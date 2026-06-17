@@ -26,6 +26,12 @@ export interface CloakBrowserLaunchOptions {
    * any JS-level defineProperty we'd try to apply later.
    */
   locale?: string;
+  /**
+   * IANA timezone (e.g. "America/Los_Angeles"). Passed to the Playwright
+   * context as `timezoneId` so the headless twin reports the user's real
+   * timezone — a high-signal anti-bot check and part of the device anchor.
+   */
+  timezone?: string;
 }
 
 // ─── CDP Patch Guard ───────────────────────────────────────
@@ -152,6 +158,7 @@ export async function launchCloakBrowser(
         humanPreset: opts.humanPreset,
         viewport: opts.viewport ?? { width: 1920, height: 1080 },
         ...(opts.locale ? { locale: opts.locale } : {}),
+        ...(opts.timezone ? { timezoneId: opts.timezone } : {}),
       } as any);
       patchContextClose(context);
       return { browser: context.browser(), context };

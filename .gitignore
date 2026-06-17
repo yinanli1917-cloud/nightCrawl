@@ -33,3 +33,7 @@ subtitles/
 
 # Codex workflow state (session/task runtime, not project source)
 .codex/runtime/
+
+# nightCrawl bridge install artifacts (machine-specific / private key)
+stealth/extensions/nightcrawl-bridge/.bridge-key.pem
+stealth/extensions/nightcrawl-bridge/.bridge-host-wrapper.sh

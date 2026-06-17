@@ -19,6 +19,7 @@ import { notifyWithAction, focusAppAction } from './notify';
 import { isPinned, pinnedVendor, markPinnedObserved } from './fingerprint-pinned';
 import { parseEngineConfig } from './engine-config';
 import { launchCloakBrowser } from './cloakbrowser-engine';
+import { checkpointSession, flushNativeProfile } from './session-store';
 
 function exitOnUnexpectedDisconnect(code: number): void {
   if (process.env.NIGHTCRAWL_NO_EXIT_ON_DISCONNECT === '1') return;
@@ -201,11 +202,16 @@ export async function handoff(this: any, message: string): Promise<string> {
   const currentUrl = this.getCurrentUrl();
   const stateBeforeHandoff = await this.saveState().catch(() => null);
 
+  // Checkpoint discipline: snapshot the live cookies AND nudge Chromium's
+  // SQLite WAL flush BEFORE we close + SIGKILL. The kill below would otherwise
+  // race Chromium's lazy flush and drop freshly-imported (in-memory) cookies —
+  // the exact Session 10 headless→headed loss. checkpointSession is the
+  // durable guarantee; flushNativeProfile is the cheap native nudge.
   try {
-    const { persistBrowserStorage } = await import('./persist-storage');
-    const n = await persistBrowserStorage(this);
-    if (n > 0) {
-      console.log(`[nightcrawl] Flushed ${n} cookies to disk before handoff close`);
+    if (this.context) {
+      const n = await checkpointSession(this.context);
+      if (n > 0) console.log(`[nightcrawl] Checkpointed ${n} cookies before handoff close`);
+      await flushNativeProfile(this.context);
     }
   } catch {}
 
@@ -406,6 +412,16 @@ export async function resume(this: any): Promise<string> {
 
   const currentUrl = this.getCurrentUrl();
   const stateBeforeResume = await this.saveState().catch(() => null);
+
+  // Checkpoint discipline (see handoff): snapshot + WAL-nudge before closing the
+  // headed context, so cookies the user just earned by logging in survive the
+  // headed→headless transition regardless of SQLite flush timing.
+  try {
+    if (this.context) {
+      await checkpointSession(this.context);
+      await flushNativeProfile(this.context);
+    }
+  } catch {}
 
   try {
     this.intentionalDisconnect = true;

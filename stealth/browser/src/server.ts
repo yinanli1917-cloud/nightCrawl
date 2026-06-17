@@ -53,7 +53,13 @@ import {
   recordSyncSkipped,
 } from './sync-state';
 import { isFirstRun, runOnboarding } from './onboarding';
-import { persistBrowserStorage } from './persist-storage';
+import { checkpointSession, restoreSession, sessionFilePath } from './session-store';
+import { NAV_COMMANDS, buildNavGuidance } from './engine-routing';
+import { recordWin } from './domain-strategy';
+import type { Engine } from './strategy-advisor';
+import { BridgeHub } from './bridge-hub';
+import { isBridgeCommand } from './bridge-commands';
+import { writeBridgeEndpoint, clearBridgeEndpoint } from './bridge-endpoint';
 import { emitActivity, subscribe, getActivityAfter, getActivityHistory, getSubscriberCount } from './activity';
 import { shouldRunPostCommandChecks } from './post-command-checks';
 // Bun.spawn used instead of child_process.spawn (compiled bun binaries
@@ -71,6 +77,12 @@ ensureStateDir(config);
 const AUTH_TOKEN = crypto.randomUUID();
 const tokenRegistry = new TokenRegistry();
 const mainToken = tokenRegistry.createFullAccessToken(AUTH_TOKEN);
+
+// ─── Engine R: real-browser bridge hub ──────────────────────────
+// One hub per daemon. The native-messaging host subscribes via /bridge/stream
+// and posts results to /bridge/result; --engine=real commands dispatch through
+// it. Connection lives in the OS-managed host process, not an evictable SW.
+const bridgeHub = new BridgeHub();
 const BROWSE_PORT = parseInt(process.env.BROWSE_PORT || '0', 10);
 const IDLE_TIMEOUT_MS = parseInt(process.env.BROWSE_IDLE_TIMEOUT || '1800000', 10); // 30 min
 // Sidebar chat is always enabled in headed mode (ungated in v0.12.0)
@@ -651,10 +663,35 @@ function shouldNotifyLoginWall(domain: string): boolean {
 }
 
 async function persistStorage() {
-  await persistBrowserStorage(browserManager);
+  // Single source of truth: the session checkpoint (session.json). storageState
+  // forces a live cookie read, written atomically — so a crash right after this
+  // call still has the freshest cookies. See session-store.ts.
+  if (browserManager.context) {
+    await checkpointSession(browserManager.context).catch(() => {});
+  }
 }
 
 const storageFlushInterval = setInterval(persistStorage, 5 * 60_000);
+
+// ─── Debounced post-command checkpoint ───────────────────────
+// The 5-min flush is too coarse to survive a SIGKILL/crash seconds after a
+// fresh login (the documented Session 10 + reproduced cookie-loss failure).
+// After any cookie-mutating command we schedule a short-debounced checkpoint
+// so the snapshot is fresh when an unexpected kill arrives, WITHOUT paying a
+// disk write on every keystroke during rapid command bursts.
+let checkpointTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleCheckpoint(): void {
+  if (process.env.BROWSE_INCOGNITO === '1') return;
+  if (checkpointTimer) clearTimeout(checkpointTimer);
+  checkpointTimer = setTimeout(() => {
+    checkpointTimer = null;
+    void persistStorage();
+  }, 1500);
+  // Don't keep the event loop alive just for a checkpoint.
+  if (typeof checkpointTimer === 'object' && 'unref' in checkpointTimer) {
+    (checkpointTimer as any).unref?.();
+  }
+}
 
 // ─── Background Cookie Sync ──────────────────────────────────
 // Proactively sync cookies from the user's default browser so sites
@@ -922,6 +959,8 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
       }
     } else if (WRITE_COMMANDS.has(command)) {
       result = await handleWriteCommand(command, args, browserManager);
+      // Cookie-mutating command — snapshot soon so a crash can't lose it.
+      scheduleCheckpoint();
     } else if (META_COMMANDS.has(command)) {
       result = await handleMetaCommand(command, args, browserManager, shutdown);
       // Start periodic snapshot interval when watch mode begins
@@ -1316,11 +1355,120 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
   }
 }
 
+/**
+ * Append the engine-guidance block to a navigation response (the SOFT enforcement
+ * tier — the agent sees the recommendation + live signals on every nav, can't
+ * skip it). Runs at the route boundary so it never touches the fragile
+ * handleCommand post-command flow. Records the headless win for domain memory.
+ * Best-effort: any failure returns the original response untouched.
+ */
+async function appendEngineGuidance(resp: Response, body: any): Promise<Response> {
+  try {
+    const command = body?.command;
+    if (!NAV_COMMANDS.has(command)) return resp;
+    if (resp.status !== 200) return resp;
+    const ct = resp.headers.get('content-type') || '';
+    if (!ct.includes('text/plain')) return resp;
+
+    const url = browserManager.getCurrentUrl();
+    const chosen: Engine = body?.engine === 'real' ? 'real' : 'headless';
+    const guidance = buildNavGuidance(url, chosen);
+    const text = await resp.text();
+
+    let extra = guidance ? `\n\n${guidance}` : '';
+    // Phase 2: the real-browser engine isn't wired yet — be honest if asked.
+    if (body?.engine === 'real') {
+      extra += `\n(note: --engine=real arrives with the real-browser bridge; this navigation ran on the headless engine.)`;
+    }
+    // Learn: headless successfully navigated this domain (advice for next time).
+    if (url && url !== 'about:blank') { try { recordWin(url, 'headless'); } catch {} }
+
+    return new Response(text + extra, { status: 200, headers: { 'Content-Type': 'text/plain' } });
+  } catch {
+    return resp;
+  }
+}
+
+/**
+ * Serve the real-browser bridge transport endpoints. Reachable over TCP (the
+ * main server when port-mode, or the sidecar when UDS-mode) so the
+ * Chrome-spawned native-messaging host can connect.
+ *   GET  /bridge/stream  — SSE; the host subscribes, the hub pushes commands.
+ *   POST /bridge/result  — the host delivers a command's result back to the hub.
+ * Returns null for non-bridge paths so callers fall through to other routes.
+ */
+async function handleBridgeRoute(url: URL, req: Request): Promise<Response | null> {
+  if (url.pathname === '/bridge/stream') {
+    const streamToken = url.searchParams.get('token');
+    if (!validateAuth(req) && streamToken !== AUTH_TOKEN) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+    }
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        bridgeHub.attach((cmd) => {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(cmd)}\n\n`));
+        });
+        console.log('[nightcrawl] Real-browser bridge connected.');
+        const heartbeat = setInterval(() => {
+          try { controller.enqueue(encoder.encode(`: heartbeat\n\n`)); }
+          catch { clearInterval(heartbeat); }
+        }, 15000);
+        req.signal.addEventListener('abort', () => {
+          clearInterval(heartbeat);
+          bridgeHub.detach();
+          console.log('[nightcrawl] Real-browser bridge disconnected.');
+          try { controller.close(); } catch {}
+        });
+      },
+    });
+    return new Response(stream, {
+      status: 200,
+      headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' },
+    });
+  }
+
+  if (url.pathname === '/bridge/result' && req.method === 'POST') {
+    if (!validateAuth(req)) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+    }
+    try {
+      const body = await req.json();
+      if (body && typeof body.id === 'string') {
+        bridgeHub.deliver(body.id, body.result, body.ok === false ? (body.error || 'bridge error') : undefined);
+      }
+    } catch {}
+    return new Response('ok', { status: 200 });
+  }
+
+  return null;
+}
+
+/**
+ * Route an --engine=real command through the bridge hub to the user's real
+ * browser. Records the 'real' win on success; surfaces a 502 with the hub's
+ * reason (offline / timeout / SESSION_LOST) on failure — never hangs.
+ */
+async function routeToBridge(body: any): Promise<Response> {
+  try {
+    const result = await bridgeHub.dispatch(body.command, body.args || []);
+    const url = (body.command === 'goto' && body.args?.[0]) ? body.args[0] : browserManager.getCurrentUrl();
+    if (url && url !== 'about:blank') { try { recordWin(url, 'real'); } catch {} }
+    const text = typeof result === 'string' ? result : JSON.stringify(result);
+    return new Response(`[real-browser] ${text}`, { status: 200, headers: { 'Content-Type': 'text/plain' } });
+  } catch (err: any) {
+    return new Response(JSON.stringify({ error: `real-browser bridge: ${err?.message ?? err}` }), {
+      status: 502, headers: { 'Content-Type': 'application/json' },
+    });
+  }
+}
+
 async function shutdown() {
   if (isShuttingDown) return;
   isShuttingDown = true;
 
   console.log('[browse] Shutting down...');
+  clearBridgeEndpoint();
   // Stop watch mode if active
   if (browserManager.isWatching()) browserManager.stopWatch();
   killAgent();
@@ -1748,11 +1896,21 @@ async function start() {
         });
       }
 
+      const bridgeResp = await handleBridgeRoute(url, req);
+      if (bridgeResp) return bridgeResp;
+
       if (url.pathname === '/command' && req.method === 'POST') {
         resetIdleTimer();  // Only commands reset idle timer
         const body = await req.json();
         const token = getTokenFromRequest(req) || mainToken;
-        return handleCommand(body, token);
+        // Engine R: route to the real browser when the agent chose it, the
+        // command is bridge-supported, and a bridge is connected. Otherwise
+        // fall through to headless (+ the engine-guidance block).
+        if (body?.engine === 'real' && isBridgeCommand(body?.command) && bridgeHub.isConnected()) {
+          return await routeToBridge(body);
+        }
+        const resp = await handleCommand(body, token);
+        return await appendEngineGuidance(resp, body);
       }
 
       return new Response('Not found', { status: 404 });
@@ -1798,6 +1956,10 @@ async function start() {
         hostname: '127.0.0.1',
         fetch: async (req) => {
           const url = new URL(req.url);
+          // Bridge transport must be TCP-reachable; in UDS mode the main server
+          // isn't, so the sidecar carries /bridge/* for the native-messaging host.
+          const bridgeResp = await handleBridgeRoute(url, req);
+          if (bridgeResp) return bridgeResp;
           if (url.pathname.startsWith('/onboarding')) {
             const res = await handleOnboardingRoute(req);
             if (res) return res;
@@ -1805,7 +1967,7 @@ async function start() {
           if (url.pathname.startsWith('/cookie-picker')) {
             return handleCookiePickerRoute(url, req, browserManager, AUTH_TOKEN);
           }
-          return new Response('Not found (sidecar serves /cookie-picker and /onboarding only)', { status: 404 });
+          return new Response('Not found (sidecar serves /cookie-picker, /onboarding, /bridge only)', { status: 404 });
         },
       });
       tcpSidecarPort = sidecar.port;
@@ -1835,6 +1997,14 @@ async function start() {
   const tmpFile = config.stateFile + '.tmp';
   fs.writeFileSync(tmpFile, JSON.stringify(state, null, 2), { mode: 0o600 });
   fs.renameSync(tmpFile, config.stateFile);
+
+  // Publish the TCP endpoint for the real-browser bridge host (spawned by Chrome
+  // with no project context). webPort is always TCP-reachable: the sidecar in
+  // UDS mode, else the main port.
+  const bridgeWebPort = useUds ? tcpSidecarPort : port;
+  if (bridgeWebPort) {
+    writeBridgeEndpoint({ port: bridgeWebPort, token: AUTH_TOKEN, pid: process.pid });
+  }
 
   console.log(`[browse] Server running on ${useUds ? `unix:${config.socketPath}` : `http://127.0.0.1:${port}`} (PID: ${process.pid})`);
   console.log(`[browse] State file: ${config.stateFile}`);
@@ -1893,19 +2063,30 @@ async function start() {
         if (process.env.BROWSE_INCOGNITO === '1') {
           console.log(`[browse] Incognito mode — no cookies restored`);
         } else {
-          let nativeCookies = await browserManager.saveState().then(s => s.cookies.length).catch(() => 0);
-          if (nativeCookies < 50) {
-            try {
-              const raw = fs.readFileSync(config.storageFile, 'utf-8');
-              const saved = JSON.parse(raw);
-              if (saved.cookies?.length > 0) {
-                await browserManager.restoreCookies(saved.cookies);
-                nativeCookies = saved.cookies.length;
-                console.log(`[browse] Seeded ${saved.cookies.length} cookies from JSON backup into Chromium profile`);
-              }
-            } catch {}
-          } else {
-            console.log(`[browse] ${nativeCookies} cookies loaded natively from Chromium profile`);
+          // Single source of truth: unconditionally merge the session checkpoint
+          // into the (possibly already-populated) native profile. Merge — not
+          // replace — because the persistent SQLite may legitimately hold NEWER
+          // cookies than the snapshot; we only recover anything that was lost on
+          // a crash/SIGKILL that skipped the graceful flush. Replaces the old
+          // `nativeCookies < 50` heuristic, which skipped a fresh login whenever
+          // the profile already had ≥50 stale cookies.
+          const ctx = browserManager.context;
+          let restored = 0;
+          if (ctx) {
+            restored = await restoreSession(ctx, sessionFilePath(), 'merge').catch(() => 0);
+            if (restored > 0) {
+              console.log(`[browse] Restored ${restored} cookies from session checkpoint`);
+            } else if (!fs.existsSync(sessionFilePath())) {
+              // Migration: first launch after upgrade — seed once from the legacy
+              // JSON backup, then future shutdowns write the new checkpoint.
+              try {
+                const saved = JSON.parse(fs.readFileSync(config.storageFile, 'utf-8'));
+                if (saved.cookies?.length > 0) {
+                  await browserManager.restoreCookies(saved.cookies);
+                  console.log(`[browse] Migrated ${saved.cookies.length} cookies from legacy JSON backup`);
+                }
+              } catch {}
+            }
           }
         }
 

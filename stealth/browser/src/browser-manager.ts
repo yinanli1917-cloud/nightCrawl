@@ -34,9 +34,11 @@ import { addConsoleEntry, addNetworkEntry, addDialogEntry, networkBuffer, type D
 import { validateNavigationUrl } from './url-validation';
 import { assertSafeNavigation, filterHostileCookies } from './hostile-domains';
 import { replaceCookiesFor } from './handoff-cookie-import';
+import { checkpointSession, flushNativeProfile } from './session-store';
 import { applyLocale, buildAcceptLanguage, resolveLocale } from './locale';
 import { parseEngineConfig } from './engine-config';
-import { launchCloakBrowser } from './cloakbrowser-engine';
+import { launchCloakBrowser, type CloakBrowserLaunchOptions } from './cloakbrowser-engine';
+import { loadDeviceAnchor, applyAnchor } from './fingerprint-clone';
 import { DEFAULT_USER_AGENT } from './stealth';
 import { markPinnedFromHeaders } from './fingerprint-pinned';
 
@@ -213,16 +215,21 @@ export class BrowserManager {
       );
     }
 
-    const result = await launchCloakBrowser({
+    // Tier-1 fingerprint anchor: if we've captured the user's real device
+    // signals, align the headless twin's UA/screen/timezone/locale to them so
+    // cookies/anti-bot checks keyed on those soft signals don't re-challenge.
+    // The persistent seed is KEPT (continuity); a missing anchor is a no-op.
+    let launchOpts: CloakBrowserLaunchOptions = applyAnchor({
       fingerprintSeed: engineConfig.fingerprintSeed,
       extensionsDir,
       userDataDir: engineConfig.profileDir,
       headless: true,
       humanize: engineConfig.humanize,
       humanPreset: engineConfig.humanize ? 'default' : undefined,
-      viewport: { width: 1920, height: 1080 },
       locale: resolvedLocale ?? undefined,
-    });
+    }, loadDeviceAnchor());
+    if (!launchOpts.viewport) launchOpts.viewport = { width: 1920, height: 1080 };
+    const result = await launchCloakBrowser(launchOpts);
     this.browser = result.browser;
     this.context = result.context;
     console.log(`[nightcrawl] Engine: CloakBrowser (seed: ${engineConfig.fingerprintSeed ?? 'random'})`);
@@ -266,6 +273,16 @@ export class BrowserManager {
   }
 
   async close() {
+    // Checkpoint discipline: snapshot live cookies + nudge the SQLite WAL flush
+    // BEFORE tearing the context down, so no graceful-close path can silently
+    // drop state. Idempotent and guarded — safe even if the context is already
+    // half-dead (checkpointSession races a timeout, both calls swallow errors).
+    if (this.context && process.env.BROWSE_INCOGNITO !== '1') {
+      try {
+        await checkpointSession(this.context);
+        await flushNativeProfile(this.context);
+      } catch {}
+    }
     if (this.browser || (this.connectionMode === 'headed' && this.context)) {
       if (this.connectionMode === 'headed') {
         this.intentionalDisconnect = true;

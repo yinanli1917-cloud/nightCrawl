@@ -493,8 +493,14 @@ async function ensureServer(): Promise<ServerState> {
 }
 
 // ─── Command Dispatch ──────────────────────────────────────────
+// Engine selection chosen by the agent via --engine / --force. Module-scoped so
+// the single sendCommand path can attach them to the /command body. Default
+// 'auto' lets the daemon advise; the agent overrides per call.
+let cliEngine: 'auto' | 'headless' | 'real' = 'auto';
+let cliForce = false;
+
 async function sendCommand(state: ServerState, command: string, args: string[], retries = 0): Promise<void> {
-  const body = JSON.stringify({ command, args });
+  const body = JSON.stringify({ command, args, engine: cliEngine, force: cliForce });
 
   try {
     const resp = await fetch(serverUrl(state, '/command'), {
@@ -632,7 +638,18 @@ Refs:           After 'snapshot', use @e1, @e2... as selectors:
   cleanupLegacyState();
 
   const command = args[0];
-  const commandArgs = args.slice(1);
+  let commandArgs = args.slice(1);
+
+  // ─── Engine selection flags (agent-decided routing) ─────────
+  // --engine=auto|headless|real (default auto), --force to deliberately go
+  // against a strong recommendation. Stripped here so they never reach the
+  // command handler as positional args; carried to the server in the body.
+  commandArgs = commandArgs.filter((a) => {
+    const m = /^--engine=(auto|headless|real)$/.exec(a);
+    if (m) { cliEngine = m[1] as typeof cliEngine; return false; }
+    if (a === '--force') { cliForce = true; return false; }
+    return true;
+  });
 
   // ─── Headed Connect (pre-server command) ────────────────────
   // connect must be handled BEFORE ensureServer() because it needs
