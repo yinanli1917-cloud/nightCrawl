@@ -1,0 +1,29 @@
+{
+  "stamp": "2026-06-18T02-42-06-610Z",
+  "git": "ce09f32f8722f44055f7b1faa0265d528abc4941",
+  "profile": "/Users/yinanli/.nightcrawl/chromium-profile",
+  "engineSeed": true,
+  "phase": 0,
+  "matrix": {
+    "headless": true,
+    "engineR": true,
+    "kimi": {
+      "daemon": true,
+      "extension": true,
+      "extensionVersion": "1.9.13",
+      "daemonVersion": "v1.9.4",
+      "listTabsOk": true,
+      "navigateOk": false,
+      "navigateHung": true
+    }
+  },
+  "kimiHealth": {
+    "extension_connected": true,
+    "extension_id": "fldmhceldgbpfpkbgopacenieobmligc",
+    "extension_version": "1.9.13",
+    "port": 10086,
+    "running": true,
+    "uptime_seconds": 487,
+    "version": "v1.9.4"
+  }
+}
