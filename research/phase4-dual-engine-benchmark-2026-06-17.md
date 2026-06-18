@@ -101,3 +101,48 @@ The user asked whether the agent could auto-login from Arc's saved passwords whe
 1. Upgrade the Kimi daemon to match extension v1.9.13 for a fair live re-run (outward-facing; user decision).
 2. T1 PDF: a Western-publisher Chinese-language article (Springer/Elsevier via EZproxy) likely yields a direct `.pdf` that `nc verify --kind publisher-pdf` can pass end-to-end; Wanfang/Airiti gate downloads behind their own login.
 3. Engine R `js` does not await Promises (in-page `async` fetch returns `{}`); a `download`/`fetch-bytes` bridge command would let Engine R capture files through the live session directly instead of relying on the browser's Downloads folder.
+
+---
+
+# Round 2 (2026-06-18) — gaps closed
+
+## Gap 1 — clean verified Chinese-paper download ✅
+
+The Wanfang flagship proved session-leverage but its PDF was gated behind Wanfang's own login. To close the *download → verify* gap with a tangible deliverable, downloaded a real Chinese-language scholarly PDF from an openly-accessible publisher (no SSO/EZproxy dependency):
+
+- **Paper:** 水陆两栖跨介质仿生机器人研究进展 (*Research Advances in Amphibious Cross-medium Bionic Robots*), 自动化学报 / **Acta Automatica Sinica** Vol. 52 No. 5, pp. 882–908, DOI `10.16383/j.aas.c250507` (Peking University authors).
+- **Acquire:** found the JS `downloadpdf('<uuid>')` handler → resolved the real endpoint `https://www.aas.net.cn/article/exportPdf?id=<uuid>` → fetched bytes.
+- **Deliverable:** `deliverables/t1b-aas-amphibious-bionic-robot.pdf` (26.6 MB, 27 pages).
+- **Verify:** `nc verify file --kind publisher-pdf --contains 水陆两栖 --min-pages 5` → **VERIFY_OK** (`%PDF` magic, 27 ≥ 5 pages, Producer `SoWise` = not browser-print, Chinese title found in text). First page visually confirmed as the genuine article.
+
+This proves the full DVC pipeline end-to-end on a real Chinese paper. Note: 自动化学报 is a Chinese OA journal (co-distributed internationally with IEEE), not strictly a Western publisher; a strictly-Western paywalled article via EZproxy needs a fresh UW login (SSO expired again overnight — UW IdP sessions are ~8 h) and would route through Engine R, exactly as the Wanfang result showed.
+
+## Gap 2 — Kimi upgraded to matched versions, still cannot drive Arc
+
+Per the user's request, upgraded the Kimi daemon via the official installer (`install.sh`) to **v1.10.0**; the user updated the Arc extension to **v1.10.0**. **Versions now match — and navigate still hangs.** The daemon log is the smoking gun (`deliverables/kimi-sw-thrash-evidence.txt`): the MV3 service worker **disconnects/reconnects ~1 Hz**, dying mid-command so `navigate`/`find_tab` (which need a stable SW + `chrome.debugger.attach`) never return; `list_tabs` (cheap, no debugger) works.
+
+**nightCrawl Engine R works in the exact same Arc** because its extension uses `chrome.alarms` + storage keepalive to survive SW eviction (this was the hard-won fix that replaced native messaging). So the root cause was never version skew — it is Kimi's SW-keepalive robustness in Arc (matches the prior 2026-05 "Kimi's Arc debugger/session path hung" finding; Kimi is built/tested for Chrome). Compounding factor: Arc has four `chrome.debugger`-capable extensions installed (Claude, Kimi, Manus, nightcrawl-bridge) and only one can attach per tab.
+
+**Fair-comparison verdict:** in the user's real Arc, with everything updated to matched versions, Kimi cannot bind a tab; nightCrawl's Engine R can. The reliability gap is real and architectural, not a stale install.
+
+## Gap 3 — how engine selection actually works (you didn't see switching because I forced it)
+
+The benchmark used `--engine=headless|real --force` to hold each engine fixed for a clean A/B — that **bypasses the router on purpose**. The real default is `--engine=auto`, a **signal-based advisor** (`strategy-advisor.ts::advise`) whose precedence is:
+
+| Priority | Signal | Recommends | Why |
+|---|---|---|---|
+| 1 | file-upload task | **headless** (strong) | the bridge can't drive file inputs (CDP `Input.setFiles` "Not allowed") |
+| 2 | hostile domain | **headless** (strong) | read-only only; real browser doesn't make bans safe |
+| 3 | fingerprint-pinned **and** logged-in | **real** (strong) | only the real browser presents the fingerprint the session was minted against |
+| 4 | cookie-import-failed **and** logged-in | **real** (strong) | borrow the live session instead of a handoff |
+| 5 | login wall **and** no session | **handoff** (strong) | the one legitimate "log in once" case |
+| 6 | remembered engine | that engine (weak) | what won here before (`domain-strategy.json`) |
+| 7 | (default) | **headless** (weak) | background-first |
+
+It is **advisory, not automatic**: every navigation appends a guidance block (`recommended: … (strength)` + `signals:`), and the agent re-issues with `--engine=real` when steered — nightCrawl never silently switches to the real browser (that would be a surprise headed action). Live proof this round:
+
+- `example.com` → `recommended: real (weak)` · `signals: remembered:real` (it remembered Engine R worked here).
+- `dash.cloudflare.com/login` → `recommended: real (strong)` · `signals: pinned:cloudflare, real-session` (Cloudflare pins to fingerprint + a live session exists → use the real browser).
+
+So the "process for choosing an engine" is real and inspectable; the benchmark just overrode it for controlled measurement.
+

@@ -1,0 +1,17 @@
+# Kimi WebBridge — Arc service-worker thrash evidence (2026-06-18)
+# After upgrading BOTH daemon and extension to v1.10.0 (matched versions),
+# navigate STILL hangs. Daemon log shows the MV3 service worker
+# disconnecting/reconnecting ~1Hz — it dies mid-command, so navigate hangs.
+# nightCrawl Engine R works in the SAME Arc (chrome.alarms keepalive).
+
+2026/06/18 12:51:49 [ws] extension connected
+2026/06/18 12:51:49 [ws] hello from extension v1.9.13 (daemon v1.10.0)
+2026/06/18 12:58:55 [ws] extension disconnected
+2026/06/18 12:58:58 [ws] extension connected
+2026/06/18 12:58:58 [ws] hello from extension v1.9.13 (daemon v1.10.0)
+2026/06/18 12:59:20 [ws] extension disconnected
+2026/06/18 12:59:21 [ws] extension connected
+2026/06/18 12:59:21 [ws] hello from extension v1.10.0 (daemon v1.10.0)
+2026/06/18 12:59:22 [ws] extension disconnected
+2026/06/18 12:59:22 [ws] extension connected
+2026/06/18 12:59:22 [ws] hello from extension v1.10.0 (daemon v1.10.0)

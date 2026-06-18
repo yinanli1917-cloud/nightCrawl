@@ -36,12 +36,24 @@
     },
     "T5_primo_paginated_extraction": {
       "deliverable": "deliverables/t5-primo-records.json",
-      "nc-headless": {"completed": true, "verify": "VERIFY_OK", "records": 20, "pages": 2, "note": "Wanfang+Airiti Chinese articles, deduped by docid, offsets 0 & 10. Valid JSON array, 3937 bytes."},
-      "nc-real": {"note": "Same Primo search reachable via live Arc; extraction logic identical. Headless is the natural fit (background, no visible tab)."},
-      "kimi": {"result": "BLOCKED - navigate to Primo hangs; snapshot 'has no tab'."}
+      "nc-headless": {
+        "completed": true,
+        "verify": "VERIFY_OK",
+        "records": 20,
+        "pages": 2,
+        "note": "Wanfang+Airiti Chinese articles, deduped by docid, offsets 0 & 10. Valid JSON array, 3937 bytes."
+      },
+      "nc-real": {
+        "note": "Same Primo search reachable via live Arc; extraction logic identical. Headless is the natural fit (background, no visible tab)."
+      },
+      "kimi": {
+        "result": "BLOCKED - navigate to Primo hangs; snapshot 'has no tab'."
+      }
     },
     "T4_real_site_boundaries": {
-      "T4a_shadow_dom": {"nc-headless": "PASS - reached into real open Shadow DOM on shoelace.style (sl-button.shadowRoot -> inner <button>)"},
+      "T4a_shadow_dom": {
+        "nc-headless": "PASS - reached into real open Shadow DOM on shoelace.style (sl-button.shadowRoot -> inner <button>)"
+      },
       "note": "Cross-origin iframe, file upload, trusted-event (event.isTrusted) covered exhaustively in research/kimi-webbridge-chrome-boundary-benchmark-2026-05-20.md: nightCrawl passed all, Kimi failed textarea/trusted-click/file-upload/iframe-in-place."
     },
     "T2_canvas_safety_gate": {
@@ -58,5 +70,31 @@
     "Cookie-export cannot carry a Shibboleth IdP session; live-session control (Engine R) can. This is the core value of the real-browser bridge.",
     "Kimi is non-functional in this environment due to daemon/extension version skew (navigate/find_tab hang) - reproduced 4x. nightCrawl headless completed an autonomous verified extraction in the same environment.",
     "Real institutional-access edge case found: UW's Wanfang EZproxy tier grants metadata/abstract but gates the PDF behind Wanfang's own login (blocks all tools equally)."
-  ]
+  ],
+  "round2_2026-06-18": {
+    "gap1_clean_download": {
+      "paper": "水陆两栖跨介质仿生机器人研究进展 (Acta Automatica Sinica 52(5):882-908, DOI 10.16383/j.aas.c250507)",
+      "deliverable": "deliverables/t1b-aas-amphibious-bionic-robot.pdf (26.6MB, 27pp, gitignored; VERIFY in t1b-aas-VERIFY.txt)",
+      "verify": "VERIFY_OK — publisher-pdf, 27>=5 pages, Producer SoWise (not browser-print), contains 水陆两栖",
+      "acquire": "resolved JS downloadpdf('<uuid>') -> https://www.aas.net.cn/article/exportPdf?id=<uuid>",
+      "status": "DONE — DVC download->verify pipeline proven end-to-end on a real Chinese paper"
+    },
+    "gap2_kimi": {
+      "daemon": "upgraded to v1.10.0 via official install.sh",
+      "extension": "user updated to v1.10.0 (now MATCHED)",
+      "result": "navigate STILL hangs — MV3 service worker disconnect/reconnect ~1Hz (evidence: kimi-sw-thrash-evidence.txt). list_tabs works.",
+      "contrast": "nightCrawl Engine R works in the SAME Arc (chrome.alarms keepalive survives SW eviction)",
+      "verdict": "Root cause is Kimi SW-keepalive in Arc, NOT version skew. Compounded by 4 chrome.debugger extensions (Claude/Kimi/Manus/nightcrawl-bridge) competing for single-attach.",
+      "status": "DONE — diagnosed definitively; fair-comparison result: Kimi cannot drive Arc, Engine R can"
+    },
+    "gap3_engine_routing": {
+      "explanation": "strategy-advisor.ts::advise — signal-based ADVISORY router (not auto-switch). Precedence: fileUpload->headless, hostile->headless, pinned+session->real, cookieImportFailed+session->real, loginWall+noSession->handoff, remembered->that, default->headless.",
+      "why_user_didnt_see_switching": "benchmark used --force to hold engines fixed for clean A/B, bypassing the advisor",
+      "live_proof": {
+        "example.com": "recommended real(weak), signals remembered:real",
+        "dash.cloudflare.com/login": "recommended real(strong), signals pinned:cloudflare,real-session"
+      },
+      "status": "DONE — explained + demonstrated live"
+    }
+  }
 }

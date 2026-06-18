@@ -1,0 +1,15 @@
+# Deliverable: 水陆两栖跨介质仿生机器人研究进展 (Acta Automatica Sinica 52(5):882-908, DOI 10.16383/j.aas.c250507)
+# File: deliverables/t1b-aas-amphibious-bionic-robot.pdf (26.6MB, kept local — too large to commit)
+# sha256:
+#   7dd229767f8b7c6bba92aeb39c3eaf4ec8803317f0745983b5f3ae29236ed742
+
+VERIFY_OK
+kind: publisher-pdf
+file: /Users/yinanli/Documents/nightCrawl/artifacts/phase4-dual-engine-benchmark/suite-2026-06-17/deliverables/t1b-aas-amphibious-bionic-robot.pdf
+pages: 27
+producer: SoWise
+  ✓ exists: 26685836 bytes
+  ✓ pdf-magic: starts with %PDF
+  ✓ min-pages: 27 >= 5
+  ✓ not-browser-print: Producer: SoWise
+  ✓ contains:水陆两栖: found in extracted text
