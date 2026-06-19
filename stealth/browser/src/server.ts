@@ -57,7 +57,8 @@ import { checkpointSession, restoreSession, sessionFilePath } from './session-st
 import { NAV_COMMANDS, buildNavGuidance } from './engine-routing';
 import { recordWin } from './domain-strategy';
 import { recordDecision } from './engine-journal';
-import { eTldPlusOne } from './handoff-consent';
+import { eTldPlusOne, isApproved, readConsent, defaultConsentPath } from './handoff-consent';
+import { handleAutofillLogin } from './autofill-login';
 import type { Engine } from './strategy-advisor';
 import { BridgeHub } from './bridge-hub';
 import { isBridgeCommand } from './bridge-commands';
@@ -1448,6 +1449,32 @@ async function appendEngineGuidance(resp: Response, body: any, startedAt: number
  * browser. Records the 'real' win on success; surfaces a 502 with the hub's
  * reason (offline / timeout / SESSION_LOST) on failure — never hangs.
  */
+/**
+ * C1: log in as the user via the BROWSER's own saved password (Engine R). Wires
+ * the bridge + handoff-consent + native notify into the testable orchestration.
+ * nightCrawl never reads the password — it consents, trusted-submits, and lets
+ * the browser release its own credential. 2FA is detected and handed back.
+ */
+async function handleAutofillLoginRoute(body: any): Promise<Response> {
+  const ctx = {
+    dispatch: (command: string, args: string[]) => bridgeHub.dispatch(command, args),
+    isConnected: () => bridgeHub.isConnected(),
+    isConsented: (domain: string) => {
+      try { return isApproved(readConsent(defaultConsentPath()), domain); } catch { return false; }
+    },
+    notify: (title: string, msg: string) => {
+      notifyWithAction(title, msg, focusAppAction('CloakBrowser', 'Open Browser')).catch(() => {});
+    },
+  };
+  let text: string;
+  try {
+    text = await handleAutofillLogin(body.args || [], ctx);
+  } catch (err: any) {
+    text = `AUTOFILL_LOGIN_ERROR: ${err?.message ?? err}`;
+  }
+  return new Response(text, { status: 200, headers: { 'Content-Type': 'text/plain' } });
+}
+
 async function routeToBridge(body: any, startedAt: number): Promise<Response> {
   try {
     const result = await bridgeHub.dispatch(body.command, body.args || []);
@@ -1908,6 +1935,11 @@ async function start() {
         // command is bridge-supported, and a bridge is connected. Otherwise
         // fall through to headless (+ the engine-guidance block).
         const startedAt = Date.now();
+        // C1: login-autofill orchestrates the bridge across several steps, so it
+        // owns its own route (not a 1:1 bridge relay).
+        if (body?.command === 'autofill-login') {
+          return await handleAutofillLoginRoute(body);
+        }
         if (body?.engine === 'real' && isBridgeCommand(body?.command) && bridgeHub.isConnected()) {
           return await routeToBridge(body, startedAt);
         }

@@ -45,6 +45,7 @@ export const META_COMMANDS = new Set([
   'notify-test',
   'verify',
   'profile',
+  'autofill-login',
 ]);
 
 export const ALL_COMMANDS = new Set([...READ_COMMANDS, ...WRITE_COMMANDS, ...META_COMMANDS]);
@@ -117,6 +118,7 @@ export const COMMAND_DESCRIPTIONS: Record<string, { category: string; descriptio
   'pdf':     { category: 'Visual', description: 'Print current page to PDF (NOT a file download — use publisher download URL + verify file)', usage: 'pdf [path]' },
   'verify':  { category: 'Meta', description: 'Verify deliverable matches user intent (file bytes or page state)', usage: 'verify file <path> [flags] | verify page [flags]' },
   'profile': { category: 'Meta', description: 'Manage the local non-secret autofill profile (name/email/phone/address). Never stores passwords.', usage: 'profile set <key> <value> | get <key> | list | clear [key]' },
+  'autofill-login': { category: 'Meta', description: 'Engine R only: submit the login form using the BROWSER\'s own saved password (consent-gated, trusted submit). nightCrawl never reads the password; 2FA still needs you.', usage: 'autofill-login' },
   'responsive': { category: 'Visual', description: 'Screenshots at mobile (375x812), tablet (768x1024), desktop (1280x720). Saves as {prefix}-mobile.png etc.', usage: 'responsive [prefix]' },
   'diff':    { category: 'Visual', description: 'Text diff between pages', usage: 'diff <url1> <url2>' },
   // Tabs
