@@ -81,17 +81,20 @@ describe('bridge-commands → CDP mapping', () => {
     expect(c.params.expression).toContain(JSON.stringify('"]; alert(1); //'));
   });
 
-  test('mouseClickCalls emits a trusted left-click sequence at the given coords', () => {
+  test('mouseClickCalls emits a trusted left-click with the buttons bitmask Chromium needs', () => {
     const calls = mouseClickCalls(12, 34);
-    const types = calls.map((c) => c.params.type);
-    expect(types).toContain('mousePressed');
-    expect(types).toContain('mouseReleased');
     for (const c of calls) {
       expect(c.method).toBe('Input.dispatchMouseEvent');
       expect(c.params.x).toBe(12);
       expect(c.params.y).toBe(34);
-      expect(c.params.button).toBe('left');
     }
+    const pressed = calls.find((c) => c.params.type === 'mousePressed')!;
+    const released = calls.find((c) => c.params.type === 'mouseReleased')!;
+    expect(pressed.params.button).toBe('left');
+    expect(pressed.params.buttons).toBe(1);   // left button held during press
+    expect(pressed.params.clickCount).toBe(1);
+    expect(released.params.button).toBe('left');
+    expect(released.params.buttons).toBe(0);  // released → no buttons held
   });
 
   test('isBridgeCommand reflects the supported relay surface', () => {

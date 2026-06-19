@@ -155,10 +155,21 @@ async function trustedClick(tabId, selector) {
   if (probe && probe.exceptionDetails) throw new Error(probe.exceptionDetails.text || 'click probe error');
   const pt = probe && probe.result && probe.result.value;
   if (pt && typeof pt.x === 'number') {
-    const base = { x: pt.x, y: pt.y, button: 'left', clickCount: 1 };
-    await sendCdp(tabId, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x: base.x, y: base.y, button: 'left', clickCount: 0 });
-    await sendCdp(tabId, 'Input.dispatchMouseEvent', { type: 'mousePressed', ...base });
-    await sendCdp(tabId, 'Input.dispatchMouseEvent', { type: 'mouseReleased', ...base });
+    // Chromium routes synthetic mouse press/release only to the ACTIVE, visible
+    // tab — a background tab (created active:false) silently drops them (only
+    // mouseMoved leaks through). Bring the bound tab + its window to the front so
+    // the trusted gesture actually lands. Engine R drives the real browser, so a
+    // visible click here is expected.
+    try {
+      await chrome.tabs.update(tabId, { active: true });
+      if (bound && bound.windowId != null) await chrome.windows.update(bound.windowId, { focused: true });
+      await new Promise((r) => setTimeout(r, 120)); // let the visibility change settle
+    } catch {}
+    // The `buttons` bitmask is REQUIRED — without it Chromium dispatches the raw
+    // mouse events but never synthesizes the DOM click. Mirrors mouseClickCalls.
+    await sendCdp(tabId, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x: pt.x, y: pt.y, button: 'none', buttons: 0 });
+    await sendCdp(tabId, 'Input.dispatchMouseEvent', { type: 'mousePressed', x: pt.x, y: pt.y, button: 'left', buttons: 1, clickCount: 1 });
+    await sendCdp(tabId, 'Input.dispatchMouseEvent', { type: 'mouseReleased', x: pt.x, y: pt.y, button: 'left', buttons: 0, clickCount: 1 });
     return true;
   }
   const fb = toCdp('click', [selector]); // untrusted fallback (no box)

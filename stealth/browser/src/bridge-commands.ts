@@ -110,10 +110,12 @@ export function clickProbeCall(selector: string): CdpCall {
  * and the browser releases any native-autofilled credential on submit.
  */
 export function mouseClickCalls(x: number, y: number): CdpCall[] {
-  const base = { x, y, button: 'left', clickCount: 1 };
+  // The `buttons` bitmask is REQUIRED: without it Chromium dispatches the raw
+  // mouse events but never synthesizes the DOM click. Left = bit 1; held during
+  // the press, cleared on release. (Matches Puppeteer/Playwright.)
   return [
-    { method: 'Input.dispatchMouseEvent', params: { type: 'mouseMoved', ...base, clickCount: 0 } },
-    { method: 'Input.dispatchMouseEvent', params: { type: 'mousePressed', ...base } },
-    { method: 'Input.dispatchMouseEvent', params: { type: 'mouseReleased', ...base } },
+    { method: 'Input.dispatchMouseEvent', params: { type: 'mouseMoved', x, y, button: 'none', buttons: 0 } },
+    { method: 'Input.dispatchMouseEvent', params: { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1 } },
+    { method: 'Input.dispatchMouseEvent', params: { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1 } },
   ];
 }

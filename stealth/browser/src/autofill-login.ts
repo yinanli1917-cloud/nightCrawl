@@ -85,7 +85,13 @@ export interface LoginAutofillCtx {
   isConsented: (domain: string) => boolean;
   /** Fire a native consent prompt. */
   notify: (title: string, body: string) => void;
+  /** Host-side delay (injectable so tests run fast). */
+  sleep?: (ms: number) => Promise<void>;
 }
+
+// CDP throws this while the inspected page is committing a navigation; the reads
+// just need to be retried once the new page settles.
+const NAV_TRANSIENT_RE = /navigated or closed|-32000|Inspected target/i;
 
 export async function handleAutofillLogin(args: string[], ctx: LoginAutofillCtx): Promise<string> {
   if (!ctx.isConnected()) {
@@ -125,12 +131,25 @@ export async function handleAutofillLogin(args: string[], ctx: LoginAutofillCtx)
       return 'LOGIN_FAILED: found a password field but no submit control to click.';
     }
 
-    // Let navigation / 2FA settle (awaitPromise from A1 makes this real).
-    await ctx.dispatch('js', ['new Promise(r => setTimeout(() => r(1), 1500))']);
-
-    const afterUrl = String((await ctx.dispatch('js', ['location.href'])) ?? '');
-    const after = parseDetect(await ctx.dispatch('js', [LOGIN_DETECT_EXPR]));
-    const afterText = String((await ctx.dispatch('text', [])) ?? '');
+    // The submit navigates the page. CDP reads transiently fail with
+    // "Inspected target navigated or closed" mid-navigation — retry host-side
+    // until the new page settles (the trusted submit already happened).
+    const sleep = ctx.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+    let afterUrl = beforeUrl;
+    let after: LoginDetect = { hasPassword: true };
+    let afterText = '';
+    for (let attempt = 0; attempt < 6; attempt++) {
+      await sleep(500);
+      try {
+        afterUrl = String((await ctx.dispatch('js', ['location.href'])) ?? '');
+        after = parseDetect(await ctx.dispatch('js', [LOGIN_DETECT_EXPR]));
+        afterText = String((await ctx.dispatch('text', [])) ?? '');
+        break;
+      } catch (e: any) {
+        if (!NAV_TRANSIENT_RE.test(String(e?.message ?? e)) || attempt === 5) throw e;
+        // else: page still navigating — retry
+      }
+    }
 
     const outcome = classifyOutcome({ beforeUrl, afterUrl, afterText, stillHasPassword: after.hasPassword });
     switch (outcome.status) {

@@ -43,6 +43,7 @@ function ctx(over: Partial<LoginAutofillCtx> & {
   const base: LoginAutofillCtx = {
     isConnected: () => true,
     isConsented: () => true,
+    sleep: () => Promise.resolve(),
     notify: (t, b) => { notified.push(`${t}|${b}`); },
     dispatch: async (cmd, args) => {
       if (cmd === 'click') { clicks.push(args[0]); return true; }
@@ -99,5 +100,35 @@ describe('autofill-login — orchestration', () => {
     const out = await handleAutofillLogin([], c);
     expect(out).toContain('AUTOFILL_LOGIN_ERROR');
     expect(out).toContain('bound tab');
+  });
+
+  test('post-submit reads retry across the navigation (transient "navigated or closed")', async () => {
+    // The submit navigates; the first post-submit reads fail with the CDP target
+    // error, then the new (secure) page settles and reads succeed → LOGGED_IN.
+    let phase: 'before' | 'after' = 'before';
+    let postReads = 0;
+    const c: LoginAutofillCtx = {
+      isConnected: () => true,
+      isConsented: () => true,
+      sleep: () => Promise.resolve(),
+      notify: () => {},
+      dispatch: async (cmd, args) => {
+        if (cmd === 'click') { phase = 'after'; return true; }
+        const e = args[0] || '';
+        if (phase === 'before') {
+          if (e === 'location.href') return 'https://x.com/login';
+          if (e.includes('password') || e.includes('data-nc-login')) return JSON.stringify({ hasPassword: true, username: 'jane', submitSelector: '[data-nc-login-submit="1"]' });
+          return '';
+        }
+        // After submit: first round of reads throws (mid-navigation), then succeeds.
+        postReads++;
+        if (postReads <= 2) throw new Error('{"code":-32000,"message":"Inspected target navigated or closed"}');
+        if (cmd === 'text') return 'You logged into a secure area';
+        if (e === 'location.href') return 'https://x.com/secure';
+        if (e.includes('password') || e.includes('data-nc-login')) return JSON.stringify({ hasPassword: false });
+        return '';
+      },
+    };
+    expect(await handleAutofillLogin([], c)).toContain('LOGGED_IN');
   });
 });
