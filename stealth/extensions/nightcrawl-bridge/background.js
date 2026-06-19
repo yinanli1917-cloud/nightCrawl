@@ -69,7 +69,9 @@ async function onMessage(raw) {
 }
 
 // ─── Command → CDP (mirror of src/bridge-commands.ts) ───────
-function evaluate(expression) { return { method: 'Runtime.evaluate', params: { expression, returnByValue: true } }; }
+// awaitPromise: an in-page `async` expression returns a Promise; without this CDP
+// serializes the pending Promise as `{}`. Mirrors src/bridge-commands.ts.
+function evaluate(expression) { return { method: 'Runtime.evaluate', params: { expression, returnByValue: true, awaitPromise: true } }; }
 function toCdp(command, args) {
   switch (command) {
     case 'goto': return { method: 'Page.navigate', params: { url: args[0] || '' } };
@@ -136,8 +138,38 @@ function sendCdp(tabId, method, params) {
     });
   });
 }
+// Trusted click (mirror of clickProbeCall/mouseClickCalls in src/bridge-commands.ts):
+// el.click() is isTrusted:false (rejected by bot-managed sites, and the browser
+// won't release a native-autofilled password without a real gesture). CDP
+// Input.dispatchMouseEvent is isTrusted:true. Probe the element center, dispatch
+// real mouse events; fall back to the JS click only for off-screen/zero-box nodes.
+function clickProbeExpr(selJson) {
+  return `(() => { const el = document.querySelector(${selJson}); if (!el) return null; ` +
+    `el.scrollIntoView({block:'center',inline:'center'}); ` +
+    `const r = el.getBoundingClientRect(); if (!r.width || !r.height) return null; ` +
+    `return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`;
+}
+async function trustedClick(tabId, selector) {
+  const selJson = JSON.stringify(selector || '');
+  const probe = await sendCdp(tabId, 'Runtime.evaluate', { expression: clickProbeExpr(selJson), returnByValue: true, awaitPromise: true });
+  if (probe && probe.exceptionDetails) throw new Error(probe.exceptionDetails.text || 'click probe error');
+  const pt = probe && probe.result && probe.result.value;
+  if (pt && typeof pt.x === 'number') {
+    const base = { x: pt.x, y: pt.y, button: 'left', clickCount: 1 };
+    await sendCdp(tabId, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x: base.x, y: base.y, button: 'left', clickCount: 0 });
+    await sendCdp(tabId, 'Input.dispatchMouseEvent', { type: 'mousePressed', ...base });
+    await sendCdp(tabId, 'Input.dispatchMouseEvent', { type: 'mouseReleased', ...base });
+    return true;
+  }
+  const fb = toCdp('click', [selector]); // untrusted fallback (no box)
+  const res = await sendCdp(tabId, fb.method, fb.params);
+  if (res && res.exceptionDetails) throw new Error(res.exceptionDetails.text || 'click error');
+  return (res && res.result && res.result.value) ?? true;
+}
+
 async function execute(command, args) {
   const tabId = await ensureBoundTab(command);
+  if (command === 'click') return await trustedClick(tabId, args[0] || '');
   const cdp = toCdp(command, args);
   const res = await sendCdp(tabId, cdp.method, cdp.params);
   if (command === 'goto') {

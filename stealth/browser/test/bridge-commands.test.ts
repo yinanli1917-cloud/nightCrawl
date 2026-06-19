@@ -7,7 +7,7 @@
  */
 
 import { describe, test, expect } from 'bun:test';
-import { toCdp, isBridgeCommand } from '../src/bridge-commands';
+import { toCdp, isBridgeCommand, clickProbeCall, mouseClickCalls } from '../src/bridge-commands';
 
 describe('bridge-commands → CDP mapping', () => {
   test('goto maps to Page.navigate with the url', () => {
@@ -36,6 +36,14 @@ describe('bridge-commands → CDP mapping', () => {
     expect(toCdp('eval', ['foo()']).params.expression).toBe('foo()');
   });
 
+  test('evaluate awaits returned Promises (awaitPromise) so async fetch resolves, not {}', () => {
+    // Regression: in-page `async () => (await fetch(...)).json()` returned {} because
+    // Runtime.evaluate serialized the pending Promise before it resolved. awaitPromise
+    // makes CDP wait for resolution. Harmless for non-Promise results.
+    expect(toCdp('js', ['(async()=>1)()']).params.awaitPromise).toBe(true);
+    expect(toCdp('text', []).params.awaitPromise).toBe(true);
+  });
+
   test('click embeds the selector safely (JSON-encoded, no raw interpolation)', () => {
     const c = toCdp('click', ['#btn']);
     expect(c.method).toBe('Runtime.evaluate');
@@ -53,6 +61,37 @@ describe('bridge-commands → CDP mapping', () => {
     const c = toCdp('fill', ['#x', '"); alert(1); ("']);
     // The dangerous value must be JSON-encoded, not raw-interpolated.
     expect(c.params.expression).toContain(JSON.stringify('"); alert(1); ("'));
+  });
+
+  // ── Trusted click (A2): el.click() is isTrusted:false and fails on sites that
+  // gate on trusted events; it is also the submit gesture login-autofill needs.
+  // The trusted path probes the element's viewport center, then dispatches real
+  // Input.dispatchMouseEvent events (isTrusted:true via CDP).
+  test('clickProbeCall scrolls into view and returns the element center, selector JSON-encoded', () => {
+    const c = clickProbeCall('#btn');
+    expect(c.method).toBe('Runtime.evaluate');
+    expect(c.params.expression).toContain('"#btn"');
+    expect(c.params.expression).toContain('getBoundingClientRect');
+    expect(c.params.expression.toLowerCase()).toContain('scrollintoview');
+    expect(c.params.returnByValue).toBe(true);
+  });
+
+  test('clickProbeCall encodes a hostile selector safely (no raw interpolation)', () => {
+    const c = clickProbeCall('"]; alert(1); //');
+    expect(c.params.expression).toContain(JSON.stringify('"]; alert(1); //'));
+  });
+
+  test('mouseClickCalls emits a trusted left-click sequence at the given coords', () => {
+    const calls = mouseClickCalls(12, 34);
+    const types = calls.map((c) => c.params.type);
+    expect(types).toContain('mousePressed');
+    expect(types).toContain('mouseReleased');
+    for (const c of calls) {
+      expect(c.method).toBe('Input.dispatchMouseEvent');
+      expect(c.params.x).toBe(12);
+      expect(c.params.y).toBe(34);
+      expect(c.params.button).toBe('left');
+    }
   });
 
   test('isBridgeCommand reflects the supported relay surface', () => {

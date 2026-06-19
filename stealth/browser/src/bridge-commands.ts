@@ -27,7 +27,13 @@ export function isBridgeCommand(command: string): boolean {
 }
 
 function evaluate(expression: string): CdpCall {
-  return { method: 'Runtime.evaluate', params: { expression, returnByValue: true } };
+  // awaitPromise: an in-page `async` expression returns a Promise; without this CDP
+  // serializes the still-pending Promise as `{}`. Awaiting resolves it first. It is
+  // a no-op for non-Promise results, so it is safe on every evaluate command.
+  return {
+    method: 'Runtime.evaluate',
+    params: { expression, returnByValue: true, awaitPromise: true },
+  };
 }
 
 export function toCdp(command: string, args: string[]): CdpCall {
@@ -50,6 +56,9 @@ export function toCdp(command: string, args: string[]): CdpCall {
       return evaluate(args[0] ?? '');
 
     case 'click': {
+      // Fallback only. The real path is a TRUSTED gesture (clickProbeCall +
+      // mouseClickCalls); the extension uses this JS-click only when the element
+      // has no box (off-screen / zero-size), where Input coords don't exist.
       const sel = JSON.stringify(args[0] ?? '');
       return evaluate(
         `(() => { const el = document.querySelector(${sel}); if (!el) throw new Error('no element: ' + ${sel}); ` +
@@ -71,4 +80,40 @@ export function toCdp(command: string, args: string[]): CdpCall {
     default:
       throw new Error(`Command '${command}' is not part of the real-browser bridge surface.`);
   }
+}
+
+// ─── Trusted click (A2) ──────────────────────────────────────
+// el.click() fires an isTrusted:false event that bot-managed sites reject, and it
+// will not submit a password the browser native-autofilled (the browser only
+// releases an autofilled credential on a real user gesture). A CDP
+// Input.dispatchMouseEvent IS isTrusted:true. The gesture is two steps because
+// the second needs coordinates from the first — so it lives in the extension's
+// execute(); these pure builders are the unit-tested spec it mirrors.
+
+/**
+ * Probe an element's click point: scroll it into view and return its viewport
+ * center {x, y}, or null if it's missing or has no box. Selector is JSON-encoded.
+ */
+export function clickProbeCall(selector: string): CdpCall {
+  const sel = JSON.stringify(selector);
+  return evaluate(
+    `(() => { const el = document.querySelector(${sel}); if (!el) return null; ` +
+    `el.scrollIntoView({block:'center',inline:'center'}); ` +
+    `const r = el.getBoundingClientRect(); if (!r.width || !r.height) return null; ` +
+    `return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`,
+  );
+}
+
+/**
+ * A trusted left click at viewport coords: move → press → release. CDP marks
+ * these events isTrusted:true, so sites that gate on trusted input accept them
+ * and the browser releases any native-autofilled credential on submit.
+ */
+export function mouseClickCalls(x: number, y: number): CdpCall[] {
+  const base = { x, y, button: 'left', clickCount: 1 };
+  return [
+    { method: 'Input.dispatchMouseEvent', params: { type: 'mouseMoved', ...base, clickCount: 0 } },
+    { method: 'Input.dispatchMouseEvent', params: { type: 'mousePressed', ...base } },
+    { method: 'Input.dispatchMouseEvent', params: { type: 'mouseReleased', ...base } },
+  ];
 }
