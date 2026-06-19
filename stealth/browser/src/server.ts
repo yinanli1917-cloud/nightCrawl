@@ -56,6 +56,8 @@ import { isFirstRun, runOnboarding } from './onboarding';
 import { checkpointSession, restoreSession, sessionFilePath } from './session-store';
 import { NAV_COMMANDS, buildNavGuidance } from './engine-routing';
 import { recordWin } from './domain-strategy';
+import { recordDecision } from './engine-journal';
+import { eTldPlusOne } from './handoff-consent';
 import type { Engine } from './strategy-advisor';
 import { BridgeHub } from './bridge-hub';
 import { isBridgeCommand } from './bridge-commands';
@@ -1359,29 +1361,78 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
 }
 
 /**
+ * Record one engine decision + its real outcome to the learning journal (A5).
+ * Only NAV commands and `snapshot` carry routing signal (snapshot is where the
+ * heavy-JS accessibility-timeout shows up). Best-effort; never throws. This is
+ * the substrate the router LEARNS from — recommendations are derived from these
+ * outcomes, not from a preset rule table.
+ */
+function recordEngineOutcome(
+  body: any,
+  engine: Engine,
+  status: number,
+  text: string,
+  latencyMs: number,
+): void {
+  try {
+    const command = body?.command;
+    if (!NAV_COMMANDS.has(command) && command !== 'snapshot') return;
+    const url = (command === 'goto' && body?.args?.[0]) ? body.args[0] : browserManager.getCurrentUrl();
+    if (!url || url === 'about:blank') return;
+    const domain = eTldPlusOne(url);
+    if (!domain) return;
+    const reloginRequired = /LOGIN_REQUIRED|CONSENT_REQUIRED/.test(text);
+    const axTimedOut = /accessibility snapshot unavailable/.test(text);
+    const timedOut = /timeout/i.test(text);
+    recordDecision({
+      ts: Date.now(),
+      domain,
+      engine,
+      command,
+      ok: status === 200 && !reloginRequired,
+      latencyMs,
+      axTimedOut: axTimedOut || undefined,
+      timedOut: timedOut || undefined,
+      reloginRequired: reloginRequired || undefined,
+    });
+  } catch {}
+}
+
+/**
  * Append the engine-guidance block to a navigation response (the SOFT enforcement
  * tier — the agent sees the recommendation + live signals on every nav, can't
  * skip it). Runs at the route boundary so it never touches the fragile
- * handleCommand post-command flow. Records the headless win for domain memory.
- * Best-effort: any failure returns the original response untouched.
+ * handleCommand post-command flow. Records the headless win for domain memory
+ * and the full outcome for the learning journal. Best-effort: any failure
+ * returns the original response untouched.
  */
-async function appendEngineGuidance(resp: Response, body: any): Promise<Response> {
+async function appendEngineGuidance(resp: Response, body: any, startedAt: number): Promise<Response> {
   try {
     const command = body?.command;
-    if (!NAV_COMMANDS.has(command)) return resp;
-    if (resp.status !== 200) return resp;
+    const latencyMs = Date.now() - startedAt;
     const ct = resp.headers.get('content-type') || '';
-    if (!ct.includes('text/plain')) return resp;
+    const isText = resp.status === 200 && ct.includes('text/plain');
+    // Read the body once; reconstruct it below (a consumed Response can't be reused).
+    const text = isText ? await resp.text() : '';
+
+    // Learn from every NAV/snapshot outcome (success, failure, AX-timeout, relogin).
+    recordEngineOutcome(body, 'headless', resp.status, text, latencyMs);
+
+    if (!NAV_COMMANDS.has(command) || !isText) {
+      return isText
+        ? new Response(text, { status: 200, headers: { 'Content-Type': 'text/plain' } })
+        : resp;
+    }
 
     const url = browserManager.getCurrentUrl();
     const chosen: Engine = body?.engine === 'real' ? 'real' : 'headless';
     const guidance = buildNavGuidance(url, chosen);
-    const text = await resp.text();
 
     let extra = guidance ? `\n\n${guidance}` : '';
-    // Phase 2: the real-browser engine isn't wired yet — be honest if asked.
+    // --engine=real only routes when the command is bridge-supported AND a bridge
+    // is connected; otherwise it ran here on headless — say so honestly.
     if (body?.engine === 'real') {
-      extra += `\n(note: --engine=real arrives with the real-browser bridge; this navigation ran on the headless engine.)`;
+      extra += `\n(note: --engine=real ran on headless — the command isn't bridge-supported or no real-browser bridge is connected.)`;
     }
     // Learn: headless successfully navigated this domain (advice for next time).
     if (url && url !== 'about:blank') { try { recordWin(url, 'headless'); } catch {} }
@@ -1397,15 +1448,20 @@ async function appendEngineGuidance(resp: Response, body: any): Promise<Response
  * browser. Records the 'real' win on success; surfaces a 502 with the hub's
  * reason (offline / timeout / SESSION_LOST) on failure — never hangs.
  */
-async function routeToBridge(body: any): Promise<Response> {
+async function routeToBridge(body: any, startedAt: number): Promise<Response> {
   try {
     const result = await bridgeHub.dispatch(body.command, body.args || []);
     const url = (body.command === 'goto' && body.args?.[0]) ? body.args[0] : browserManager.getCurrentUrl();
     if (url && url !== 'about:blank') { try { recordWin(url, 'real'); } catch {} }
     const text = typeof result === 'string' ? result : JSON.stringify(result);
+    recordEngineOutcome(body, 'real', 200, text, Date.now() - startedAt);
     return new Response(`[real-browser] ${text}`, { status: 200, headers: { 'Content-Type': 'text/plain' } });
   } catch (err: any) {
-    return new Response(JSON.stringify({ error: `real-browser bridge: ${err?.message ?? err}` }), {
+    const msg = `real-browser bridge: ${err?.message ?? err}`;
+    // Learn from the failure too (timeout / SESSION_LOST is a real signal that
+    // the real browser is unstable on this domain right now).
+    recordEngineOutcome(body, 'real', 502, msg, Date.now() - startedAt);
+    return new Response(JSON.stringify({ error: msg }), {
       status: 502, headers: { 'Content-Type': 'application/json' },
     });
   }
@@ -1851,11 +1907,12 @@ async function start() {
         // Engine R: route to the real browser when the agent chose it, the
         // command is bridge-supported, and a bridge is connected. Otherwise
         // fall through to headless (+ the engine-guidance block).
+        const startedAt = Date.now();
         if (body?.engine === 'real' && isBridgeCommand(body?.command) && bridgeHub.isConnected()) {
-          return await routeToBridge(body);
+          return await routeToBridge(body, startedAt);
         }
         const resp = await handleCommand(body, token);
-        return await appendEngineGuidance(resp, body);
+        return await appendEngineGuidance(resp, body, startedAt);
       }
 
       return new Response('Not found', { status: 404 });

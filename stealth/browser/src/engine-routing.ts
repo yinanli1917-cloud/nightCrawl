@@ -13,11 +13,12 @@
  * real-engine execution path activate in Phase 3 when Engine R exists.
  */
 
-import { advise, formatGuidance, type AdvisorSignals, type Engine } from './strategy-advisor';
+import { advise, formatGuidance, type Advice, type AdvisorSignals, type Engine } from './strategy-advisor';
 import { isHostile } from './hostile-domains';
 import { isPinned, pinnedVendor } from './fingerprint-pinned';
 import { hasRealBrowserSession } from './has-real-session';
 import { rememberedEngine } from './domain-strategy';
+import { recommendForDomain, type LearnedRecommendation } from './engine-journal';
 
 /** Navigation verbs whose responses carry the engine-guidance block. */
 export const NAV_COMMANDS = new Set(['goto', 'back', 'forward', 'reload']);
@@ -28,6 +29,8 @@ export interface SignalDeps {
   pinnedVendor: (url: string) => string | null;
   hasRealBrowserSession: (url: string) => boolean;
   rememberedEngine: (url: string) => Engine | null;
+  /** What the engine journal LEARNED for this domain (null = cold start). */
+  learnedRecommendation: (url: string) => LearnedRecommendation | null;
 }
 
 const DEFAULT_DEPS: SignalDeps = {
@@ -36,6 +39,7 @@ const DEFAULT_DEPS: SignalDeps = {
   pinnedVendor,
   hasRealBrowserSession,
   rememberedEngine,
+  learnedRecommendation: (url) => recommendForDomain(url),
 };
 
 /**
@@ -61,6 +65,12 @@ export function gatherSignals(url: string, deps: SignalDeps = DEFAULT_DEPS): Adv
 /**
  * The guidance block to append to a navigation response, or null for blank URLs
  * (no page yet → nothing useful to advise, and we don't want to add noise).
+ *
+ * Layering: safety/strong advisor signals (hostile, file-upload, pinned+session…)
+ * always win. Only the WEAK cold-start prior is superseded by what the journal
+ * has LEARNED for this domain — so routing keeps improving from real outcomes
+ * instead of being frozen at preset guesses. Never silently switches engines;
+ * this only changes the recommendation the agent sees.
  */
 export function buildNavGuidance(
   url: string,
@@ -69,5 +79,25 @@ export function buildNavGuidance(
 ): string | null {
   if (!url || url === 'about:blank') return null;
   const signals = gatherSignals(url, deps);
-  return formatGuidance(chosenEngine, advise(signals), signals);
+  const base = advise(signals);
+
+  if (base.strength === 'weak') {
+    const learned = deps.learnedRecommendation(url);
+    if (learned) {
+      const advice: Advice = {
+        recommendation: learned.engine,
+        strength: 'weak',
+        reason: 'Learned from past outcomes on this domain (overrides the cold-start default).',
+      };
+      return formatGuidance(chosenEngine, advice, signals, {
+        evidence: learned.evidence,
+        label: learned.confidence,
+      });
+    }
+    // Weak prior with nothing learned yet — label it honestly so the agent knows
+    // the recommendation will sharpen as outcomes accrue.
+    return formatGuidance(chosenEngine, base, signals, { evidence: '', label: 'prior — no history yet' });
+  }
+
+  return formatGuidance(chosenEngine, base, signals);
 }

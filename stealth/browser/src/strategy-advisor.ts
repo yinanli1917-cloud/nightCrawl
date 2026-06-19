@@ -184,6 +184,10 @@ export function formatGuidance(
   chosen: Engine | null,
   advice: Advice,
   s: AdvisorSignals,
+  // When the weak cold-start prior is replaced by what we LEARNED from this
+  // domain's history, the caller passes the evidence + a label ('learned' |
+  // 'thin' | 'prior — no history yet') instead of the raw strength.
+  display?: { evidence: string; label: string } | null,
 ): string {
   const flags = [
     s.hostile ? 'hostile' : null,
@@ -195,12 +199,14 @@ export function formatGuidance(
     s.rememberedEngine ? `remembered:${s.rememberedEngine}` : null,
   ].filter(Boolean).join(', ') || 'none';
 
-  return [
+  const lines = [
     '── nightcrawl engine guidance ──',
     `engine_used: ${chosen ?? 'headless'}`,
-    `recommended: ${advice.recommendation} (${advice.strength})`,
+    `recommended: ${advice.recommendation} (${display ? display.label : advice.strength})`,
     `signals: ${flags}`,
-    `why: ${advice.reason}`,
-    `override: pass --engine=headless|real (add --force to go against a strong recommendation)`,
-  ].join('\n');
+  ];
+  if (display && display.evidence) lines.push(`evidence: ${display.evidence}`);
+  lines.push(`why: ${advice.reason}`);
+  lines.push('override: pass --engine=headless|real (add --force to go against a strong recommendation)');
+  return lines.join('\n');
 }

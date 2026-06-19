@@ -22,6 +22,7 @@ function deps(over: Partial<SignalDeps> = {}): SignalDeps {
     pinnedVendor: () => null,
     hasRealBrowserSession: () => false,
     rememberedEngine: () => null,
+    learnedRecommendation: () => null,
     ...over,
   };
 }
@@ -59,5 +60,32 @@ describe('engine-routing glue', () => {
   test('buildNavGuidance returns null for blank/empty URLs (no noise)', () => {
     expect(buildNavGuidance('about:blank', 'headless', deps())).toBeNull();
     expect(buildNavGuidance('', 'headless', deps())).toBeNull();
+  });
+
+  // ── A5: routing learns from the journal, but safety/strong rules still win.
+  test('a learned recommendation supersedes the weak cold-start prior', () => {
+    const text = buildNavGuidance('https://spa.example/x', 'headless', deps({
+      learnedRecommendation: () => ({
+        engine: 'real',
+        evidence: 'real 6/6 ok ~0.7s · headless 1/5 ok, 4 timeouts',
+        confidence: 'learned',
+      }),
+    }));
+    expect(text!).toContain('recommended: real (learned)');
+    expect(text!).toContain('evidence: real 6/6 ok');
+  });
+
+  test('a weak prior with no history is labeled honestly', () => {
+    const text = buildNavGuidance('https://fresh.example/x', 'headless', deps());
+    expect(text!).toContain('recommended: headless (prior — no history yet)');
+  });
+
+  test('learned does NOT override a strong/safety rule (hostile stays headless)', () => {
+    const text = buildNavGuidance('https://hostile.example/x', 'headless', deps({
+      isHostile: () => true,
+      learnedRecommendation: () => ({ engine: 'real', evidence: 'real 9/9 ok', confidence: 'learned' }),
+    }));
+    expect(text!).toContain('recommended: headless (strong)');
+    expect(text!).not.toContain('evidence:'); // learned layer not consulted
   });
 });
