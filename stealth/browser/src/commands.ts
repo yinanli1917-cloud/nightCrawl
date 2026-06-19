@@ -22,7 +22,7 @@ export const WRITE_COMMANDS = new Set([
   'click', 'fill', 'select', 'hover', 'type', 'press', 'scroll', 'wait',
   'viewport', 'cookie', 'cookie-import', 'cookie-import-browser', 'header', 'useragent',
   'upload', 'dialog-accept', 'dialog-dismiss',
-  'cleanup',
+  'cleanup', 'autofill',
 ]);
 
 export const META_COMMANDS = new Set([
@@ -43,6 +43,8 @@ export const META_COMMANDS = new Set([
   'sync',
   'extension-update',
   'notify-test',
+  'verify',
+  'profile',
 ]);
 
 export const ALL_COMMANDS = new Set([...READ_COMMANDS, ...WRITE_COMMANDS, ...META_COMMANDS]);
@@ -109,9 +111,12 @@ export const COMMAND_DESCRIPTIONS: Record<string, { category: string; descriptio
   'dialog-accept': { category: 'Interaction', description: 'Auto-accept next alert/confirm/prompt. Optional text is sent as the prompt response', usage: 'dialog-accept [text]' },
   'dialog-dismiss': { category: 'Interaction', description: 'Auto-dismiss next dialog' },
   'cleanup': { category: 'Interaction', description: 'Remove ads, cookie banners, paywalls, overlays, and other page noise to save tokens', usage: 'cleanup' },
+  'autofill':{ category: 'Interaction', description: 'Fill blank form fields from your local non-secret profile (name/email/phone/address). Refuses payment/security pages; personal-info forms need --confirm. Never touches passwords.', usage: 'autofill [--confirm] [--dry-run] [--only k1,k2] [--include-filled]' },
   // Visual
   'screenshot': { category: 'Visual', description: 'Save screenshot (supports element crop via CSS/@ref, --clip region, --viewport)', usage: 'screenshot [--viewport] [--clip x,y,w,h] [selector|@ref] [path]' },
-  'pdf':     { category: 'Visual', description: 'Save as PDF', usage: 'pdf [path]' },
+  'pdf':     { category: 'Visual', description: 'Print current page to PDF (NOT a file download — use publisher download URL + verify file)', usage: 'pdf [path]' },
+  'verify':  { category: 'Meta', description: 'Verify deliverable matches user intent (file bytes or page state)', usage: 'verify file <path> [flags] | verify page [flags]' },
+  'profile': { category: 'Meta', description: 'Manage the local non-secret autofill profile (name/email/phone/address). Never stores passwords.', usage: 'profile set <key> <value> | get <key> | list | clear [key]' },
   'responsive': { category: 'Visual', description: 'Screenshots at mobile (375x812), tablet (768x1024), desktop (1280x720). Saves as {prefix}-mobile.png etc.', usage: 'responsive [prefix]' },
   'diff':    { category: 'Visual', description: 'Text diff between pages', usage: 'diff <url1> <url2>' },
   // Tabs

@@ -12,6 +12,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { TEMP_DIR, isPathWithin } from './platform';
 import { resolveConfig } from './config';
+import { handleProfileCommand } from './profile-commands';
 import {
   readConsent,
   writeConsent,
@@ -254,7 +255,42 @@ export async function handleMetaCommand(
       const pdfPath = args[0] || `${TEMP_DIR}/browse-page.pdf`;
       validateOutputPath(pdfPath);
       await page.pdf({ path: pdfPath, format: 'A4' });
-      return `PDF saved: ${pdfPath}`;
+      return (
+        `PDF saved (page print — NOT a publisher download): ${pdfPath}\n` +
+        'For real downloads: resolve the file URL (network tab, DOI, or download link), fetch bytes, then `nc verify file <path> --kind publisher-pdf --contains "<title>"`.'
+      );
+    }
+
+    case 'profile':
+      return handleProfileCommand(args);
+
+    case 'verify': {
+      const {
+        parseVerifyArgs,
+        verifyFile,
+        verifyPage,
+        formatVerifyFileResult,
+        formatVerifyPageResult,
+      } = await import('./deliverable-verify');
+      const parsed = parseVerifyArgs(args);
+      if (parsed.mode === 'file' && parsed.file) {
+        const result = verifyFile(parsed.file);
+        if (!result.passed) {
+          throw new Error(formatVerifyFileResult(result));
+        }
+        return formatVerifyFileResult(result);
+      }
+      if (parsed.mode === 'page' && parsed.page) {
+        const page = bm.getPage();
+        const url = page.url();
+        const text = await getCleanText(page);
+        const result = verifyPage(url, text, parsed.page);
+        if (!result.passed) {
+          throw new Error(formatVerifyPageResult(result));
+        }
+        return formatVerifyPageResult(result);
+      }
+      throw new Error('verify: missing file or page options');
     }
 
     case 'responsive': {

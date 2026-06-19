@@ -10,6 +10,7 @@ import { findInstalledBrowsers, importCookies, listSupportedBrowserNames } from 
 import { replaceCookiesFor } from './handoff-cookie-import';
 import { validateNavigationUrl } from './url-validation';
 import { cleanup, formatCleanupResult } from './cleanup';
+import { handleAutofill } from './autofill';
 import { resolveConfig } from './config';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -367,6 +368,9 @@ export async function handleWriteCommand(
       const result = await cleanup(page);
       return formatCleanupResult(result);
     }
+
+    case 'autofill':
+      return await handleAutofill(args, bm);
 
     case 'cookie-import-browser': {
       // Two modes:
