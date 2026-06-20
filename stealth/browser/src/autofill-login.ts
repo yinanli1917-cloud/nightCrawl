@@ -25,11 +25,14 @@ export const LOGIN_DETECT_EXPR =
     const form = pw.closest('form');
     const scope = form || document;
     const user = scope.querySelector('input[autocomplete="username"], input[type=email], input[type=text], input[type=tel]');
+    if (user) user.setAttribute('data-nc-login-user', '1');
     const submit = scope.querySelector('button[type=submit], input[type=submit]') || (form && form.querySelector('button'));
     if (submit) submit.setAttribute('data-nc-login-submit', '1');
     return JSON.stringify({
       hasPassword: true,
       username: user ? (user.value || '') : '',
+      passwordFilled: (pw.value || '').length > 0,
+      userSelector: user ? '[data-nc-login-user="1"]' : null,
       passwordSelector: '[data-nc-login-pw="1"]',
       submitSelector: submit ? '[data-nc-login-submit="1"]' : null,
     });
@@ -38,6 +41,8 @@ export const LOGIN_DETECT_EXPR =
 interface LoginDetect {
   hasPassword: boolean;
   username?: string;
+  passwordFilled?: boolean;
+  userSelector?: string | null;
   passwordSelector?: string;
   submitSelector?: string | null;
 }
@@ -118,6 +123,27 @@ export async function handleAutofillLogin(args: string[], ctx: LoginAutofillCtx)
         `Run \`grant-handoff ${domain}\` (or click Approve in the notification), then retry. No password is ever read or stored.`;
     }
 
+    const sleep = ctx.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+
+    // Trigger the browser's native autofill. Many forms (e.g. Shibboleth/NetID) do
+    // NOT fill on page load — the browser fills only after a REAL interaction on the
+    // field. So before submitting, deliver a trusted click to the username field (or
+    // the password field) and re-check that the password actually populated. We never
+    // type or read the password — the browser fills its own saved credential.
+    if (!detect.passwordFilled) {
+      const trigger = detect.userSelector || detect.passwordSelector;
+      if (trigger) {
+        await ctx.dispatch('click', [trigger]);
+        await sleep(900); // let the browser's autofill populate the fields
+      }
+      const afterTrigger = parseDetect(await ctx.dispatch('js', [LOGIN_DETECT_EXPR]));
+      if (!afterTrigger.passwordFilled) {
+        return `LOGIN_FAILED: ${domain} — the browser did not autofill a saved password here ` +
+          `(the field stayed empty after a trusted click). Save the password in your browser, or log in ` +
+          `once manually, then retry. nightCrawl never types or reads the password itself.`;
+      }
+    }
+
     // Trusted submit (A2). The browser releases its native-autofilled password on a
     // real gesture; CDP Input events are isTrusted:true. Prefer the submit button.
     if (detect.submitSelector) {
@@ -134,7 +160,6 @@ export async function handleAutofillLogin(args: string[], ctx: LoginAutofillCtx)
     // The submit navigates the page. CDP reads transiently fail with
     // "Inspected target navigated or closed" mid-navigation — retry host-side
     // until the new page settles (the trusted submit already happened).
-    const sleep = ctx.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
     let afterUrl = beforeUrl;
     let after: LoginDetect = { hasPassword: true };
     let afterText = '';

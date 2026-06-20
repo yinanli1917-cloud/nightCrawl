@@ -38,7 +38,7 @@ function ctx(over: Partial<LoginAutofillCtx> & {
   const notified: string[] = [];
   const clicks: string[] = [];
   let urlCalls = 0; let detectCalls = 0;
-  const detectBefore = over.detectBefore ?? { hasPassword: true, username: 'jane@x.com', passwordSelector: '[data-nc-login-pw="1"]', submitSelector: '[data-nc-login-submit="1"]' };
+  const detectBefore = over.detectBefore ?? { hasPassword: true, passwordFilled: true, username: 'jane@x.com', userSelector: '[data-nc-login-user="1"]', passwordSelector: '[data-nc-login-pw="1"]', submitSelector: '[data-nc-login-submit="1"]' };
   const detectAfter = over.detectAfter ?? { hasPassword: false };
   const base: LoginAutofillCtx = {
     isConnected: () => true,
@@ -117,7 +117,7 @@ describe('autofill-login — orchestration', () => {
         const e = args[0] || '';
         if (phase === 'before') {
           if (e === 'location.href') return 'https://x.com/login';
-          if (e.includes('password') || e.includes('data-nc-login')) return JSON.stringify({ hasPassword: true, username: 'jane', submitSelector: '[data-nc-login-submit="1"]' });
+          if (e.includes('password') || e.includes('data-nc-login')) return JSON.stringify({ hasPassword: true, passwordFilled: true, username: 'jane', submitSelector: '[data-nc-login-submit="1"]' });
           return '';
         }
         // After submit: first round of reads throws (mid-navigation), then succeeds.
@@ -130,5 +130,50 @@ describe('autofill-login — orchestration', () => {
       },
     };
     expect(await handleAutofillLogin([], c)).toContain('LOGGED_IN');
+  });
+
+  test('browser fills only on INTERACTION: trusted-click triggers autofill, then LOGGED_IN', async () => {
+    // Mirrors live Shibboleth/NetID: fields are empty on load, fill after a trusted
+    // click on the username field, then submit succeeds.
+    let phase: 'pre' | 'post' = 'pre';
+    let detectN = 0;
+    const clicks: string[] = [];
+    const c: LoginAutofillCtx = {
+      isConnected: () => true, isConsented: () => true, sleep: () => Promise.resolve(), notify: () => {},
+      dispatch: async (cmd, args) => {
+        if (cmd === 'click') { clicks.push(args[0]); if (args[0].includes('submit')) phase = 'post'; return true; }
+        if (cmd === 'text') return 'Welcome back';
+        const e = args[0] || '';
+        if (e === 'location.href') return phase === 'post' ? 'https://x.com/home' : 'https://x.com/login';
+        if (e.includes('password') || e.includes('data-nc-login')) {
+          if (phase === 'post') return JSON.stringify({ hasPassword: false });
+          detectN++; // 1st detect: empty; 2nd (after trigger click): filled
+          return JSON.stringify({ hasPassword: true, passwordFilled: detectN >= 2, username: 'jane', userSelector: '[data-nc-login-user="1"]', passwordSelector: '[data-nc-login-pw="1"]', submitSelector: '[data-nc-login-submit="1"]' });
+        }
+        return '';
+      },
+    };
+    const out = await handleAutofillLogin([], c);
+    expect(out).toContain('LOGGED_IN');
+    expect(clicks).toContain('[data-nc-login-user="1"]');   // triggered autofill
+    expect(clicks).toContain('[data-nc-login-submit="1"]'); // then submitted
+  });
+
+  test('trusted click never fills (no saved password) → LOGIN_FAILED, never submits an empty form', async () => {
+    const clicks: string[] = [];
+    const c: LoginAutofillCtx = {
+      isConnected: () => true, isConsented: () => true, sleep: () => Promise.resolve(), notify: () => {},
+      dispatch: async (cmd, args) => {
+        if (cmd === 'click') { clicks.push(args[0]); return true; }
+        const e = args[0] || '';
+        if (e === 'location.href') return 'https://x.com/login';
+        if (e.includes('password') || e.includes('data-nc-login')) return JSON.stringify({ hasPassword: true, passwordFilled: false, username: '', userSelector: '[data-nc-login-user="1"]', passwordSelector: '[data-nc-login-pw="1"]', submitSelector: '[data-nc-login-submit="1"]' });
+        return '';
+      },
+    };
+    const out = await handleAutofillLogin([], c);
+    expect(out).toContain('LOGIN_FAILED');
+    expect(clicks).toContain('[data-nc-login-user="1"]');       // tried to trigger
+    expect(clicks).not.toContain('[data-nc-login-submit="1"]'); // never submitted empty
   });
 });
