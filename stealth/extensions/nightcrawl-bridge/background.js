@@ -181,6 +181,26 @@ function rawSendCdp(tabId, method, params) {
     });
   });
 }
+// A thrown in-page error puts the USEFUL message in exceptionDetails.exception.description
+// (e.g. "TypeError: Cannot read properties of null"); exceptionDetails.text is just the
+// generic "Uncaught" prefix. Prefer the description so errors are legible to the agent.
+function cdpErrText(ed, fallback) {
+  return (ed && ed.exception && ed.exception.description) || (ed && ed.text) || fallback;
+}
+// Wait until the tab finishes loading (status:complete on a real URL). The timeout
+// RESOLVES (never rejects) so a slow/streaming page doesn't fail the goto — it just
+// returns after the cap. Makes Engine R latency comparable to headless load-time and
+// stops reads from racing a half-rendered page.
+function waitForLoad(tabId, timeoutMs = 15000) {
+  return new Promise((resolve) => {
+    let done = false;
+    const isLoaded = (t) => t && t.status === 'complete' && t.url && t.url !== 'about:blank';
+    const finish = () => { if (done) return; done = true; try { chrome.tabs.onUpdated.removeListener(onUpd); } catch {} clearTimeout(timer); resolve(); };
+    const onUpd = (id, info, t) => { if (id === tabId && info.status === 'complete' && isLoaded(t)) finish(); };
+    const timer = setTimeout(finish, timeoutMs);
+    chrome.tabs.get(tabId, (t) => { if (isLoaded(t)) finish(); else chrome.tabs.onUpdated.addListener(onUpd); });
+  });
+}
 // Self-healing: the debugger can detach out from under us (tab grouping, an SW
 // eviction race, DevTools opening). On "Debugger is not attached", re-attach once
 // and retry — so a detached-but-alive bound tab never wedges the whole session.
@@ -206,7 +226,7 @@ async function sendCdp(tabId, method, params) {
 async function trustedClick(tabId, selector) {
   const selJson = JSON.stringify(selector || '');
   const resolved = await sendCdp(tabId, 'Runtime.evaluate', { expression: `document.querySelector(${selJson})`, returnByValue: false });
-  if (resolved && resolved.exceptionDetails) throw new Error(resolved.exceptionDetails.text || 'click resolve error');
+  if (resolved && resolved.exceptionDetails) throw new Error(cdpErrText(resolved.exceptionDetails, 'click resolve error'));
   const objectId = resolved && resolved.result && resolved.result.objectId;
   if (objectId) {
     await sendCdp(tabId, 'Runtime.callFunctionOn', { objectId, functionDeclaration: "function(){ this.scrollIntoView({block:'center',inline:'center'}); }" });
@@ -226,7 +246,7 @@ async function trustedClick(tabId, selector) {
   }
   const fb = toCdp('click', [selector]); // off-DOM / zero-box → untrusted JS fallback
   const res = await sendCdp(tabId, fb.method, fb.params);
-  if (res && res.exceptionDetails) throw new Error(res.exceptionDetails.text || 'click error');
+  if (res && res.exceptionDetails) throw new Error(cdpErrText(res.exceptionDetails, 'click error'));
   return (res && res.result && res.result.value) ?? true;
 }
 
@@ -253,11 +273,17 @@ async function execute(command, args) {
   const cdp = toCdp(command, args);
   const res = await sendCdp(tabId, cdp.method, cdp.params);
   if (command === 'goto') {
+    // Wait for the page to actually finish loading before returning (mirror of
+    // Kimi's navigate). Without this, goto returns the instant Page.navigate is
+    // issued — so (a) a read right after goto hits a half-rendered page, and
+    // (b) the recorded latency is ~0ms, NOT comparable to headless's load-time
+    // latency, which corrupts the engine-routing recommendation.
+    await waitForLoad(tabId);
     try { const t = await chrome.tabs.get(tabId); bound.url = t.url || args[0]; bound.title = t.title || ''; } catch {}
     return `navigated to ${args[0] || ''}`;
   }
   if (cdp.method === 'Runtime.evaluate') {
-    if (res && res.exceptionDetails) throw new Error(res.exceptionDetails.text || 'evaluate error');
+    if (res && res.exceptionDetails) throw new Error(cdpErrText(res.exceptionDetails, 'evaluate error'));
     return (res && res.result && res.result.value) ?? '';
   }
   if (cdp.method === 'Page.captureScreenshot') return (res && res.data) || '';
