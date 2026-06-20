@@ -89,6 +89,15 @@ export function toCdp(command: string, args: string[]): CdpCall {
 // Input.dispatchMouseEvent IS isTrusted:true. The gesture is two steps because
 // the second needs coordinates from the first — so it lives in the extension's
 // execute(); these pure builders are the unit-tested spec it mirrors.
+//
+// Coordinate source: the extension resolves coords via CDP DOM.getBoxModel (which
+// works on a non-selected background tab), NOT page getBoundingClientRect.
+// clickProbeCall below is the JS-coordinate fallback variant.
+//
+// Non-disruptive by design: the extension creates its work tab in the user's
+// CURRENT window with active:false and drives it with Emulation.setFocusEmulationEnabled
+// on, so this gesture lands on the background tab without switching the user's view
+// or popping a window — it never steals the user's focus.
 
 /**
  * Probe an element's click point: scroll it into view and return its viewport

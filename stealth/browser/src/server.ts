@@ -1940,6 +1940,20 @@ async function start() {
         if (body?.command === 'autofill-login') {
           return await handleAutofillLoginRoute(body);
         }
+        // Self-reload: let the agent reload the bridge extension from disk
+        // (chrome.runtime.reload) without the user toggling it by hand. Not a
+        // page-control command, so it's routed explicitly rather than via
+        // isBridgeCommand. Code-only edits picked up; new manifest perms still
+        // need a manual reload.
+        // Side-effect-free bridge liveness check — lets the reload helper poll for
+        // the extension's WS to come back after a self-reload (a goto would falsely
+        // succeed on the headless fallback and never test the bridge).
+        if (body?.command === 'bridge-status') {
+          return new Response(JSON.stringify({ connected: bridgeHub.isConnected() }), { headers: { 'Content-Type': 'application/json' } });
+        }
+        if ((body?.command === 'reload-extension' || body?.command === 'bridge-tabinfo') && bridgeHub.isConnected()) {
+          return await routeToBridge(body, startedAt);
+        }
         if (body?.engine === 'real' && isBridgeCommand(body?.command) && bridgeHub.isConnected()) {
           return await routeToBridge(body, startedAt);
         }

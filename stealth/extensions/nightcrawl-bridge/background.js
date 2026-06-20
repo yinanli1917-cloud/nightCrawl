@@ -105,17 +105,51 @@ function resolveBoundTab(stored, tabs) {
 }
 async function ensureBoundTab(command) {
   const tabs = await chrome.tabs.query({});
+  let tabId;
   if (command === 'goto' && (!bound || resolveBoundTab(bound, tabs) == null)) {
+    // Match Kimi WebBridge: create a tab in the user's CURRENT window (NEVER a new
+    // window — that pops up and interrupts). active:false → the user's view never
+    // switches. Reads/nav/JS run fine on an inactive tab; trusted clicks use
+    // DOM.getBoxModel coords (see trustedClick). Same profile → the live logged-in
+    // session is shared (session-leverage intact).
     const tab = await chrome.tabs.create({ url: 'about:blank', active: false });
     bound = { tabId: tab.id, windowId: tab.windowId, url: tab.url || '', title: tab.title || '' };
-    await attach(tab.id);
-    return tab.id;
+    tabId = tab.id;
+  } else {
+    if (!bound) throw new Error('SESSION_LOST: no bound tab — run a goto first');
+    const resolved = resolveBoundTab(bound, tabs);
+    if (resolved == null) throw new Error('SESSION_LOST: bound tab is gone — run a goto to re-bind');
+    bound.tabId = resolved;
+    tabId = resolved;
   }
-  if (!bound) throw new Error('SESSION_LOST: no bound tab — run a goto first');
-  const tabId = resolveBoundTab(bound, tabs);
-  if (tabId == null) throw new Error('SESSION_LOST: bound tab is gone — run a goto to re-bind');
-  if (tabId !== bound.tabId) { bound.tabId = tabId; await attach(tabId); }
+  await attach(tabId); // idempotent; re-attaches if the debugger detached on a live tab
+  await ensureGrouped(tabId); // timeout-guarded; ≤1.5s once, then cached as supported/unsupported
   return tabId;
+}
+
+// Tab grouping is best-effort and BROWSER-DEPENDENT. Chrome honors chrome.tabs.group
+// (that's how Kimi groups its tabs there); Arc does NOT — its sidebar/spaces model
+// has no Chrome tab-group backend, so chrome.tabs.group() HANGS (verified live). So
+// every call is timeout-guarded, and on the first hang/no-op we stop trying for the
+// session. Non-intrusiveness does NOT depend on grouping — the bound tab is
+// active:false either way; grouping is purely organizational where supported.
+let groupedTabId = null;
+let groupingUnsupported = false;
+function withTimeout(p, ms) {
+  return Promise.race([p, new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms))]);
+}
+async function ensureGrouped(tabId) {
+  if (groupingUnsupported || groupedTabId === tabId) return;
+  if (typeof chrome.tabs.group !== 'function' || typeof chrome.tabGroups === 'undefined') { groupingUnsupported = true; return; }
+  try {
+    const gid = await withTimeout(chrome.tabs.group({ tabIds: [tabId] }), 1500);
+    const after = (await chrome.tabs.get(tabId)).groupId;
+    if (after == null || after === -1) { groupingUnsupported = true; return; } // host ignored it (Arc)
+    await withTimeout(chrome.tabGroups.update(gid, { title: 'nightcrawl', color: 'cyan', collapsed: true }), 1500).catch(() => {});
+    groupedTabId = tabId;
+  } catch {
+    groupingUnsupported = true; // hang/timeout (Arc) — don't try again this session
+  }
 }
 
 // ─── CDP plumbing ───────────────────────────────────────────
@@ -126,11 +160,20 @@ function attach(tabId) {
     chrome.debugger.attach({ tabId }, '1.3', () => {
       if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
       attached.add(tabId);
-      chrome.debugger.sendCommand({ tabId }, 'Page.enable', {}, () => resolve());
+      chrome.debugger.sendCommand({ tabId }, 'Page.enable', {}, () => {
+        // Focus emulation: the page reports document.hasFocus()/:focus as if its
+        // window were focused, so trusted Input + keyboard land on the background
+        // window WITHOUT stealing the user's OS focus. Replaces the old
+        // activate-tab + focus-window hack. (ignore lastError — older builds noop.)
+        chrome.debugger.sendCommand({ tabId }, 'Emulation.setFocusEmulationEnabled', { enabled: true }, () => {
+          void chrome.runtime.lastError;
+          resolve();
+        });
+      });
     });
   });
 }
-function sendCdp(tabId, method, params) {
+function rawSendCdp(tabId, method, params) {
   return new Promise((resolve, reject) => {
     chrome.debugger.sendCommand({ tabId }, method, params, (res) => {
       if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
@@ -138,47 +181,73 @@ function sendCdp(tabId, method, params) {
     });
   });
 }
-// Trusted click (mirror of clickProbeCall/mouseClickCalls in src/bridge-commands.ts):
-// el.click() is isTrusted:false (rejected by bot-managed sites, and the browser
-// won't release a native-autofilled password without a real gesture). CDP
-// Input.dispatchMouseEvent is isTrusted:true. Probe the element center, dispatch
-// real mouse events; fall back to the JS click only for off-screen/zero-box nodes.
-function clickProbeExpr(selJson) {
-  return `(() => { const el = document.querySelector(${selJson}); if (!el) return null; ` +
-    `el.scrollIntoView({block:'center',inline:'center'}); ` +
-    `const r = el.getBoundingClientRect(); if (!r.width || !r.height) return null; ` +
-    `return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`;
+// Self-healing: the debugger can detach out from under us (tab grouping, an SW
+// eviction race, DevTools opening). On "Debugger is not attached", re-attach once
+// and retry — so a detached-but-alive bound tab never wedges the whole session.
+async function sendCdp(tabId, method, params) {
+  try {
+    return await rawSendCdp(tabId, method, params);
+  } catch (e) {
+    if (/not attached/i.test(String((e && e.message) || ''))) {
+      attached.delete(tabId);
+      await attach(tabId);
+      return await rawSendCdp(tabId, method, params);
+    }
+    throw e;
+  }
 }
+// Trusted click — mirror of Kimi WebBridge's proven mouse_click. el.click() is
+// isTrusted:false (rejected by bot-managed sites, and the browser won't release a
+// native-autofilled password without a real gesture). CDP Input.dispatchMouseEvent
+// is isTrusted:true. Resolve the element to a CDP objectId, scroll it into view,
+// read its layout box via DOM.getBoxModel (CDP-level layout — does NOT require the
+// tab to be the selected/active one), then dispatch the gesture at the box center.
+// No tab activation, no window focus, no focus theft → the user is never interrupted.
 async function trustedClick(tabId, selector) {
   const selJson = JSON.stringify(selector || '');
-  const probe = await sendCdp(tabId, 'Runtime.evaluate', { expression: clickProbeExpr(selJson), returnByValue: true, awaitPromise: true });
-  if (probe && probe.exceptionDetails) throw new Error(probe.exceptionDetails.text || 'click probe error');
-  const pt = probe && probe.result && probe.result.value;
-  if (pt && typeof pt.x === 'number') {
-    // Chromium routes synthetic mouse press/release only to the ACTIVE, visible
-    // tab — a background tab (created active:false) silently drops them (only
-    // mouseMoved leaks through). Bring the bound tab + its window to the front so
-    // the trusted gesture actually lands. Engine R drives the real browser, so a
-    // visible click here is expected.
-    try {
-      await chrome.tabs.update(tabId, { active: true });
-      if (bound && bound.windowId != null) await chrome.windows.update(bound.windowId, { focused: true });
-      await new Promise((r) => setTimeout(r, 120)); // let the visibility change settle
-    } catch {}
-    // The `buttons` bitmask is REQUIRED — without it Chromium dispatches the raw
-    // mouse events but never synthesizes the DOM click. Mirrors mouseClickCalls.
-    await sendCdp(tabId, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x: pt.x, y: pt.y, button: 'none', buttons: 0 });
-    await sendCdp(tabId, 'Input.dispatchMouseEvent', { type: 'mousePressed', x: pt.x, y: pt.y, button: 'left', buttons: 1, clickCount: 1 });
-    await sendCdp(tabId, 'Input.dispatchMouseEvent', { type: 'mouseReleased', x: pt.x, y: pt.y, button: 'left', buttons: 0, clickCount: 1 });
-    return true;
+  const resolved = await sendCdp(tabId, 'Runtime.evaluate', { expression: `document.querySelector(${selJson})`, returnByValue: false });
+  if (resolved && resolved.exceptionDetails) throw new Error(resolved.exceptionDetails.text || 'click resolve error');
+  const objectId = resolved && resolved.result && resolved.result.objectId;
+  if (objectId) {
+    await sendCdp(tabId, 'Runtime.callFunctionOn', { objectId, functionDeclaration: "function(){ this.scrollIntoView({block:'center',inline:'center'}); }" });
+    let box = null;
+    try { box = await sendCdp(tabId, 'DOM.getBoxModel', { objectId }); } catch { /* no layout box → JS fallback below */ }
+    const content = box && box.model && box.model.content;
+    if (content && content.length >= 8) {
+      const x = (content[0] + content[2] + content[4] + content[6]) / 4;
+      const y = (content[1] + content[3] + content[5] + content[7]) / 4;
+      // The `buttons` bitmask is REQUIRED — without it Chromium dispatches the raw
+      // mouse events but never synthesizes the DOM click.
+      await sendCdp(tabId, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none', buttons: 0 });
+      await sendCdp(tabId, 'Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1 });
+      await sendCdp(tabId, 'Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1 });
+      return true;
+    }
   }
-  const fb = toCdp('click', [selector]); // untrusted fallback (no box)
+  const fb = toCdp('click', [selector]); // off-DOM / zero-box → untrusted JS fallback
   const res = await sendCdp(tabId, fb.method, fb.params);
   if (res && res.exceptionDetails) throw new Error(res.exceptionDetails.text || 'click error');
   return (res && res.result && res.result.value) ?? true;
 }
 
 async function execute(command, args) {
+  if (command === 'reload-extension') {
+    // Self-reload from disk so the agent can pick up edited extension files without
+    // the user toggling the extension by hand. Ack FIRST, then reload on the next
+    // tick so the daemon receives this result before the service worker is torn
+    // down. (Code edits are picked up; new manifest permissions still need a
+    // manual reload.) The WS reconnects on its own via onStartup + the keepalive.
+    setTimeout(() => { try { chrome.runtime.reload(); } catch {} }, 200);
+    return 'bridge reloading from disk';
+  }
+  if (command === 'bridge-tabinfo') {
+    // Diagnostic: active:false proves Engine R is non-intrusive (the user's view did
+    // not switch). groupingUnsupported:true means the host browser (Arc) ignores
+    // chrome.tabs.group, so the tab stays a quiet ungrouped background tab.
+    if (!bound) return JSON.stringify({ bound: false });
+    const t = await chrome.tabs.get(bound.tabId).catch(() => null);
+    return JSON.stringify({ bound: true, tabId: bound.tabId, active: t ? t.active : null, rawGroupId: t ? t.groupId : null, grouped: groupedTabId === bound.tabId, groupingUnsupported });
+  }
   const tabId = await ensureBoundTab(command);
   if (command === 'click') return await trustedClick(tabId, args[0] || '');
   const cdp = toCdp(command, args);
