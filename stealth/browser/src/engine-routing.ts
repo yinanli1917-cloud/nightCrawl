@@ -101,3 +101,27 @@ export function buildNavGuidance(
 
   return formatGuidance(chosenEngine, base, signals);
 }
+
+/**
+ * Resolve which engine an `auto` command should ACTUALLY run on — i.e. let the
+ * learned advice TAKE EFFECT instead of only being printed. Conservative by design:
+ *  - hostile domains NEVER auto-route to the real (logged-in) browser — safety wins;
+ *  - we switch to `real` only when the journal has LEARNED (>=3 samples, confidence
+ *    'learned') that real wins for this domain;
+ *  - everything else stays headless (the safe background default).
+ * The agent can still force either engine explicitly (--engine=...). This never
+ * routes a hostile/unknown domain to the real browser, so it can't leak the live
+ * session somewhere it shouldn't go.
+ */
+export function resolveAutoEngine(
+  url: string,
+  deps: SignalDeps = DEFAULT_DEPS,
+): { engine: Engine; reason: string } {
+  if (!url || url === 'about:blank') return { engine: 'headless', reason: 'no url' };
+  if (deps.isHostile(url)) return { engine: 'headless', reason: 'hostile domain (safety)' };
+  const learned = deps.learnedRecommendation(url);
+  if (learned && learned.engine === 'real' && learned.confidence === 'learned') {
+    return { engine: 'real', reason: `learned real wins (${learned.evidence})` };
+  }
+  return { engine: 'headless', reason: 'default (advisory only until learned)' };
+}

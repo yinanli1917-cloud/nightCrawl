@@ -11,6 +11,7 @@ import { describe, test, expect } from 'bun:test';
 import {
   gatherSignals,
   buildNavGuidance,
+  resolveAutoEngine,
   NAV_COMMANDS,
   type SignalDeps,
 } from '../src/engine-routing';
@@ -87,5 +88,35 @@ describe('engine-routing glue', () => {
     }));
     expect(text!).toContain('recommended: headless (strong)');
     expect(text!).not.toContain('evidence:'); // learned layer not consulted
+  });
+});
+
+describe('resolveAutoEngine — the advice TAKES EFFECT on auto', () => {
+  test('learned (>=3 samples) that real wins -> routes to real', () => {
+    const d = deps({ learnedRecommendation: () => ({ engine: 'real', evidence: 'real 5/6 ok', confidence: 'learned' }) });
+    expect(resolveAutoEngine('https://canvas.uw.edu/', d).engine).toBe('real');
+  });
+
+  test('hostile domain NEVER auto-routes to real, even if learned real (safety)', () => {
+    const d = deps({ isHostile: () => true, learnedRecommendation: () => ({ engine: 'real', evidence: 'real 9/9 ok', confidence: 'learned' }) });
+    expect(resolveAutoEngine('https://xiaohongshu.com/', d).engine).toBe('headless');
+  });
+
+  test('THIN learned (1-2 samples) stays headless — advisory only until confident', () => {
+    const d = deps({ learnedRecommendation: () => ({ engine: 'real', evidence: 'real 1/1 ok', confidence: 'thin' }) });
+    expect(resolveAutoEngine('https://new.example/', d).engine).toBe('headless');
+  });
+
+  test('cold start (no history) stays headless', () => {
+    expect(resolveAutoEngine('https://fresh.example/', deps()).engine).toBe('headless');
+  });
+
+  test('learned that HEADLESS wins stays headless', () => {
+    const d = deps({ learnedRecommendation: () => ({ engine: 'headless', evidence: 'headless 5/5 ok', confidence: 'learned' }) });
+    expect(resolveAutoEngine('https://example.com/', d).engine).toBe('headless');
+  });
+
+  test('blank url stays headless', () => {
+    expect(resolveAutoEngine('about:blank', deps()).engine).toBe('headless');
   });
 });

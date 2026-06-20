@@ -54,7 +54,7 @@ import {
 } from './sync-state';
 import { isFirstRun, runOnboarding } from './onboarding';
 import { checkpointSession, restoreSession, sessionFilePath } from './session-store';
-import { NAV_COMMANDS, buildNavGuidance } from './engine-routing';
+import { NAV_COMMANDS, buildNavGuidance, resolveAutoEngine } from './engine-routing';
 import { recordWin } from './domain-strategy';
 import { recordDecision } from './engine-journal';
 import { eTldPlusOne, isApproved, readConsent, defaultConsentPath } from './handoff-consent';
@@ -89,6 +89,9 @@ const mainToken = tokenRegistry.createFullAccessToken(AUTH_TOKEN);
 // an MV3 SW alive; an outbound WS sidesteps both.)
 const bridgeHub = new BridgeHub();
 let bridgeWs: { stop: () => void; port: number } | null = null;
+// Sticky engine for `auto`: a goto re-decides it (resolveAutoEngine); later reads on
+// `auto` follow it so the agent stays on one page/engine within a session.
+let stickyAutoEngine: Engine = 'headless';
 const BROWSE_PORT = parseInt(process.env.BROWSE_PORT || '0', 10);
 const IDLE_TIMEOUT_MS = parseInt(process.env.BROWSE_IDLE_TIMEOUT || '1800000', 10); // 30 min
 // Sidebar chat is always enabled in headed mode (ungated in v0.12.0)
@@ -1999,6 +2002,19 @@ async function start() {
         }
         if (body?.engine === 'real' && isBridgeCommand(body?.command) && bridgeHub.isConnected()) {
           return await routeToBridge(body, startedAt);
+        }
+        // Auto-routing: on `auto` (the default), let the LEARNED advice TAKE EFFECT
+        // instead of only being printed. A goto re-decides the sticky engine for the
+        // session (real only when the journal LEARNED real wins + not hostile); later
+        // reads follow that engine so the agent stays on one page. Safety + the
+        // headless default are preserved; the agent can always force --engine.
+        if ((body?.engine === 'auto' || !body?.engine) && isBridgeCommand(body?.command) && bridgeHub.isConnected()) {
+          if (body?.command === 'goto' && body?.args?.[0]) {
+            stickyAutoEngine = resolveAutoEngine(body.args[0]).engine;
+          }
+          if (stickyAutoEngine === 'real') {
+            return await routeToBridge({ ...body, engine: 'real' }, startedAt);
+          }
         }
         const resp = await handleCommand(body, token);
         return await appendEngineGuidance(resp, body, startedAt);
