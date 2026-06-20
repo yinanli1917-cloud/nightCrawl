@@ -1368,17 +1368,35 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
  * the substrate the router LEARNS from — recommendations are derived from these
  * outcomes, not from a preset rule table.
  */
+// A redirect to an IdP / SSO / login URL is the strongest cross-engine wall signal.
+// Engine R can't run the headless detectLoginWall (that drives the Playwright page),
+// so the daemon classifies the real tab's LANDED url instead.
+const LOGIN_WALL_HOST_RE = /(^|\.)(idp|sso|login|signin|accounts|auth|adfs)\./i;
+const LOGIN_WALL_HREF_RE = /shibboleth|saml2|\/oauth|openid|duosecurity|okta\.com|microsoftonline|\/(login|signin|sign[-_]?in)\b/i;
+function isLoginWallUrl(finalUrl: string, requestedUrl?: string): boolean {
+  let f: URL;
+  try { f = new URL(finalUrl); } catch { return false; }
+  if (LOGIN_WALL_HOST_RE.test(f.hostname) || LOGIN_WALL_HREF_RE.test(f.href)) return true;
+  // Redirected to a different domain than requested AND it looks login-ish.
+  try {
+    const rd = requestedUrl ? new URL(requestedUrl).hostname : '';
+    if (rd && f.hostname !== rd && /login|signin|sign[-_]?in|\/auth\b/i.test(f.href)) return true;
+  } catch {}
+  return false;
+}
+
 function recordEngineOutcome(
   body: any,
   engine: Engine,
   status: number,
   text: string,
   latencyMs: number,
+  urlOverride?: string,
 ): void {
   try {
     const command = body?.command;
     if (!NAV_COMMANDS.has(command) && command !== 'snapshot') return;
-    const url = (command === 'goto' && body?.args?.[0]) ? body.args[0] : browserManager.getCurrentUrl();
+    const url = urlOverride || ((command === 'goto' && body?.args?.[0]) ? body.args[0] : browserManager.getCurrentUrl());
     if (!url || url === 'about:blank') return;
     const domain = eTldPlusOne(url);
     if (!domain) return;
@@ -1478,11 +1496,36 @@ async function handleAutofillLoginRoute(body: any): Promise<Response> {
 async function routeToBridge(body: any, startedAt: number): Promise<Response> {
   try {
     const result = await bridgeHub.dispatch(body.command, body.args || []);
-    const url = (body.command === 'goto' && body.args?.[0]) ? body.args[0] : browserManager.getCurrentUrl();
-    if (url && url !== 'about:blank') { try { recordWin(url, 'real'); } catch {} }
+    const latencyMs = Date.now() - startedAt; // measure BEFORE the extra url query
     const text = typeof result === 'string' ? result : JSON.stringify(result);
-    recordEngineOutcome(body, 'real', 200, text, Date.now() - startedAt);
-    return new Response(`[real-browser] ${text}`, { status: 200, headers: { 'Content-Type': 'text/plain' } });
+    const command = body?.command;
+    const isNav = NAV_COMMANDS.has(command) || command === 'snapshot';
+
+    // Honest outcome: read the REAL tab's LANDED url (not the requested url, not the
+    // headless url) and detect a login-wall redirect — otherwise Engine R logs ok=true
+    // even on a wall, poisoning the learned router toward 'real'.
+    let finalUrl = '';
+    if (isNav) { try { finalUrl = String((await bridgeHub.dispatch('js', ['location.href'])) ?? ''); } catch {} }
+    const requested = (command === 'goto' && body.args?.[0]) ? body.args[0] : undefined;
+    const wall = isNav && isLoginWallUrl(finalUrl, requested);
+    const wallDomain = wall ? (eTldPlusOne(finalUrl) || finalUrl) : '';
+    const honestText = wall
+      ? `${text}\nLOGIN_REQUIRED: ${wallDomain} — Engine R landed on a login wall. Log in via Arc, then retry.`
+      : text;
+
+    // Attribute the outcome to the routing-decision domain: a WALL belongs to what the
+    // agent REQUESTED (canvas walled), not the IdP it bounced to; a SUCCESS belongs to
+    // where it actually landed (post-redirect).
+    const outcomeUrl = wall ? (requested || finalUrl) : (finalUrl || requested || '');
+    recordEngineOutcome(body, 'real', 200, honestText, latencyMs, outcomeUrl || undefined);
+    if (!wall && outcomeUrl && outcomeUrl !== 'about:blank') { try { recordWin(outcomeUrl, 'real'); } catch {} }
+
+    // Engine R now also carries the routing-guidance block (was headless-only), so an
+    // agent on the real browser sees the recommendation + override hint.
+    let guidance = '';
+    if (isNav) { try { guidance = buildNavGuidance(requested || finalUrl, 'real') || ''; } catch {} }
+    const out = `[real-browser] ${honestText}${guidance ? `\n\n${guidance}` : ''}`;
+    return new Response(out, { status: 200, headers: { 'Content-Type': 'text/plain' } });
   } catch (err: any) {
     const msg = `real-browser bridge: ${err?.message ?? err}`;
     // Learn from the failure too (timeout / SESSION_LOST is a real signal that
