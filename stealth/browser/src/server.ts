@@ -1502,32 +1502,42 @@ async function routeToBridge(body: any, startedAt: number): Promise<Response> {
     const latencyMs = Date.now() - startedAt; // measure BEFORE the extra url query
     const text = typeof result === 'string' ? result : JSON.stringify(result);
     const command = body?.command;
-    const isNav = NAV_COMMANDS.has(command) || command === 'snapshot';
+    const isNavCmd = NAV_COMMANDS.has(command);
+    const recordable = isNavCmd || command === 'snapshot';
+    const isUntrustedRead = command === 'text' || command === 'html' || command === 'snapshot';
 
-    // Honest outcome: read the REAL tab's LANDED url (not the requested url, not the
-    // headless url) and detect a login-wall redirect — otherwise Engine R logs ok=true
-    // even on a wall, poisoning the learned router toward 'real'.
+    // Read the real tab's LANDED url — for wall detection (nav), the outcome domain,
+    // and the untrusted-content source label.
     let finalUrl = '';
-    if (isNav) { try { finalUrl = String((await bridgeHub.dispatch('js', ['location.href'])) ?? ''); } catch {} }
+    if (recordable || isUntrustedRead) {
+      try { finalUrl = String((await bridgeHub.dispatch('js', ['location.href'])) ?? ''); } catch {}
+    }
     const requested = (command === 'goto' && body.args?.[0]) ? body.args[0] : undefined;
-    const wall = isNav && isLoginWallUrl(finalUrl, requested);
+    const wall = isNavCmd && isLoginWallUrl(finalUrl, requested);
     const wallDomain = wall ? (eTldPlusOne(finalUrl) || finalUrl) : '';
     const honestText = wall
       ? `${text}\nLOGIN_REQUIRED: ${wallDomain} — Engine R landed on a login wall. Log in via Arc, then retry.`
       : text;
 
-    // Attribute the outcome to the routing-decision domain: a WALL belongs to what the
-    // agent REQUESTED (canvas walled), not the IdP it bounced to; a SUCCESS belongs to
-    // where it actually landed (post-redirect).
-    const outcomeUrl = wall ? (requested || finalUrl) : (finalUrl || requested || '');
-    recordEngineOutcome(body, 'real', 200, honestText, latencyMs, outcomeUrl || undefined);
-    if (!wall && outcomeUrl && outcomeUrl !== 'about:blank') { try { recordWin(outcomeUrl, 'real'); } catch {} }
+    if (recordable) {
+      // Attribute the outcome to the routing-decision domain: a WALL belongs to what the
+      // agent REQUESTED (canvas walled), not the IdP it bounced to; a SUCCESS belongs to
+      // where it actually landed (post-redirect).
+      const outcomeUrl = wall ? (requested || finalUrl) : (finalUrl || requested || '');
+      recordEngineOutcome(body, 'real', 200, honestText, latencyMs, outcomeUrl || undefined);
+      if (!wall && outcomeUrl && outcomeUrl !== 'about:blank') { try { recordWin(outcomeUrl, 'real'); } catch {} }
+    }
 
     // Engine R now also carries the routing-guidance block (was headless-only), so an
     // agent on the real browser sees the recommendation + override hint.
     let guidance = '';
-    if (isNav) { try { guidance = buildNavGuidance(requested || finalUrl, 'real') || ''; } catch {} }
-    const out = `[real-browser] ${honestText}${guidance ? `\n\n${guidance}` : ''}`;
+    if (isNavCmd) { try { guidance = buildNavGuidance(requested || finalUrl, 'real') || ''; } catch {} }
+
+    // Untrusted reads (text/html/snapshot) carry third-party page content — wrap them in
+    // the SAME trust-boundary markers headless uses, so instructions injected into a
+    // hostile page can't be mistaken for agent/system text (prompt-injection defense).
+    const payload = isUntrustedRead ? wrapUntrustedContent(honestText, finalUrl || '') : honestText;
+    const out = `[real-browser] ${payload}${guidance ? `\n\n${guidance}` : ''}`;
     return new Response(out, { status: 200, headers: { 'Content-Type': 'text/plain' } });
   } catch (err: any) {
     const msg = `real-browser bridge: ${err?.message ?? err}`;
