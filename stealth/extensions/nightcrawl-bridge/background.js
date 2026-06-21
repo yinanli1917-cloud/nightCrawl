@@ -191,14 +191,23 @@ function cdpErrText(ed, fallback) {
 // RESOLVES (never rejects) so a slow/streaming page doesn't fail the goto — it just
 // returns after the cap. Makes Engine R latency comparable to headless load-time and
 // stops reads from racing a half-rendered page.
-function waitForLoad(tabId, timeoutMs = 15000) {
+function sameOrigin(a, b) { try { return new URL(a).origin === new URL(b).origin; } catch { return false; } }
+function waitForLoad(tabId, targetUrl, timeoutMs = 15000) {
   return new Promise((resolve) => {
     let done = false;
     const isLoaded = (t) => t && t.status === 'complete' && t.url && t.url !== 'about:blank';
-    const finish = () => { if (done) return; done = true; try { chrome.tabs.onUpdated.removeListener(onUpd); } catch {} clearTimeout(timer); resolve(); };
-    const onUpd = (id, info, t) => { if (id === tabId && info.status === 'complete' && isLoaded(t)) finish(); };
-    const timer = setTimeout(finish, timeoutMs);
-    chrome.tabs.get(tabId, (t) => { if (isLoaded(t)) finish(); else chrome.tabs.onUpdated.addListener(onUpd); });
+    // Resolve TRUE when loaded, FALSE on timeout — so a hung/slow page is reported
+    // honestly to the daemon (recorded timedOut) instead of looking like a fast success.
+    const finish = (loaded) => { if (done) return; done = true; try { chrome.tabs.onUpdated.removeListener(onUpd); } catch {} clearTimeout(timer); resolve(loaded); };
+    const onUpd = (id, info, t) => { if (id === tabId && info.status === 'complete' && isLoaded(t)) finish(true); };
+    const timer = setTimeout(() => finish(false), timeoutMs);
+    chrome.tabs.get(tabId, (t) => {
+      // Only short-circuit if the tab is ALREADY on the target origin — otherwise the
+      // initial 'complete' is the PREVIOUS page (Page.navigate hasn't committed yet)
+      // and we must wait for the new navigation's complete event, not return stale.
+      if (isLoaded(t) && (!targetUrl || sameOrigin(t.url, targetUrl))) finish(true);
+      else chrome.tabs.onUpdated.addListener(onUpd);
+    });
   });
 }
 // Self-healing: the debugger can detach out from under us (tab grouping, an SW
@@ -278,9 +287,11 @@ async function execute(command, args) {
     // issued — so (a) a read right after goto hits a half-rendered page, and
     // (b) the recorded latency is ~0ms, NOT comparable to headless's load-time
     // latency, which corrupts the engine-routing recommendation.
-    await waitForLoad(tabId);
+    const loaded = await waitForLoad(tabId, args[0] || '');
     try { const t = await chrome.tabs.get(tabId); bound.url = t.url || args[0]; bound.title = t.title || ''; } catch {}
-    return `navigated to ${args[0] || ''}`;
+    // Mark a load timeout in the result so the daemon records timedOut (the journal's
+    // timeout signal) instead of logging a hung page as a fast success.
+    return loaded ? `navigated to ${args[0] || ''}` : `navigated to ${args[0] || ''} (load timeout)`;
   }
   if (cdp.method === 'Runtime.evaluate') {
     if (res && res.exceptionDetails) throw new Error(cdpErrText(res.exceptionDetails, 'evaluate error'));
