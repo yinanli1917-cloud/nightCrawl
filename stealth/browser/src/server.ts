@@ -1550,6 +1550,28 @@ async function routeToBridge(body: any, startedAt: number): Promise<Response> {
   }
 }
 
+// verify page on Engine R: check the REAL tab's url + text, not the headless page
+// (gap #4 — the DVC was verifying the wrong browser after an Engine R task, so an
+// Engine-R deliverable could pass/fail against headless's stale state).
+async function verifyOnBridge(body: any): Promise<Response> {
+  const { parseVerifyArgs, verifyPage, formatVerifyPageResult } = await import('./deliverable-verify');
+  const parsed = parseVerifyArgs(body.args || []);
+  let url = '';
+  let text = '';
+  try {
+    url = String((await bridgeHub.dispatch('js', ['location.href'])) ?? '');
+    text = String((await bridgeHub.dispatch('text', [])) ?? '');
+  } catch (e: any) {
+    return new Response(JSON.stringify({ error: `real-browser bridge: ${e?.message ?? e}` }), {
+      status: 502, headers: { 'Content-Type': 'application/json' },
+    });
+  }
+  const result = verifyPage(url, text, parsed.page!);
+  return new Response(`[real-browser] ${formatVerifyPageResult(result)}`, {
+    status: 200, headers: { 'Content-Type': 'text/plain' },
+  });
+}
+
 async function shutdown() {
   if (isShuttingDown) return;
   isShuttingDown = true;
@@ -2012,6 +2034,15 @@ async function start() {
         }
         if (body?.engine === 'real' && isBridgeCommand(body?.command) && bridgeHub.isConnected()) {
           return await routeToBridge(body, startedAt);
+        }
+        // verify page on --engine=real must check the REAL tab, not headless. (verify
+        // is not a bridge command, so it isn't caught above.) File-verify needs no
+        // browser, so let it fall through to headless.
+        if (body?.command === 'verify' && body?.engine === 'real' && bridgeHub.isConnected()) {
+          const { parseVerifyArgs } = await import('./deliverable-verify');
+          if (parseVerifyArgs(body.args || []).mode === 'page') {
+            return await verifyOnBridge(body);
+          }
         }
         // Auto-routing: on `auto` (the default), let the LEARNED advice TAKE EFFECT
         // instead of only being printed. A goto re-decides the sticky engine for the
