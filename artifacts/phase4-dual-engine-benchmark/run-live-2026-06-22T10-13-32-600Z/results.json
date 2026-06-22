@@ -1,0 +1,103 @@
+{
+  "stamp": "2026-06-22T10-13-32-600Z",
+  "axes": {
+    "capability": {
+      "roundtrip_headless": {
+        "ok": true,
+        "gotoMs": 2217,
+        "readMs": 4,
+        "hasContent": true,
+        "sample": "--- BEGIN UNTRUSTED EXTERNAL CONTENT (source: https://example.com/) ---\nExample "
+      },
+      "roundtrip_real": {
+        "ok": true,
+        "gotoMs": 52,
+        "readMs": 98,
+        "hasContent": true,
+        "sample": "[real-browser] --- BEGIN UNTRUSTED EXTERNAL CONTENT (source: https://example.com"
+      },
+      "async_js_real": {
+        "ok": true,
+        "ms": 54,
+        "sample": "[real-browser] async-ok-42"
+      },
+      "trusted_click_real": {
+        "ok": true,
+        "clickOk": true,
+        "sample": "[real-browser] true"
+      },
+      "snapshot_honest_real": {
+        "ok": true,
+        "sample": "[real-browser] SNAPSHOT_UNSUPPORTED_ON_REAL: @ref accessibility snapshots are a "
+      },
+      "untrusted_wrap_real": {
+        "ok": true
+      }
+    },
+    "performance": {
+      "read_headless": {
+        "n": 8,
+        "median": 1,
+        "p95": 2,
+        "raw": [
+          1,
+          1,
+          1,
+          1,
+          2,
+          1,
+          1,
+          2
+        ]
+      },
+      "read_real": {
+        "n": 8,
+        "median": 1,
+        "p95": 72,
+        "raw": [
+          4,
+          72,
+          2,
+          1,
+          1,
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    "stability": {
+      "headless": {
+        "runs": 8,
+        "ok": 8,
+        "successRate": 1,
+        "errs": []
+      },
+      "real": {
+        "runs": 8,
+        "ok": 8,
+        "successRate": 1,
+        "errs": []
+      }
+    },
+    "durability": {
+      "runs": 16,
+      "ok": 16,
+      "successRate": 1,
+      "firstHalfMedian": 100,
+      "lastHalfMedian": 99,
+      "driftMs": -1
+    },
+    "reflection": {
+      "ok": true,
+      "excerpt": "engine reflection — last 30d (following the router vs overriding it)\n\nexample.com\n  recommended: headless (learned) · headless 42/42 ok ~0.1s · real 75/82 ok ~0.0s, 5 timeouts\n  advice: followed 12/12 ok (100%) · overridden 28/28 ok (100%)\n\nuw.edu\n  recommended: real (learned) · real 4/7 ok ~1.4s · headless 1/4 ok ~3.2s\n  advice: followed — none · overridden — none\n\nwikipedia.org\n  recommended: real (thin) · real 2/2 ok ~1.0s · headless 2/2 ok ~1.3s\n  advice: followed — none · overridden — none\n\nherokuapp.com\n  recommended: real (learned) · real 3/3 ok ~0.4s\n  untried: headless has no history here — consider comparing it.\n  advice: followed — none · overridden — none\n\nhttpbin.org\n  recommended: headless (thin) · headless 1/1 ok ~2.4s · real 2/2 ok ~5.4s\n  advice: followed — none · overridden — none\n\nchrome-error\n  recommended: real (thin) · real 2/2 ok ~0.3s\n  untried: headless has no history here — consider comparing it.\n  advice: followed — none · overridden — none\n\nexample.net\n  recommended: headless (thin) · headless 2/2 ok ~6.6s\n  untried: real has no history here — consider comparing it.\n  advice: followed 2/2 ok (100%) · overridden — none\n\nen84.com\n  recommended: headless (t"
+    },
+    "kimi": {
+      "reachable": false,
+      "detail": "Unable to connect. Is the computer able to access the url?"
+    }
+  },
+  "notes": [
+    "Kimi WebBridge daemon (:10086) not running — live head-to-head deferred; Kimi side graded from documented 2026-05/06 benchmarks."
+  ]
+}
