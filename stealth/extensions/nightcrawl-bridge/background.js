@@ -76,8 +76,11 @@ function toCdp(command, args) {
   switch (command) {
     case 'goto': return { method: 'Page.navigate', params: { url: args[0] || '' } };
     case 'text': return evaluate('document.body ? document.body.innerText : ""');
-    case 'html':
-    case 'snapshot': return evaluate('document.documentElement.outerHTML');
+    case 'html': return evaluate('document.documentElement.outerHTML');
+    // snapshot's @ref tree is headless-only; never mislabel HTML as a snapshot.
+    // The daemon (routeToBridge) intercepts snapshot before dispatch, so the
+    // extension normally never sees it — this throw mirrors the spec defensively.
+    case 'snapshot': throw new Error('SNAPSHOT_UNSUPPORTED_ON_REAL: use html/js + CSS selectors on the real engine, or run snapshot headless for @refs.');
     case 'screenshot': return { method: 'Page.captureScreenshot', params: { format: 'png' } };
     case 'js':
     case 'eval': return evaluate(args[0] || '');

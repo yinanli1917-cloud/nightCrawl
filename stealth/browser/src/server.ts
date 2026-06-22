@@ -61,7 +61,7 @@ import { eTldPlusOne, isApproved, readConsent, defaultConsentPath } from './hand
 import { handleAutofillLogin } from './autofill-login';
 import type { Engine } from './strategy-advisor';
 import { BridgeHub } from './bridge-hub';
-import { isBridgeCommand } from './bridge-commands';
+import { isBridgeCommand, SNAPSHOT_UNSUPPORTED_MSG } from './bridge-commands';
 import { startBridgeWsServer } from './bridge-ws';
 import { emitActivity, subscribe, getActivityAfter, getActivityHistory, getSubscriberCount } from './activity';
 import { shouldRunPostCommandChecks } from './post-command-checks';
@@ -1514,6 +1514,14 @@ async function handleAutofillLoginRoute(body: any): Promise<Response> {
 
 async function routeToBridge(body: any, startedAt: number, chosenBy: 'auto' | 'explicit' = 'explicit'): Promise<Response> {
   try {
+    // snapshot's @ref tree is headless-only — never dispatch it to the bridge as
+    // mislabeled HTML. Return the honest redirect so @ref clicks don't silently
+    // no-op on the real engine (gap: snapshot returns raw HTML, not @refs).
+    if (body.command === 'snapshot') {
+      return new Response(`[real-browser] ${SNAPSHOT_UNSUPPORTED_MSG}`, {
+        status: 200, headers: { 'Content-Type': 'text/plain' },
+      });
+    }
     const result = await bridgeHub.dispatch(body.command, body.args || []);
     const latencyMs = Date.now() - startedAt; // measure BEFORE the extra url query
     const text = typeof result === 'string' ? result : JSON.stringify(result);

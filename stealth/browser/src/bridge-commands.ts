@@ -1,6 +1,7 @@
 /**
  * [INPUT]: None (pure command → CDP mapping).
- * [OUTPUT]: Exports CdpCall, BRIDGE_COMMANDS, isBridgeCommand, toCdp.
+ * [OUTPUT]: Exports CdpCall, BRIDGE_COMMANDS, SNAPSHOT_UNSUPPORTED_MSG,
+ *           isBridgeCommand, toCdp, clickProbeCall, mouseClickCalls.
  * [POS]: Phase-3B bridge — the daemon translates a nightcrawl command into the
  *        CDP method+params the extension runs via chrome.debugger.sendCommand.
  *
@@ -21,6 +22,15 @@ export interface CdpCall {
 export const BRIDGE_COMMANDS = new Set([
   'goto', 'text', 'html', 'snapshot', 'screenshot', 'click', 'fill', 'js', 'eval',
 ]);
+
+// snapshot stays in BRIDGE_COMMANDS so it's caught by the bridge route (and NOT sent
+// to the headless engine, which would snapshot the wrong page) — but it resolves to
+// this honest redirect rather than mislabeled HTML.
+export const SNAPSHOT_UNSUPPORTED_MSG =
+  'SNAPSHOT_UNSUPPORTED_ON_REAL: @ref accessibility snapshots are a headless-only feature ' +
+  '(they need Playwright locators). On --engine=real, use `html` or `js` to inspect the page, ' +
+  'then `click`/`fill` with a CSS selector — the bridge resolves CSS selectors, not @refs. ' +
+  'For an @ref-driven snapshot, run the command without --engine=real (headless).';
 
 export function isBridgeCommand(command: string): boolean {
   return BRIDGE_COMMANDS.has(command);
@@ -45,8 +55,15 @@ export function toCdp(command: string, args: string[]): CdpCall {
       return evaluate('document.body ? document.body.innerText : ""');
 
     case 'html':
-    case 'snapshot':
       return evaluate('document.documentElement.outerHTML');
+
+    case 'snapshot':
+      // The @ref accessibility tree is headless-only — it is built from Playwright
+      // locators the bridge has no equivalent of. Returning raw outerHTML under the
+      // snapshot name silently breaks `click @ref` (the bridge resolves CSS, not
+      // @refs). Fail loudly instead; routeToBridge turns this into an actionable
+      // message pointing the agent to html/js + CSS selectors.
+      throw new Error(SNAPSHOT_UNSUPPORTED_MSG);
 
     case 'screenshot':
       return { method: 'Page.captureScreenshot', params: { format: 'png' } };

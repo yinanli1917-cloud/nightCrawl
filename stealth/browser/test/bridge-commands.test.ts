@@ -44,6 +44,17 @@ describe('bridge-commands → CDP mapping', () => {
     expect(toCdp('text', []).params.awaitPromise).toBe(true);
   });
 
+  test('html maps to outerHTML by value', () => {
+    expect(toCdp('html', []).params.expression).toContain('outerHTML');
+  });
+
+  // snapshot's @ref tree is headless-only (it needs Playwright locators). The bridge
+  // must NOT mislabel raw HTML as a snapshot — it fails loudly so @ref clicks don't
+  // silently no-op on the real engine.
+  test('snapshot throws on the bridge (no mislabeled HTML under the snapshot name)', () => {
+    expect(() => toCdp('snapshot', [])).toThrow(/snapshot/i);
+  });
+
   test('click embeds the selector safely (JSON-encoded, no raw interpolation)', () => {
     const c = toCdp('click', ['#btn']);
     expect(c.method).toBe('Runtime.evaluate');
