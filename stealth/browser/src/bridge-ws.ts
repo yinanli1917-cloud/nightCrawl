@@ -66,6 +66,13 @@ export function startBridgeWsServer(
         return new Response('nightcrawl bridge', { status: 200 });
       },
       websocket: {
+        // Heavy/hostile pages return multi-MB frames: outerHTML of a 50k-node DOM,
+        // a full-viewport base64 screenshot. Bun's default WS frame cap (16MB) drops
+        // those silently — the tool_result never parses, deliver() never fires, and
+        // the hub hangs to its timeout, wrongly journaling the domain as timedOut.
+        // Raise the inbound cap so the engine that EXISTS for heavy pages can return
+        // them. (127.0.0.1-only + extension-origin-gated, so this isn't an exposure.)
+        maxPayloadLength: 96 * 1024 * 1024,
         open(ws) {
           const sink: Sink = (cmd) =>
             ws.send(JSON.stringify({ type: 'tool_call', requestId: cmd.id, payload: { name: cmd.command, args: cmd.args } }));

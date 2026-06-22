@@ -1522,7 +1522,13 @@ async function routeToBridge(body: any, startedAt: number, chosenBy: 'auto' | 'e
         status: 200, headers: { 'Content-Type': 'text/plain' },
       });
     }
-    const result = await bridgeHub.dispatch(body.command, body.args || []);
+    // A nav runs Page.navigate + the extension's waitForLoad (15s cap). The hub
+    // timeout must strictly OUTLIVE that internal wait + realistic network, or a
+    // slow/heavy page trips a spurious hub timeout (and a false timedOut journal
+    // entry) before the page even finishes loading. Give nav extra headroom; other
+    // commands keep the default.
+    const dispatchTimeout = NAV_COMMANDS.has(body.command) ? 45_000 : undefined;
+    const result = await bridgeHub.dispatch(body.command, body.args || [], dispatchTimeout);
     const latencyMs = Date.now() - startedAt; // measure BEFORE the extra url query
     const text = typeof result === 'string' ? result : JSON.stringify(result);
     const command = body?.command;

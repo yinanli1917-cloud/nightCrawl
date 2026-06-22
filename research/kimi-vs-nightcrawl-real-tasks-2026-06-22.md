@@ -81,15 +81,19 @@ outcomes · load-timeout honesty · `verify page --engine=real` · untrusted-con
 saved-password autofill · journal recency window · exploration nudge · recommended-vs-chosen
 reflection + `engine-stats` · `recordWin` gated on honest ok · snapshot fails loudly.
 
+**Also closed this session (heavy-page robustness, live-verified):**
+- **Bridge payload cap** — `bridge-ws.ts` now sets `maxPayloadLength: 96MB`. Verified: a 20MB
+  Engine R `js` return (over Bun's old 16MB default that dropped silently → 30s hang) now
+  round-trips **complete** in 300ms.
+- **Nav dispatch-timeout margin** — nav commands get a 45s hub budget that strictly outlives the
+  extension's 15s `waitForLoad`, so a slow/heavy page no longer trips a spurious hub timeout (+
+  false `timedOut` journal entry) before it finishes loading.
+
 **Remaining backlog (from the 37-gap audit — MEDIUM/LOW robustness, not blocking):**
 - **Latency comparability** — the journal's headless `goto` latency includes the login-wall
   recovery pipeline Engine R has no counterpart for; the cross-engine latency *tiebreak* should
   compare a like-for-like phase (perf/timing axis).
 - **axTimedOut asymmetry** — the heavy-JS timeout signal can only fire on headless today.
-- **Bridge dispatch-timeout margin** — hub 30s vs extension `waitForLoad` 15s; heavy/streaming
-  pages can leave no headroom (generalization).
-- **Bridge payload caps** — no `maxPayloadLength`; very large `html`/`screenshot` frames can drop
-  silently on heavy pages.
 - **SPA rebind robustness** — exact url+title match; pushState/duplicate tabs can mis-rebind.
 - **Engine R empty-read signal · PDF weak-extraction guard · verify-page login-page guard** —
   honesty hardening on edge cases.
