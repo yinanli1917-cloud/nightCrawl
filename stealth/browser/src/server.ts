@@ -1395,7 +1395,8 @@ function recordEngineOutcome(
   text: string,
   latencyMs: number,
   urlOverride?: string,
-): void {
+  chosenBy: 'auto' | 'explicit' = 'explicit',
+): { ok: boolean } | void {
   try {
     const command = body?.command;
     if (!NAV_COMMANDS.has(command) && command !== 'snapshot') return;
@@ -1406,17 +1407,26 @@ function recordEngineOutcome(
     const reloginRequired = /LOGIN_REQUIRED|CONSENT_REQUIRED/.test(text);
     const axTimedOut = /accessibility snapshot unavailable/.test(text);
     const timedOut = /timeout/i.test(text);
+    const ok = status === 200 && !reloginRequired;
+    // Reflection (gap #9): capture what the router WOULD recommend at decision time
+    // (before this outcome is appended) so adviceRegret can later compare following
+    // vs overriding the advice. resolveAutoEngine reads only prior history.
+    let recommended: Engine | undefined;
+    try { recommended = resolveAutoEngine(url).engine; } catch {}
     recordDecision({
       ts: Date.now(),
       domain,
       engine,
       command,
-      ok: status === 200 && !reloginRequired,
+      ok,
       latencyMs,
       axTimedOut: axTimedOut || undefined,
       timedOut: timedOut || undefined,
       reloginRequired: reloginRequired || undefined,
+      recommended,
+      chosenBy,
     });
+    return { ok };
   } catch {}
 }
 
@@ -1437,8 +1447,11 @@ async function appendEngineGuidance(resp: Response, body: any, startedAt: number
     // Read the body once; reconstruct it below (a consumed Response can't be reused).
     const text = isText ? await resp.text() : '';
 
+    // 'auto' = router resolved this (the default / explicit --engine=auto); anything
+    // else is the agent forcing an engine. Drives the followed-vs-overridden split.
+    const chosenBy: 'auto' | 'explicit' = (body?.engine === 'auto' || !body?.engine) ? 'auto' : 'explicit';
     // Learn from every NAV/snapshot outcome (success, failure, AX-timeout, relogin).
-    recordEngineOutcome(body, 'headless', resp.status, text, latencyMs);
+    const outcome = recordEngineOutcome(body, 'headless', resp.status, text, latencyMs, undefined, chosenBy);
 
     if (!NAV_COMMANDS.has(command) || !isText) {
       return isText
@@ -1457,7 +1470,10 @@ async function appendEngineGuidance(resp: Response, body: any, startedAt: number
       extra += `\n(note: --engine=real ran on headless — the command isn't bridge-supported or no real-browser bridge is connected.)`;
     }
     // Learn: headless successfully navigated this domain (advice for next time).
-    if (url && url !== 'about:blank') { try { recordWin(url, 'headless'); } catch {} }
+    // Gate on the journal's honest ok (gap LOW): a login wall / timeout is recorded
+    // ok=false above, so it must NOT also count as a domain-memory "win" — the two
+    // stores would otherwise derive opposite conclusions from the same outcome.
+    if (url && url !== 'about:blank' && outcome?.ok) { try { recordWin(url, 'headless'); } catch {} }
 
     return new Response(text + extra, { status: 200, headers: { 'Content-Type': 'text/plain' } });
   } catch {
@@ -1496,7 +1512,7 @@ async function handleAutofillLoginRoute(body: any): Promise<Response> {
   return new Response(text, { status: 200, headers: { 'Content-Type': 'text/plain' } });
 }
 
-async function routeToBridge(body: any, startedAt: number): Promise<Response> {
+async function routeToBridge(body: any, startedAt: number, chosenBy: 'auto' | 'explicit' = 'explicit'): Promise<Response> {
   try {
     const result = await bridgeHub.dispatch(body.command, body.args || []);
     const latencyMs = Date.now() - startedAt; // measure BEFORE the extra url query
@@ -1524,8 +1540,10 @@ async function routeToBridge(body: any, startedAt: number): Promise<Response> {
       // agent REQUESTED (canvas walled), not the IdP it bounced to; a SUCCESS belongs to
       // where it actually landed (post-redirect).
       const outcomeUrl = wall ? (requested || finalUrl) : (finalUrl || requested || '');
-      recordEngineOutcome(body, 'real', 200, honestText, latencyMs, outcomeUrl || undefined);
-      if (!wall && outcomeUrl && outcomeUrl !== 'about:blank') { try { recordWin(outcomeUrl, 'real'); } catch {} }
+      const outcome = recordEngineOutcome(body, 'real', 200, honestText, latencyMs, outcomeUrl || undefined, chosenBy);
+      // recordWin only on an honest success (gap LOW): a wall is already ok=false in
+      // the journal; it must not be a domain-memory "win" too.
+      if (outcome?.ok && outcomeUrl && outcomeUrl !== 'about:blank') { try { recordWin(outcomeUrl, 'real'); } catch {} }
     }
 
     // Engine R now also carries the routing-guidance block (was headless-only), so an
@@ -2054,7 +2072,9 @@ async function start() {
             stickyAutoEngine = resolveAutoEngine(body.args[0]).engine;
           }
           if (stickyAutoEngine === 'real') {
-            return await routeToBridge({ ...body, engine: 'real' }, startedAt);
+            // chosenBy='auto': the router resolved this, not an explicit --engine — so
+            // the reflection metric counts it as "followed the recommendation".
+            return await routeToBridge({ ...body, engine: 'real' }, startedAt, 'auto');
           }
         }
         const resp = await handleCommand(body, token);

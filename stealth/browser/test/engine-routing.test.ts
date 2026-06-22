@@ -81,6 +81,39 @@ describe('engine-routing glue', () => {
     expect(text!).toContain('recommended: headless (prior — no history yet)');
   });
 
+  // A single lucky sample must NOT read as settled knowledge (LOW gap: thin prose).
+  test('a THIN learned recommendation says it is tentative, not "overrides the default"', () => {
+    const text = buildNavGuidance('https://thin.example/x', 'headless', deps({
+      learnedRecommendation: () => ({
+        engine: 'real', evidence: 'real 1/1 ok', confidence: 'thin', samples: 1,
+      }),
+    }));
+    expect(text!).toContain('recommended: real (thin)');
+    expect(text!.toLowerCase()).toContain('tentative');
+    expect(text!).not.toContain('overrides the cold-start default');
+  });
+
+  test('a LEARNED recommendation keeps the authoritative "overrides the default" prose', () => {
+    const text = buildNavGuidance('https://solid.example/x', 'headless', deps({
+      learnedRecommendation: () => ({
+        engine: 'real', evidence: 'real 6/6 ok', confidence: 'learned', samples: 6,
+      }),
+    }));
+    expect(text!).toContain('recommended: real (learned)');
+    expect(text!).toContain('overrides the cold-start default');
+  });
+
+  // Exploration nudge surfaces when the alternative engine has never run here.
+  test('an untried alternative engine is surfaced as a comparison nudge', () => {
+    const text = buildNavGuidance('https://oneengine.example/x', 'headless', deps({
+      learnedRecommendation: () => ({
+        engine: 'headless', evidence: 'headless 4/4 ok', confidence: 'learned', samples: 4, untried: 'real',
+      }),
+    }));
+    expect(text!.toLowerCase()).toContain('untried');
+    expect(text!).toContain('real');
+  });
+
   test('learned does NOT override a strong/safety rule (hostile stays headless)', () => {
     const text = buildNavGuidance('https://hostile.example/x', 'headless', deps({
       isHostile: () => true,

@@ -23,7 +23,11 @@ import {
   aggregateByEngine,
   recommendFromStats,
   recommendForDomain,
+  filterRecent,
+  adviceRegret,
+  formatEngineStats,
   journalPath,
+  RECENCY_WINDOW_MS,
   type EngineDecisionRecord,
 } from '../src/engine-journal';
 
@@ -94,6 +98,133 @@ describe('engine-journal — recommendation is LEARNED from history', () => {
   });
 });
 
+describe('engine-journal — recency window (gap #7: stale data must not poison)', () => {
+  test('filterRecent drops records older than the window, keeps fresh ones', () => {
+    const now = 1_000_000_000_000;
+    const fresh = rec({ ts: now - 1000, engine: 'real', ok: true });
+    const stale = rec({ ts: now - RECENCY_WINDOW_MS - 1, engine: 'headless', ok: false });
+    const kept = filterRecent([fresh, stale], now);
+    expect(kept).toContain(fresh);
+    expect(kept).not.toContain(stale);
+  });
+
+  test('a record with no usable ts is kept (never silently lose older-schema data)', () => {
+    const now = 1_000_000_000_000;
+    const noTs = rec({ ts: undefined as any, engine: 'real' });
+    expect(filterRecent([noTs], now)).toContain(noTs);
+  });
+
+  test('a months-old FAILURE no longer drags down a domain that recovered this week', () => {
+    clearJournal();
+    const now = 2_000_000_000_000;
+    // Last month: real failed 4x (a wall that has since been fixed).
+    for (let i = 0; i < 4; i++) recordDecision(rec({ domain: 'recovered.example', ts: now - RECENCY_WINDOW_MS - 1, engine: 'real', ok: false }));
+    // This week: real succeeds 3x.
+    for (let i = 0; i < 3; i++) recordDecision(rec({ domain: 'recovered.example', ts: now - 1000, engine: 'real', ok: true }));
+    const r = recommendForDomain('recovered.example', process.env, now);
+    expect(r!.engine).toBe('real');
+    expect(r!.confidence).toBe('learned');
+    // Evidence reflects only the recent window (3/3), not 3/7.
+    expect(r!.evidence).toContain('3/3');
+  });
+});
+
+describe('engine-journal — exploration (gap #6: discover an untried engine)', () => {
+  test('one engine has history, the other has ZERO → recommendation flags it untried', () => {
+    const r = recommendFromStats(aggregateByEngine([
+      rec({ engine: 'headless', ok: true }),
+      rec({ engine: 'headless', ok: true }),
+      rec({ engine: 'headless', ok: true }),
+    ]));
+    expect(r!.engine).toBe('headless');
+    expect(r!.untried).toBe('real'); // real never ran here — nudge to compare
+  });
+
+  test('both engines have history → nothing untried', () => {
+    const r = recommendFromStats(aggregateByEngine([
+      rec({ engine: 'headless', ok: true }),
+      rec({ engine: 'real', ok: true }),
+    ]));
+    expect(r!.untried).toBeUndefined();
+  });
+
+  test('recommendation carries the winning sample count (for honest thin/learned prose)', () => {
+    const r = recommendFromStats(aggregateByEngine([rec({ engine: 'real', ok: true })]));
+    expect(r!.samples).toBe(1);
+  });
+});
+
+describe('engine-journal — reflection (gap #9: was our own advice good?)', () => {
+  test('adviceRegret splits outcomes by followed vs overridden recommendation', () => {
+    const records = [
+      // Followed the advice (chose what was recommended) → mostly succeeded.
+      rec({ engine: 'real', recommended: 'real', ok: true }),
+      rec({ engine: 'real', recommended: 'real', ok: true }),
+      rec({ engine: 'real', recommended: 'real', ok: false }),
+      // Overrode the advice (chose the other engine) → mostly failed.
+      rec({ engine: 'headless', recommended: 'real', ok: false }),
+      rec({ engine: 'headless', recommended: 'real', ok: false }),
+      // No recommendation captured → ignored by the regret metric.
+      rec({ engine: 'headless', ok: true }),
+    ];
+    const regret = adviceRegret(records);
+    expect(regret.followed.attempts).toBe(3);
+    expect(regret.followed.oks).toBe(2);
+    expect(regret.overridden.attempts).toBe(2);
+    expect(regret.overridden.oks).toBe(0);
+    // Following the advice did better here.
+    expect(regret.followed.successRate).toBeGreaterThan(regret.overridden.successRate);
+  });
+
+  test('records without a captured recommendation contribute to neither bucket', () => {
+    const regret = adviceRegret([rec({ engine: 'real', ok: true })]);
+    expect(regret.followed.attempts).toBe(0);
+    expect(regret.overridden.attempts).toBe(0);
+  });
+});
+
+describe('engine-journal — reflection view (engine-stats)', () => {
+  const now = 1_700_000_000_000;
+  const records: EngineDecisionRecord[] = [
+    // uw.edu: real wins, and following the advice did better than overriding.
+    rec({ ts: now - 1000, domain: 'uw.edu', engine: 'real', ok: true, recommended: 'real' }),
+    rec({ ts: now - 1000, domain: 'uw.edu', engine: 'real', ok: true, recommended: 'real' }),
+    rec({ ts: now - 1000, domain: 'uw.edu', engine: 'real', ok: true, recommended: 'real' }),
+    rec({ ts: now - 1000, domain: 'uw.edu', engine: 'headless', ok: false, recommended: 'real' }),
+    // example.com: only headless ever tried.
+    rec({ ts: now - 1000, domain: 'example.com', engine: 'headless', ok: true }),
+    rec({ ts: now - 1000, domain: 'example.com', engine: 'headless', ok: true }),
+    rec({ ts: now - 1000, domain: 'example.com', engine: 'headless', ok: true }),
+  ];
+
+  test('summarizes per-domain recommendation + the advice-followed/overridden split', () => {
+    const out = formatEngineStats(records, now);
+    expect(out).toContain('uw.edu');
+    expect(out).toContain('recommended: real (learned)');
+    expect(out).toContain('example.com');
+    // The reflection line shows whether following advice helped.
+    expect(out.toLowerCase()).toContain('followed');
+    expect(out.toLowerCase()).toContain('overridden');
+    // example.com's untried alternative is surfaced.
+    expect(out.toLowerCase()).toContain('untried');
+  });
+
+  test('a domain filter narrows the view to one site', () => {
+    const out = formatEngineStats(records, now, 'uw.edu');
+    expect(out).toContain('uw.edu');
+    expect(out).not.toContain('example.com');
+  });
+
+  test('empty journal yields a friendly no-data message, not a crash', () => {
+    expect(formatEngineStats([], now).toLowerCase()).toContain('no');
+  });
+
+  test('stale records are excluded from the view', () => {
+    const stale = [rec({ ts: now - RECENCY_WINDOW_MS - 1, domain: 'ancient.example', engine: 'real', ok: true })];
+    expect(formatEngineStats(stale, now)).not.toContain('ancient.example');
+  });
+});
+
 describe('engine-journal — persistence (I/O)', () => {
   beforeEach(clearJournal);
 
@@ -119,9 +250,10 @@ describe('engine-journal — persistence (I/O)', () => {
 
   test('recommendForDomain learns from the persisted journal', () => {
     clearJournal();
-    for (let i = 0; i < 4; i++) recordDecision(rec({ domain: 'spa.example', engine: 'real', ok: true, latencyMs: 700 }));
-    for (let i = 0; i < 4; i++) recordDecision(rec({ domain: 'spa.example', engine: 'headless', ok: false, axTimedOut: true, latencyMs: 5050 }));
-    const r = recommendForDomain('spa.example');
+    const now = 1_700_000_000_000; // fixed "now" so recent records stay inside the window
+    for (let i = 0; i < 4; i++) recordDecision(rec({ ts: now - 1000, domain: 'spa.example', engine: 'real', ok: true, latencyMs: 700 }));
+    for (let i = 0; i < 4; i++) recordDecision(rec({ ts: now - 1000, domain: 'spa.example', engine: 'headless', ok: false, axTimedOut: true, latencyMs: 5050 }));
+    const r = recommendForDomain('spa.example', process.env, now);
     expect(r!.engine).toBe('real');
     expect(r!.confidence).toBe('learned');
   });

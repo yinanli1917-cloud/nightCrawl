@@ -84,10 +84,22 @@ export function buildNavGuidance(
   if (base.strength === 'weak') {
     const learned = deps.learnedRecommendation(url);
     if (learned) {
+      // Confidence-aware prose: a single lucky sample must NOT read as settled
+      // knowledge. Only a fully-'learned' recommendation claims it overrides the
+      // default; a 'thin' one is flagged as tentative and may still change.
+      const reason = learned.confidence === 'learned'
+        ? 'Learned from past outcomes on this domain (overrides the cold-start default).'
+        : `Tentative — only ${learned.samples ?? 'a few'} sample(s) so far on this domain; the recommendation may change as outcomes accrue.`;
+      // Exploration nudge (gap #6): if the OTHER engine has never run here, say so
+      // — the agent can choose to compare it. Advisory; auto never silently probes
+      // the live browser.
+      const untriedNote = learned.untried
+        ? ` · untried: ${learned.untried} has no history here — consider comparing it.`
+        : '';
       const advice: Advice = {
         recommendation: learned.engine,
         strength: 'weak',
-        reason: 'Learned from past outcomes on this domain (overrides the cold-start default).',
+        reason: reason + untriedNote,
       };
       return formatGuidance(chosenEngine, advice, signals, {
         evidence: learned.evidence,

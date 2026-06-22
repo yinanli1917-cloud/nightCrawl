@@ -264,6 +264,13 @@ export async function handleMetaCommand(
     case 'profile':
       return handleProfileCommand(args);
 
+    case 'engine-stats': {
+      // Reflection on the dual-engine router (gap #9): show, per domain, the
+      // learned recommendation AND whether following it beat overriding it.
+      const { readDecisions, formatEngineStats } = await import('./engine-journal');
+      return formatEngineStats(readDecisions(), Date.now(), args[0]);
+    }
+
     case 'verify': {
       const {
         parseVerifyArgs,
