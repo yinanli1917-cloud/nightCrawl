@@ -1,0 +1,466 @@
+{
+  "started_at": "2026-05-19T23-27-05",
+  "trials": [
+    {
+      "i": 0,
+      "success": false,
+      "trusted": null,
+      "delta": {
+        "connected": 2,
+        "disconnected": 2,
+        "ctx": 2,
+        "stale": 0
+      },
+      "steps": [
+        {
+          "action": "navigate",
+          "ok": false,
+          "ms": 10013.0,
+          "error": "TimeoutError('timed out')"
+        },
+        {
+          "action": "close_session",
+          "ok": true,
+          "ms": 1.1,
+          "status": 200,
+          "body": {
+            "ok": true,
+            "data": {
+              "success": true,
+              "closed": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "i": 1,
+      "success": false,
+      "trusted": null,
+      "delta": {
+        "connected": 2,
+        "disconnected": 2,
+        "ctx": 2,
+        "stale": 0
+      },
+      "steps": [
+        {
+          "action": "navigate",
+          "ok": false,
+          "ms": 10001.5,
+          "error": "TimeoutError('timed out')"
+        },
+        {
+          "action": "close_session",
+          "ok": true,
+          "ms": 1.0,
+          "status": 200,
+          "body": {
+            "ok": true,
+            "data": {
+              "success": true,
+              "closed": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "i": 2,
+      "success": false,
+      "trusted": null,
+      "delta": {
+        "connected": 2,
+        "disconnected": 2,
+        "ctx": 2,
+        "stale": 0
+      },
+      "steps": [
+        {
+          "action": "navigate",
+          "ok": false,
+          "ms": 10001.5,
+          "error": "TimeoutError('timed out')"
+        },
+        {
+          "action": "close_session",
+          "ok": true,
+          "ms": 2.4,
+          "status": 200,
+          "body": {
+            "ok": true,
+            "data": {
+              "success": true,
+              "closed": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "i": 3,
+      "success": true,
+      "trusted": "trusted-click:true",
+      "delta": {
+        "connected": 0,
+        "disconnected": 0,
+        "ctx": 0,
+        "stale": 0
+      },
+      "steps": [
+        {
+          "action": "navigate",
+          "ok": true,
+          "ms": 44.7,
+          "status": 200,
+          "body": {
+            "ok": true,
+            "data": {
+              "success": true,
+              "url": "http://127.0.0.1:8796/main.html",
+              "tabId": 776115339
+            }
+          }
+        },
+        {
+          "action": "evaluate",
+          "ok": true,
+          "ms": 1.5,
+          "status": 200,
+          "body": {
+            "ok": true,
+            "data": {
+              "type": "string",
+              "value": "Boundary Suite Main"
+            }
+          }
+        },
+        {
+          "action": "mouse_click",
+          "ok": true,
+          "ms": 6.6,
+          "status": 200,
+          "body": {
+            "ok": true,
+            "data": {
+              "success": true,
+              "x": 261,
+              "y": 382,
+              "tag": "BUTTON",
+              "text": "Trusted click test"
+            }
+          }
+        },
+        {
+          "action": "evaluate",
+          "ok": true,
+          "ms": 1.3,
+          "status": 200,
+          "body": {
+            "ok": true,
+            "data": {
+              "type": "string",
+              "value": "trusted-click:true"
+            }
+          }
+        },
+        {
+          "action": "close_session",
+          "ok": true,
+          "ms": 8.8,
+          "status": 200,
+          "body": {
+            "ok": true,
+            "data": {
+              "success": true,
+              "closed": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "i": 4,
+      "success": true,
+      "trusted": "trusted-click:true",
+      "delta": {
+        "connected": 0,
+        "disconnected": 0,
+        "ctx": 0,
+        "stale": 0
+      },
+      "steps": [
+        {
+          "action": "navigate",
+          "ok": true,
+          "ms": 51.4,
+          "status": 200,
+          "body": {
+            "ok": true,
+            "data": {
+              "success": true,
+              "url": "http://127.0.0.1:8796/main.html",
+              "tabId": 776115343
+            }
+          }
+        },
+        {
+          "action": "evaluate",
+          "ok": true,
+          "ms": 1.5,
+          "status": 200,
+          "body": {
+            "ok": true,
+            "data": {
+              "type": "string",
+              "value": "Boundary Suite Main"
+            }
+          }
+        },
+        {
+          "action": "mouse_click",
+          "ok": true,
+          "ms": 13.4,
+          "status": 200,
+          "body": {
+            "ok": true,
+            "data": {
+              "success": true,
+              "x": 261,
+              "y": 378,
+              "tag": "BUTTON",
+              "text": "Trusted click test"
+            }
+          }
+        },
+        {
+          "action": "evaluate",
+          "ok": true,
+          "ms": 1.1,
+          "status": 200,
+          "body": {
+            "ok": true,
+            "data": {
+              "type": "string",
+              "value": "trusted-click:true"
+            }
+          }
+        },
+        {
+          "action": "close_session",
+          "ok": true,
+          "ms": 9.4,
+          "status": 200,
+          "body": {
+            "ok": true,
+            "data": {
+              "success": true,
+              "closed": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "i": 5,
+      "success": true,
+      "trusted": "trusted-click:true",
+      "delta": {
+        "connected": 0,
+        "disconnected": 0,
+        "ctx": 0,
+        "stale": 0
+      },
+      "steps": [
+        {
+          "action": "navigate",
+          "ok": true,
+          "ms": 52.9,
+          "status": 200,
+          "body": {
+            "ok": true,
+            "data": {
+              "success": true,
+              "url": "http://127.0.0.1:8796/main.html",
+              "tabId": 776115347
+            }
+          }
+        },
+        {
+          "action": "evaluate",
+          "ok": true,
+          "ms": 1.8,
+          "status": 200,
+          "body": {
+            "ok": true,
+            "data": {
+              "type": "string",
+              "value": "Boundary Suite Main"
+            }
+          }
+        },
+        {
+          "action": "mouse_click",
+          "ok": true,
+          "ms": 8.8,
+          "status": 200,
+          "body": {
+            "ok": true,
+            "data": {
+              "success": true,
+              "x": 261,
+              "y": 379,
+              "tag": "BUTTON",
+              "text": "Trusted click test"
+            }
+          }
+        },
+        {
+          "action": "evaluate",
+          "ok": true,
+          "ms": 1.2,
+          "status": 200,
+          "body": {
+            "ok": true,
+            "data": {
+              "type": "string",
+              "value": "trusted-click:true"
+            }
+          }
+        },
+        {
+          "action": "close_session",
+          "ok": true,
+          "ms": 10.0,
+          "status": 200,
+          "body": {
+            "ok": true,
+            "data": {
+              "success": true,
+              "closed": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "i": 6,
+      "success": true,
+      "trusted": "trusted-click:true",
+      "delta": {
+        "connected": 0,
+        "disconnected": 0,
+        "ctx": 0,
+        "stale": 0
+      },
+      "steps": [
+        {
+          "action": "navigate",
+          "ok": true,
+          "ms": 45.8,
+          "status": 200,
+          "body": {
+            "ok": true,
+            "data": {
+              "success": true,
+              "url": "http://127.0.0.1:8796/main.html",
+              "tabId": 776115351
+            }
+          }
+        },
+        {
+          "action": "evaluate",
+          "ok": true,
+          "ms": 2.6,
+          "status": 200,
+          "body": {
+            "ok": true,
+            "data": {
+              "type": "string",
+              "value": "Boundary Suite Main"
+            }
+          }
+        },
+        {
+          "action": "mouse_click",
+          "ok": true,
+          "ms": 7.0,
+          "status": 200,
+          "body": {
+            "ok": true,
+            "data": {
+              "success": true,
+              "x": 261,
+              "y": 381,
+              "tag": "BUTTON",
+              "text": "Trusted click test"
+            }
+          }
+        },
+        {
+          "action": "evaluate",
+          "ok": true,
+          "ms": 1.3,
+          "status": 200,
+          "body": {
+            "ok": true,
+            "data": {
+              "type": "string",
+              "value": "trusted-click:true"
+            }
+          }
+        },
+        {
+          "action": "close_session",
+          "ok": true,
+          "ms": 9.3,
+          "status": 200,
+          "body": {
+            "ok": true,
+            "data": {
+              "success": true,
+              "closed": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "i": 7,
+      "success": false,
+      "trusted": null,
+      "delta": {
+        "connected": 2,
+        "disconnected": 2,
+        "ctx": 2,
+        "stale": 0
+      },
+      "steps": [
+        {
+          "action": "navigate",
+          "ok": false,
+          "ms": 10000.9,
+          "error": "TimeoutError('timed out')"
+        },
+        {
+          "action": "close_session",
+          "ok": true,
+          "ms": 1.1,
+          "status": 200,
+          "body": {
+            "ok": true,
+            "data": {
+              "success": true,
+              "closed": 0
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "successes": 4,
+    "trials": 8,
+    "timeouts": 4
+  }
+}

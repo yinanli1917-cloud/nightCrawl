@@ -1,0 +1,216 @@
+{
+  "benchmark": "uw-side-by-side-benchmark-nightcrawl",
+  "startedAt": "2026-05-20T02:55:23.147Z",
+  "browserDir": "/Users/yinanli/Documents/nightCrawl/stealth/browser",
+  "artifactJson": "/Users/yinanli/Documents/nightCrawl/artifacts/uw-side-by-side-benchmark/nightcrawl-2026-05-20T02-55-23-146Z.json",
+  "artifactMarkdown": "/Users/yinanli/Documents/nightCrawl/artifacts/uw-side-by-side-benchmark/nightcrawl-2026-05-20T02-55-23-146Z.md",
+  "requestedEnvironment": {
+    "persistentState": true,
+    "BROWSE_EXTENSIONS": "all",
+    "BROWSE_IGNORE_HTTPS_ERRORS": "1"
+  },
+  "daemon": {
+    "beforeState": null,
+    "beforeAlive": false,
+    "afterState": {
+      "pid": 2725,
+      "startedAt": "2026-05-20T02:55:23.254Z",
+      "socket": "/tmp/nightcrawl-4850a2d4.sock",
+      "serverPath": "/Users/yinanli/Documents/nightCrawl/stealth/browser/src/server.ts"
+    },
+    "startedByThisRun": true,
+    "stoppedByThisRun": true
+  },
+  "steps": [
+    {
+      "command": "nc status",
+      "startedAt": "2026-05-20T02:55:23.147Z",
+      "durationMs": 11367,
+      "exitCode": 0,
+      "stdout": "Status: healthy\nMode: launched\nURL: chrome-extension://lkbebcjgcmobigpeffafkodonchffocl/options/options.html\nTabs: 1\nPID: 2725\n",
+      "stderr": "[browse] Starting server...\n",
+      "ok": true
+    },
+    {
+      "command": "nc goto https://canvas.uw.edu/",
+      "startedAt": "2026-05-20T02:55:34.517Z",
+      "durationMs": 3224,
+      "exitCode": 0,
+      "stdout": "Navigated to https://canvas.uw.edu/ (200)\n",
+      "stderr": "",
+      "ok": true
+    },
+    {
+      "command": "nc url",
+      "startedAt": "2026-05-20T02:55:37.742Z",
+      "durationMs": 66,
+      "exitCode": 0,
+      "stdout": "https://canvas.uw.edu/\n",
+      "stderr": "",
+      "ok": true
+    },
+    {
+      "command": "nc js document.title",
+      "startedAt": "2026-05-20T02:55:37.808Z",
+      "durationMs": 84,
+      "exitCode": 0,
+      "stdout": "Dashboard\n",
+      "stderr": "",
+      "ok": true
+    },
+    {
+      "command": "nc text",
+      "startedAt": "2026-05-20T02:55:37.892Z",
+      "durationMs": 58,
+      "exitCode": 0,
+      "stdout": "[redacted: Canvas page text not persisted]",
+      "stderr": "",
+      "ok": true,
+      "outputRedactedReason": "Canvas dashboard text may contain course or assignment details; safe booleans/counts are stored under canvas.indicators."
+    },
+    {
+      "command": "nc goto https://www.lib.washington.edu/",
+      "startedAt": "2026-05-20T02:55:37.951Z",
+      "durationMs": 381,
+      "exitCode": 0,
+      "stdout": "Navigated to https://www.lib.washington.edu/ (200)\n",
+      "stderr": "",
+      "ok": true
+    },
+    {
+      "command": "nc forms",
+      "startedAt": "2026-05-20T02:55:38.332Z",
+      "durationMs": 139,
+      "exitCode": 0,
+      "stdout": "--- BEGIN UNTRUSTED EXTERNAL CONTENT (source: https://lib.uw.edu/) ---\n[\n  {\n    \"index\": 0,\n    \"action\": \"https://lib.uw.edu/search/\",\n    \"method\": \"get\",\n    \"id\": \"searchFormSite\",\n    \"fields\": [\n      {\n        \"tag\": \"select\",\n        \"type\": \"select-one\",\n        \"id\": \"mobile-search-select\",\n        \"value\": \"site\",\n        \"options\": [\n          {\n            \"value\": \"site\",\n            \"text\": \"Current site\"\n          },\n          {\n            \"value\": \"uw\",\n            \"text\": \"All the UW\"\n          }\n        ]\n      },\n      {\n        \"tag\": \"input\",\n        \"type\": \"radio\",\n        \"name\": \"search\",\n        \"value\": \"site\"\n      },\n      {\n        \"tag\": \"input\",\n        \"type\": \"radio\",\n        \"name\": \"search\",\n        \"value\": \"uw\"\n      },\n      {\n        \"tag\": \"input\",\n        \"type\": \"search\",\n        \"name\": \"q\",\n        \"id\": \"uw-search-bar\",\n        \"placeholder\": \"Search\"\n      },\n      {\n        \"tag\": \"input\",\n        \"type\": \"hidden\",\n        \"name\": \"cx\",\n        \"value\": \"[number]:sx8jrb0rpjo\"\n      },\n      {\n        \"tag\": \"input\",\n        \"type\": \"hidden\",\n        \"name\": \"cof\",\n        \"value\": \"FORID:9\"\n      },\n      {\n        \"tag\": \"input\",\n        \"type\": \"submit\",\n        \"value\": \"search\"\n      }\n    ]\n  },\n  {\n    \"index\": 1,\n    \"action\": \"https://orbiscascade-washington.primo.exlibrisgroup.com/discovery/search\",\n    \"method\": \"get\",\n    \"id\": \"searchFormPrimoNUI\",\n    \"fields\": [\n      {\n        \"tag\": \"input\",\n        \"type\": \"hidden\",\n        \"name\": \"vid\",\n        \"value\": \"01ALLIANCE_UW:UW\"\n      },\n      {\n        \"tag\": \"input\",\n        \"type\": \"hidden\",\n        \"name\": \"tab\",\n        \"value\": \"UW_default\"\n      },\n      {\n        \"tag\": \"input\",\n        \"type\": \"hidden\",\n        \"name\": \"search_scope\",\n        \"value\": \"UW_EVERYTHING\"\n      },\n      {\n        \"tag\": \"input\",\n        \"type\": \"hidden\",\n        \"name\": \"lang\",\n        \"value\": \"en\"\n      },\n      {\n        \"tag\": \"input\",\n        \"type\": \"hidden\",\n        \"name\": \"query\",\n        \"id\": \"primoQuery\"\n      },\n      {\n        \"tag\": \"input\",\n        \"type\": \"text\",\n        \"name\": \"queryTemp\",\n        \"id\": \"primoQueryTemp\",\n        \"placeholder\": \"Search the catalog for articles, books & more!\"\n      }\n    ]\n  }\n]\n--- END UNTRUSTED EXTERNAL CONTENT ---\n",
+      "stderr": "",
+      "ok": true
+    },
+    {
+      "command": "nc snapshot -i -c -d 4",
+      "startedAt": "2026-05-20T02:55:38.471Z",
+      "durationMs": 5062,
+      "exitCode": 0,
+      "stdout": "--- BEGIN UNTRUSTED EXTERNAL CONTENT (source: https://lib.uw.edu/) ---\n(accessibility snapshot unavailable: accessibility snapshot timed out after 5000ms)\n── DOM interactive fallback ──\n@e1 [link] \"Skip to content\"\n@e2 [link] \"University Libraries - University of Washington\"\n@e3 [link] \"Make a Gift\"\n@e4 [link] \"Your Library Account\"\n@e5 [link] \"Ask Us!\"\n@e6 [button] \"open search area\"\n@e7 [link] \"FIND & BORROW\"\n@e8 [link] \"RESEARCH SERVICES\"\n@e9 [link] \"STUDENT PROGRAMS\"\n@e10 [link] \"TEACHING SUPPORT\"\n@e11 [link] \"LOCATIONS & TECHNOLOGY\"\n@e12 [link] \"ABOUT\"\n@e13 [textbox] \"Search the catalog for articles, books & more!\"\n@e14 [button] \"Search\"\n@e15 [link] \"Advanced Search\"\n@e16 [link] \"FAQ\"\n@e17 [link] \"Try the BETA! – submit feedback by June 12\"\n@e18 [link] \"Open Scholarship Commons\"\n@e19 [link] \"\"\n@e20 [link] \"Reserve a Study Space\"\n@e21 [link] \"a\"\n@e22 [link] \"\"\n@e23 [link] \"Access Resources from Off-Campus\"\n@e24 [link] \"a\"\n@e25 [link] \"\"\n@e26 [link] \"Get Help from a Subject Expert\"\n@e27 [link] \"\"\n@e28 [link] \"Request Materials from Other Libraries\"\n@e29 [link] \"\"\n@e30 [link] \"Use Technology in the Libraries\"\n@e31 [link] \"\"\n@e32 [link] \"Find Textbooks and Course Materials\"\n@e33 [link] \"\"\n@e34 [link] \"Frequently Asked Questions\"\n@e35 [link] \"Suzzallo and Allen Libraries\"\n@e36 [link] \"Odegaard Undergraduate Library\"\n@e37 [link] \"Foster Business Library\"\n@e38 [link] \"Health Sciences Library\"\n@e39 [link] \"Special Collections\"\n@e40 [link] \"See All Locations\"\n@e41 [link] \"See All Study Spaces\"\n@e42 [link] \"Research Guides\"\n@e43 [link] \"Databases\"\n@e44 [link] \"Research Guides\"\n@e45 [link] \"Databases\"\n@e46 [link] \"a\"\n@e47 [link] \"2026 Distinguished Librarian Award\"\n@e48 [link] \"A living archive: The UW Ethnomusicology Archives\"\n@e49 [link] \"UW Libraries May Update\"\n@e50 [link] \"A Message for Graduates from UW Libraries\"\n@e51 [link] \"Libraries News\"\n@e52 [link] \"University Libraries - University of Washington\"\n@e53 [link] \"News & Events\"\n@e54 [link] \"Facebook\"\n@e55 [link] \"Instagram\"\n@e56 [link] \"YouTube\"\n@e57 [link] \"Contact Us\"\n@e58 [link] \"About\"\n@e59 [link] \"Accounts & Privileges\"\n@e60 [link] \"Locations & Hours\"\n@e61 [link] \"Library Jobs\"\n@e62 [link] \"Accessibility\"\n@e63 [link] \"Visitor Information\"\n@e64 [link] \"See details.\"\n@e65 [link] \"UW Home\"\n@e66 [link] \"Privacy\"\n@e67 [link] \"Terms\"\n--- END UNTRUSTED EXTERNAL CONTENT ---\n",
+      "stderr": "",
+      "ok": true
+    },
+    {
+      "command": "nc fill @e6 browser automation AI web agents",
+      "startedAt": "2026-05-20T02:55:43.533Z",
+      "durationMs": 75,
+      "exitCode": 1,
+      "stdout": "",
+      "stderr": "fill: Error: Element is not an <input>, <textarea>, <select> or [contenteditable] and does not have a role allowing [aria-readonly]\nCall log:\n\u001b[2m  - waiting for locator('body:nth-child(2) > div:nth-child(3) > div:nth-child(1) > header:nth-child(1) > div:nth-child(1) > div:nth-child(2) > div:nth-child(2) > button:nth-child(1)')\u001b[22m\n\u001b[2m    - locator resolved to <button class=\"uw-search\" aria-haspopup=\"true\" aria-expanded=\"false\" aria-owns=\"uwsearcharea\" aria-controls=\"uwsearcharea\" aria-label=\"open search area\">…</button>\u001b[22m\n\u001b[2m    - fill(\"browser automation AI web agents\")\u001b[22m\n\u001b[2m  - attempting fill action\u001b[22m\n\u001b[2m    - waiting for element to be visible, enabled and editable\u001b[22m\n\n",
+      "ok": false
+    },
+    {
+      "command": "nc goto https://orbiscascade-washington.primo.exlibrisgroup.com/discovery/search?query=any,contains,browser%20automation%20AI%20web%20agents&tab=UW_default&search_scope=UW_EVERYTHING&vid=01ALLIANCE_UW:UW&offset=0",
+      "startedAt": "2026-05-20T02:55:43.608Z",
+      "durationMs": 2785,
+      "exitCode": 0,
+      "stdout": "Navigated to https://orbiscascade-washington.primo.exlibrisgroup.com/discovery/search?query=any,contains,browser%20automation%20AI%20web%20agents&tab=UW_default&search_scope=UW_EVERYTHING&vid=01ALLIANCE_UW:UW&offset=0 (200)\n",
+      "stderr": "",
+      "ok": true
+    },
+    {
+      "command": "nc url",
+      "startedAt": "2026-05-20T02:55:46.393Z",
+      "durationMs": 45,
+      "exitCode": 0,
+      "stdout": "https://orbiscascade-washington.primo.exlibrisgroup.com/discovery/search?query=any,contains,browser%20automation%20AI%20web%20agents&tab=UW_default&search_scope=UW_EVERYTHING&vid=01ALLIANCE_UW:UW&offset=0\n",
+      "stderr": "",
+      "ok": true
+    },
+    {
+      "command": "nc js document.title",
+      "startedAt": "2026-05-20T02:55:46.438Z",
+      "durationMs": 44,
+      "exitCode": 0,
+      "stdout": "UW Libraries Search - browser automation AI web agents\n",
+      "stderr": "",
+      "ok": true
+    },
+    {
+      "command": "nc text",
+      "startedAt": "2026-05-20T02:55:46.483Z",
+      "durationMs": 59,
+      "exitCode": 0,
+      "stdout": "--- BEGIN UNTRUSTED EXTERNAL CONTENT (source: https://orbiscascade-washington.primo.exlibrisgroup.com/discovery/search?query=any,contains,browser%20automation%20AI%20web%20agents&tab=UW_default&search_scope=UW_EVERYTHING&vid=01ALLIANCE_UW:UW&offs) ---\nBasic SearchAdvanced SearchJournal SearchBrowse SearchKnown IssuesLog in for all services Menu\nASK US!\nLibrary ResourcesArticles, Books and More Advanced SearchCurrent UW students, faculty, and staffLog in for all servicesDISMISS0 selectedPage 11-10 of 48 Results You have selected 0 recordsChoose top 48 resultsDISMISS         1    Article  AI Agent with Browser Automation  Abdul Mateen ; Priyanka K R ; Chethana BM ; Leela C ; Sujith Kumar S  International Research Journal on Advanced Engineering Hub (IRJAEH), 2026-01, Vol.4 (1), p.338-343 This project presents the design and implementation of an intelligent AI agent capable of performing automated actions within a web browser environment...Open Access Check for online access    2    eBook  Agentic AI for offensive cybersecurity : build and automate smarter penetration testing workflows using AI-driven agents   Yildirim, Orhan.  2026;   Birmingham : Packt Publishing Online access    3    Article  The Rise and Role of AI Browser Agents in Modern Digital Workflows  Sankara Reddy Thamma  International Journal of Scientific Research in Computer Science, Engineering and Information Technology, 2025-04, Vol.11 (2), p.3685-3690 AI browser agents represent a significant advancement in the automation of web-based tasks by leveraging artificial intelligence to emulate human browsing behavior...Open Access Check for online access    4    Conference Proceeding  The Semantic Web : ISWC 2006 : 5th International Semantic Web Conference, ISWC 2006, Athens, GA, USA, November 5-9, 2006 : proceedings   International Semantic Web Conference (5th : 2006 : Athens, Ga.)  ©2006;   Berlin ; New York : Springer Online access    5    Conference Proceeding  The Semantic Web-- ISWC 2005 : 4th International Semantic Web Conference, ISWC 2005, Galway, Ireland, November 6-10, 2005 : proceedings   International Semantic Web Conference (4th : 2005 : Galway, Ireland)  ©2005;   Springer e-books;   Berlin ; New York : Springer Online access        eVideo  Build anything with AI agents : apps, games, assistants.  2025;   Birmingham, UK : Packt Publishing Ltd. Online access        eVideo  Defending and deploying AI.  2025;   Place of publication not identified : Pearson Online access        Article  In-Browser LLM-Guided Fuzzing for Real-Time Prompt Injection Testing in Agentic AI Browsers  Cohen, Avihay  2025-10 Large Language Model (LLM) based agents integrated into web browsers (often called agentic AI browsers...Open Access Check for online access        Article  Perplexity Comet vs ChatGPT Atlas: Which AI Browser Leads the Future of Web Exploration?  PC quest : the personal computing magazine, 2025-10;   Gurgaon: Athena Information Solutions Pvt. Ltd Check for online access        Newsletter Articles  TestMu AI Launches Kane CLI, the New Browser Automation Tool Built for AI Agents and Developers  Investment Weekly News, 2026, p.416;   NewsRX LLC Check for online access    12345Results Per Page:102550Refine My ResultsSort byRelevance External Search\nUW WorldCat\nGoogle Scholar\nAvailabilityAvailable Online Open Access Peer-reviewed Journals Held by library\nResource TypeArticles 29Conference Proceedings 6eBook 4Book Chapters 2Newspaper Articles 2Show More\nPublication DateFrom To Refine Author/CreatorInternational Semantic Web Conference 2Cruz Isabel F 1Packt Publishing 1García Bringas Pablo 1Laudon Jane P 1Show More\nTopicAutomation 10Artificial Intelligence 10Computer Science - Artificial Intelligence 6Intelligent Agents 6Large Language Models 6Show More\nLibrary\nLanguage\nJournal Title\nCollection\nMESH\n--- END UNTRUSTED EXTERNAL CONTENT ---\n",
+      "stderr": "",
+      "ok": true
+    },
+    {
+      "command": "nc links",
+      "startedAt": "2026-05-20T02:55:46.543Z",
+      "durationMs": 44,
+      "exitCode": 0,
+      "stdout": "--- BEGIN UNTRUSTED EXTERNAL CONTENT (source: https://orbiscascade-washington.primo.exlibrisgroup.com/discovery/search?query=any,contains,browser%20automation%20AI%20web%20agents&tab=UW_default&search_scope=UW_EVERYTHING&vid=01ALLIANCE_UW:UW&offs) ---\nSkip To Main Menu → https://orbiscascade-washington.primo.exlibrisgroup.com/discovery/\nSkip To Search → https://orbiscascade-washington.primo.exlibrisgroup.com/discovery/\nSkip To Results → https://orbiscascade-washington.primo.exlibrisgroup.com/discovery/\nSkip To Facets → https://orbiscascade-washington.primo.exlibrisgroup.com/discovery/\nBasic Search → https://orbiscascade-washington.primo.exlibrisgroup.com/discovery/search?vid=01ALLIANCE_UW%3AUW&lang=en\nAdvanced Search → https://orbiscascade-washington.primo.exlibrisgroup.com/discovery/search?vid=01ALLIANCE_UW%3AUW&lang=en&mode=advanced\nJournal Search → https://orbiscascade-washington.primo.exlibrisgroup.com/discovery/jsearch?vid=01ALLIANCE_UW%3AUW&lang=en\nBrowse Search → https://orbiscascade-washington.primo.exlibrisgroup.com/discovery/browse?vid=01ALLIANCE_UW%3AUW&lang=en\nKnown Issues → https://guides.lib.uw.edu/research/uwlibrariessearch/known-issues\n;  AI Agent with Browser Automation → https://orbiscascade-washington.primo.exlibrisgroup.com/discovery/fulldisplay?docid=cdi_crossref_primary_10_47392_IRJAEH_2026_0046&context=PC&vid=01ALLIANCE_UW:UW&lang=en&search_scope=UW_EVERYTHING&adaptor=Primo%20Central&tab=UW_default&query=any%2Ccontains%2Cbrowser%20automation%20AI%20web%20agents&offset=0\n;  Agentic AI for offensive cybersecurity : build and automate smarter penetration testing workflows using AI-driven age → https://orbiscascade-washington.primo.exlibrisgroup.com/discovery/fulldisplay?docid=alma99163138288101452&context=L&vid=01ALLIANCE_UW:UW&lang=en&search_scope=UW_EVERYTHING&adaptor=Local%20Search%20Engine&tab=UW_default&query=any%2Ccontains%2Cbrowser%20automation%20AI%20web%20agents&offset=0\n;  The Rise and Role of AI Browser Agents in Modern Digital Workflows → https://orbiscascade-washington.primo.exlibrisgroup.com/discovery/fulldisplay?docid=cdi_crossref_primary_10_32628_CSEIT25112846&context=PC&vid=01ALLIANCE_UW:UW&lang=en&search_scope=UW_EVERYTHING&adaptor=Primo%20Central&tab=UW_default&query=any%2Ccontains%2Cbrowser%20automation%20AI%20web%20agents&offset=0\n;  The Semantic Web : ISWC 2006 : 5th International Semantic Web Conference, ISWC 2006, Athens, GA, USA, November 5-9, 2 → https://orbiscascade-washington.primo.exlibrisgroup.com/discovery/fulldisplay?docid=alma99135466740001452&context=L&vid=01ALLIANCE_UW:UW&lang=en&search_scope=UW_EVERYTHING&adaptor=Local%20Search%20Engine&tab=UW_default&query=any%2Ccontains%2Cbrowser%20automation%20AI%20web%20agents&offset=0\n;  The Semantic Web-- ISWC 2005 : 4th International Semantic Web Conference, ISWC 2005, Galway, Ireland, November 6-10,  → https://orbiscascade-washington.primo.exlibrisgroup.com/discovery/fulldisplay?docid=alma99122298000001452&context=L&vid=01ALLIANCE_UW:UW&lang=en&search_scope=UW_EVERYTHING&adaptor=Local%20Search%20Engine&tab=UW_default&query=any%2Ccontains%2Cbrowser%20automation%20AI%20web%20agents&offset=0\n;  Build anything with AI agents : apps, games, assistants. → https://orbiscascade-washington.primo.exlibrisgroup.com/discovery/fulldisplay?docid=alma99162961188701452&context=L&vid=01ALLIANCE_UW:UW&lang=en&search_scope=UW_EVERYTHING&adaptor=Local%20Search%20Engine&tab=UW_default&query=any%2Ccontains%2Cbrowser%20automation%20AI%20web%20agents&offset=0\n;  Defending and deploying AI. → https://orbiscascade-washington.primo.exlibrisgroup.com/discovery/fulldisplay?docid=alma99163023558101452&context=L&vid=01ALLIANCE_UW:UW&lang=en&search_scope=UW_EVERYTHING&adaptor=Local%20Search%20Engine&tab=UW_default&query=any%2Ccontains%2Cbrowser%20automation%20AI%20web%20agents&offset=0\n;  In-Browser LLM-Guided Fuzzing for Real-Time Prompt Injection Testing in Agentic AI Browsers → https://orbiscascade-washington.primo.exlibrisgroup.com/discovery/fulldisplay?docid=cdi_arxiv_primary_2510_13543&context=PC&vid=01ALLIANCE_UW:UW&lang=en&search_scope=UW_EVERYTHING&adaptor=Primo%20Central&tab=UW_default&query=any%2Ccontains%2Cbrowser%20automation%20AI%20web%20agents&offset=0\n;  Perplexity Comet vs ChatGPT Atlas: Which AI Browser Leads the Future of Web Exploration? → https://orbiscascade-washington.primo.exlibrisgroup.com/discovery/fulldisplay?docid=cdi_gale_infotracmisc_A860866603&context=PC&vid=01ALLIANCE_UW:UW&lang=en&search_scope=UW_EVERYTHING&adaptor=Primo%20Central&tab=UW_default&query=any%2Ccontains%2Cbrowser%20automation%20AI%20web%20agents&offset=0\n;  TestMu AI Launches Kane CLI, the New Browser Automation Tool Built for AI Agents and Developers → https://orbiscascade-washington.primo.exlibrisgroup.com/discovery/fulldisplay?docid=cdi_gale_businessinsightsgauss_A887187759&context=PC&vid=01ALLIANCE_UW:UW&lang=en&search_scope=UW_EVERYTHING&adaptor=Primo%20Central&tab=UW_default&query=any%2Ccontains%2Cbrowser%20automation%20AI%20web%20agents&offset=0\n1 → https://orbiscascade-washington.primo.exlibrisgroup.com/discovery/search?query=any%2Ccontains%2Cbrowser%20automation%20AI%20web%20agents&tab=UW_default&search_scope=UW_EVERYTHING&vid=01ALLIANCE_UW%3AUW&offset=0&came_from=pagination_1_1\n2 → https://orbiscascade-washington.primo.exlibrisgroup.com/discovery/search?query=any%2Ccontains%2Cbrowser%20automation%20AI%20web%20agents&tab=UW_default&search_scope=UW_EVERYTHING&vid=01ALLIANCE_UW%3AUW&offset=10&came_from=pagination_1_2\n3 → https://orbiscascade-washington.primo.exlibrisgroup.com/discovery/search?query=any%2Ccontains%2Cbrowser%20automation%20AI%20web%20agents&tab=UW_default&search_scope=UW_EVERYTHING&vid=01ALLIANCE_UW%3AUW&offset=20&came_from=pagination_1_3\n4 → https://orbiscascade-washington.primo.exlibrisgroup.com/discovery/search?query=any%2Ccontains%2Cbrowser%20automation%20AI%20web%20agents&tab=UW_default&search_scope=UW_EVERYTHING&vid=01ALLIANCE_UW%3AUW&offset=30&came_from=pagination_1_4\n5 → https://orbiscascade-washington.primo.exlibrisgroup.com/discovery/search?query=any%2Ccontains%2Cbrowser%20automation%20AI%20web%20agents&tab=UW_default&search_scope=UW_EVERYTHING&vid=01ALLIANCE_UW%3AUW&offset=40&came_from=pagination_1_5\nUW WorldCat → https://uwashington.on.worldcat.org/search?databaseList=&queryString=%20browser%20automation%20AI%20web%20agents\nGoogle Scholar → https://scholar.google.com/scholar?q=%20browser%20automation%20AI%20web%20agents\nSearch Help → http://guides.lib.uw.edu/research/faq/home\nContact Us → http://www.lib.washington.edu/about/contact/\nPrivacy Statement → https://www.washington.edu/online/privacy/\nTerms of Use → https://www.washington.edu/online/terms\n--- END UNTRUSTED EXTERNAL CONTENT ---\n",
+      "stderr": "",
+      "ok": true
+    },
+    {
+      "command": "nc stop",
+      "startedAt": "2026-05-20T02:55:46.591Z",
+      "durationMs": 3035,
+      "exitCode": 0,
+      "stdout": "nightCrawl was not responding; cleaned stale state.\n",
+      "stderr": "",
+      "ok": true
+    }
+  ],
+  "canvas": {
+    "reachable": true,
+    "loginWall": false,
+    "currentUrl": "https://canvas.uw.edu/",
+    "title": "Dashboard",
+    "indicators": {
+      "dashboardTextVisible": true,
+      "courseCardsMentioned": null,
+      "consentRequired": false,
+      "autoImportMentioned": false,
+      "handoffMentioned": false,
+      "visibleCourseLikeLineCount": 5,
+      "canvasDetailsPersisted": false
+    }
+  },
+  "uwLibraries": {
+    "startGotoOk": true,
+    "searchMethod": "direct Discovery URL fallback after @e6 fill failed",
+    "currentUrl": "https://orbiscascade-washington.primo.exlibrisgroup.com/discovery/search?query=any,contains,browser%20automation%20AI%20web%20agents&tab=UW_default&search_scope=UW_EVERYTHING&vid=01ALLIANCE_UW:UW&offset=0",
+    "title": "UW Libraries Search - browser automation AI web agents",
+    "references": [
+      {
+        "rank": 1,
+        "type": "Article",
+        "title": "AI Agent with Browser Automation",
+        "authors": "Abdul Mateen ; Priyanka K R ; Chethana BM ; Leela C ; Sujith Kumar S",
+        "yearOrSource": "2026-01, Vol",
+        "linkOrAvailability": "Open Access",
+        "rawContext": "AI Agent with Browser Automation Abdul Mateen ; Priyanka K R ; Chethana BM ; Leela C ; Sujith Kumar S International Research Journal on Advanced Engineering Hub (IRJAEH), 2026-01, Vol.4 (1), p.338-343 This project presents the design and implementation of an intelligent AI agent capable of performing automated actions within a web browser environment...Open Access Check for online access"
+      },
+      {
+        "rank": 2,
+        "type": "eBook",
+        "title": "Agentic AI for offensive cybersecurity : build and automate smarter penetration testing workflows using AI-driven agents",
+        "authors": "Yildirim, Orhan.",
+        "yearOrSource": "2026; Birmingham : Packt Publishing Online access",
+        "linkOrAvailability": "Online access",
+        "rawContext": "Agentic AI for offensive cybersecurity : build and automate smarter penetration testing workflows using AI-driven agents Yildirim, Orhan. 2026; Birmingham : Packt Publishing Online access"
+      },
+      {
+        "rank": 3,
+        "type": "Article",
+        "title": "The Rise and Role of AI Browser Agents in Modern Digital Workflows",
+        "authors": "Sankara Reddy Thamma",
+        "yearOrSource": "2025-04, Vol",
+        "linkOrAvailability": "Open Access",
+        "rawContext": "The Rise and Role of AI Browser Agents in Modern Digital Workflows Sankara Reddy Thamma International Journal of Scientific Research in Computer Science, Engineering and Information Technology, 2025-04, Vol.11 (2), p.3685-3690 AI browser agents represent a significant advancement in the automation of web-based tasks by leveraging artificial intelligence to emulate human browsing behavior...Open Access Check for online access"
+      }
+    ]
+  },
+  "limitations": [
+    "Homepage search-box fill failed for @e6; used UW Discovery direct search URL instead."
+  ],
+  "finishedAt": "2026-05-20T02:55:49.626Z"
+}

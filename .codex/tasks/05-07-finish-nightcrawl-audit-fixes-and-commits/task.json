@@ -1,0 +1,31 @@
+{
+  "id": "finish-nightcrawl-audit-fixes-and-commits",
+  "name": "finish-nightcrawl-audit-fixes-and-commits",
+  "title": "Finish nightCrawl audit fixes and commits",
+  "description": "",
+  "slug": "finish-nightcrawl-audit-fixes-and-commits",
+  "status": "planning",
+  "current_phase": "planning",
+  "next_action": [
+    "grill-plan: use grill-me to turn the request into a real PRD",
+    "prepare-context: curate implement.jsonl and check.jsonl from live specs/research",
+    "start: run task validate, then task start when READY"
+  ],
+  "priority": "P2",
+  "creator": "yinanli",
+  "assignee": "yinanli",
+  "package": null,
+  "scope": null,
+  "branch": null,
+  "base_branch": "main",
+  "parent": null,
+  "children": [],
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {},
+  "created_at": "2026-05-07T12:21:19.953166+00:00",
+  "started_at": null,
+  "completed_at": null,
+  "archived_at": null,
+  "schema_version": 2
+}

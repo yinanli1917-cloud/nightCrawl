@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Cross Origin Frame</title>
+  <style>body { font-family: system-ui, sans-serif; margin: 16px; } input, button { font-size: 15px; margin: 8px 0; }</style>
+</head>
+<body>
+  <h1>Cross-Origin Frame</h1>
+  <label for="frame-input">Frame value</label>
+  <input id="frame-input" placeholder="Frame value">
+  <button id="frame-send">Send to parent</button>
+  <div id="frame-result">frame-empty</div>
+  <script>
+    document.querySelector('#frame-send').addEventListener('click', () => {
+      const value = document.querySelector('#frame-input').value.trim();
+      document.querySelector('#frame-result').textContent = 'frame:' + value;
+      parent.postMessage('frame:' + value, 'http://127.0.0.1:8876');
+    });
+  </script>
+</body>
+</html>

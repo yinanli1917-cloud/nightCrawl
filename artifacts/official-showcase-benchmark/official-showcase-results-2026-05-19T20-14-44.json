@@ -1,0 +1,550 @@
+{
+  "benchmark": "kimi-official-showcase-side-by-side",
+  "started_at": "2026-05-19T20-14-44",
+  "source_cases": [
+    {
+      "id": "shopping_compare",
+      "official_case": "Compare Shopping Prices / e-commerce price comparison",
+      "url": "https://www.amazon.com/s?k=mechanical+keyboard&i=electronics&rh=p_36%3A-15000%2Cp_72%3A1248879011",
+      "goal": "Find mechanical keyboards under $150 with high ratings without adding anything to cart.",
+      "extractor": "amazon"
+    },
+    {
+      "id": "cross_site_research",
+      "official_case": "Cross-Site Search / information research",
+      "url": "https://www.kimi.com/help/kimi-webbridge/kimi-webbridge-how-it-works",
+      "goal": "Extract Kimi's own WebBridge features and use cases from the Help Center.",
+      "extractor": "kimi_help"
+    },
+    {
+      "id": "job_collection",
+      "official_case": "Collect Job Listings",
+      "url": "https://www.ycombinator.com/jobs?query=ai%20agent",
+      "goal": "Collect public AI-agent-related job listings without logging in or applying.",
+      "extractor": "yc_jobs"
+    },
+    {
+      "id": "sheets_readiness",
+      "official_case": "Build Google Sheets / data-entry readiness",
+      "url": "https://docs.google.com/spreadsheets/u/0/",
+      "goal": "Check whether an authenticated Sheets workspace is reachable. Do not create or edit files.",
+      "extractor": "sheets_readiness"
+    }
+  ],
+  "kimi": {
+    "tasks": [
+      {
+        "session": "kimi-official-shopping_compare-1779246884",
+        "task": {
+          "id": "shopping_compare",
+          "official_case": "Compare Shopping Prices / e-commerce price comparison",
+          "url": "https://www.amazon.com/s?k=mechanical+keyboard&i=electronics&rh=p_36%3A-15000%2Cp_72%3A1248879011",
+          "goal": "Find mechanical keyboards under $150 with high ratings without adding anything to cart.",
+          "extractor": "amazon"
+        },
+        "steps": [
+          {
+            "name": "navigate",
+            "ok": false,
+            "duration_ms": 45021,
+            "error": "TimeoutError('timed out')"
+          }
+        ],
+        "restart": {
+          "duration_ms": 7128,
+          "status": {
+            "extension_connected": true,
+            "extension_id": "fldmhceldgbpfpkbgopacenieobmligc",
+            "extension_version": "1.9.7",
+            "port": 10086,
+            "running": true,
+            "uptime_seconds": 7,
+            "version": "v1.9.7"
+          },
+          "exit_code": 0
+        },
+        "outcome": "navigate_failed"
+      },
+      {
+        "session": "kimi-official-cross_site_research-1779246937",
+        "task": {
+          "id": "cross_site_research",
+          "official_case": "Cross-Site Search / information research",
+          "url": "https://www.kimi.com/help/kimi-webbridge/kimi-webbridge-how-it-works",
+          "goal": "Extract Kimi's own WebBridge features and use cases from the Help Center.",
+          "extractor": "kimi_help"
+        },
+        "steps": [
+          {
+            "name": "navigate",
+            "ok": true,
+            "duration_ms": 1916,
+            "response": {
+              "ok": true,
+              "data": {
+                "success": true,
+                "url": "https://www.kimi.com/help/kimi-webbridge/kimi-webbridge-how-it-works",
+                "tabId": 776115093
+              }
+            }
+          },
+          {
+            "name": "extract_specific",
+            "ok": false,
+            "duration_ms": 4,
+            "error": "<HTTPError 502: 'Bad Gateway'>"
+          },
+          {
+            "name": "extract_common_fallback",
+            "ok": false,
+            "duration_ms": 1,
+            "error": "<HTTPError 502: 'Bad Gateway'>"
+          }
+        ],
+        "restart": {
+          "duration_ms": 7127,
+          "status": {
+            "extension_connected": true,
+            "extension_id": "fldmhceldgbpfpkbgopacenieobmligc",
+            "extension_version": "1.9.7",
+            "port": 10086,
+            "running": true,
+            "uptime_seconds": 7,
+            "version": "v1.9.7"
+          },
+          "exit_code": 0
+        },
+        "outcome": "extract_failed"
+      },
+      {
+        "session": "kimi-official-job_collection-1779246949",
+        "task": {
+          "id": "job_collection",
+          "official_case": "Collect Job Listings",
+          "url": "https://www.ycombinator.com/jobs?query=ai%20agent",
+          "goal": "Collect public AI-agent-related job listings without logging in or applying.",
+          "extractor": "yc_jobs"
+        },
+        "steps": [
+          {
+            "name": "navigate",
+            "ok": false,
+            "duration_ms": 45001,
+            "error": "TimeoutError('timed out')"
+          }
+        ],
+        "restart": {
+          "duration_ms": 7140,
+          "status": {
+            "extension_connected": true,
+            "extension_id": "fldmhceldgbpfpkbgopacenieobmligc",
+            "extension_version": "1.9.7",
+            "port": 10086,
+            "running": true,
+            "uptime_seconds": 7,
+            "version": "v1.9.7"
+          },
+          "exit_code": 0
+        },
+        "outcome": "navigate_failed"
+      },
+      {
+        "session": "kimi-official-sheets_readiness-1779247001",
+        "task": {
+          "id": "sheets_readiness",
+          "official_case": "Build Google Sheets / data-entry readiness",
+          "url": "https://docs.google.com/spreadsheets/u/0/",
+          "goal": "Check whether an authenticated Sheets workspace is reachable. Do not create or edit files.",
+          "extractor": "sheets_readiness"
+        },
+        "steps": [
+          {
+            "name": "navigate",
+            "ok": true,
+            "duration_ms": 1970,
+            "response": {
+              "ok": true,
+              "data": {
+                "success": true,
+                "url": "https://docs.google.com/spreadsheets/u/0/",
+                "tabId": 776115096
+              }
+            }
+          },
+          {
+            "name": "extract_specific",
+            "ok": false,
+            "duration_ms": 3,
+            "error": "<HTTPError 502: 'Bad Gateway'>"
+          },
+          {
+            "name": "extract_common_fallback",
+            "ok": false,
+            "duration_ms": 1,
+            "error": "<HTTPError 502: 'Bad Gateway'>"
+          }
+        ],
+        "restart": {
+          "duration_ms": 7147,
+          "status": {
+            "extension_connected": true,
+            "extension_id": "fldmhceldgbpfpkbgopacenieobmligc",
+            "extension_version": "1.9.7",
+            "port": 10086,
+            "running": true,
+            "uptime_seconds": 7,
+            "version": "v1.9.7"
+          },
+          "exit_code": 0
+        },
+        "outcome": "extract_failed"
+      }
+    ]
+  },
+  "nightcrawl": {
+    "tasks": [
+      {
+        "task": {
+          "id": "shopping_compare",
+          "official_case": "Compare Shopping Prices / e-commerce price comparison",
+          "url": "https://www.amazon.com/s?k=mechanical+keyboard&i=electronics&rh=p_36%3A-15000%2Cp_72%3A1248879011",
+          "goal": "Find mechanical keyboards under $150 with high ratings without adding anything to cart.",
+          "extractor": "amazon"
+        },
+        "steps": [
+          {
+            "name": "goto",
+            "args": [
+              "goto",
+              "https://www.amazon.com/s?k=mechanical+keyboard&i=electronics&rh=p_36%3A-15000%2Cp_72%3A1248879011"
+            ],
+            "duration_ms": 3861,
+            "exit_code": 0,
+            "stdout": "Navigated to https://www.amazon.com/s?k=mechanical+keyboard&i=electronics&rh=p_36%3A-15000%2Cp_72%3A1248879011 (200)",
+            "stderr": "",
+            "ok": true
+          },
+          {
+            "name": "extract_specific",
+            "args": [
+              "js",
+              "\n(() => {\n  const cards = [...document.querySelectorAll('[data-component-type=\"s-search-result\"]')].slice(0, 12).map(card => {\n    const titleEl = card.querySelector('h2 span, h2 a span, [data-cy=\"title-recipe\"] span');\n    const priceWhole = card.querySelector('.a-price-whole');\n    const priceFrac = card.querySelector('.a-price-fraction');\n    const rating = card.querySelector('.a-icon-alt');\n    const link = card.querySelector('h2 a, a.a-link-normal.s-no-outline');\n    return {\n      title: titleEl?.innerText?.trim() || \"\",\n      price: priceWhole ? `$${priceWhole.innerText.replace(/[^\\d]/g, \"\")}${priceFrac ? \".\" + priceFrac.innerText.trim() : \"\"}` : \"\",\n      rating: rating?.innerText?.trim() || \"\",\n      href: link?.href || \"\"\n    };\n  }).filter(x => x.title);\n  const text = document.body?.innerText || \"\";\n  return {\n    url: location.href,\n    title: document.title,\n    blocked: /captcha|robot|automated access|sorry/i.test(text),\n    resultCount: cards.length,\n    items: cards.slice(0, 5),\n    textPreview: text.slice(0, 2500)\n  };\n})()\n"
+            ],
+            "duration_ms": 54,
+            "exit_code": 0,
+            "stdout": "{\n  \"url\": \"https://www.amazon.com/s?k=mechanical+keyboard&i=electronics&rh=p_36%3A-15000%2Cp_72%3A1248879011\",\n  \"title\": \"Amazon.com : mechanical keyboard\",\n  \"blocked\": false,\n  \"resultCount\": 12,\n  \"items\": [\n    {\n      \"title\": \"Sponsored\",\n      \"price\": \"$139.95\",\n      \"rating\": \"4.3 out of 5 stars\",\n      \"href\": \"https://www.amazon.com/sspa/click?ie=UTF8&spc=MToyNDA0NzQ1MDU4MjA4Njk2OjE3NzkyNDcwMjU6c3BfYXRmOjMwMDk0MDIyMDIxNTAwMjo6MDo6&url=%2Fnuphy-Air75-V3-Mechanical-Black-Blush%2Fdp%2FB0FFG49DGP%2Fref%3Dsr_1_1_sspa%3Fdib%3DeyJ2IjoiMSJ9.fXMEJZQR6LAstADcGwqfZ0Uyl6aLaYOdAdBpFFTEc4Xqn9SgjP4Vzs0-mZfAyRvSGJ5iE3iaUYNSbg1LijzHu1IrLldZMx161Io0FApHv4BOBGagHu44ZlWXpQNp69wa6uMpGVGJYIVSBHoEgoQXzwwhKHM6Wkq2QGp77uVuHRjIs7tG0T6WCpqDfSISzc9yJ6vm5bH-yu5MmDK3AhCct01DvnW1SDu60Wa4Z7lNTgAyLPWiIlpst1VmbP-EDNU_oBmk5B6N4feUiXS-UxNIuhZoNUp_jNJRF8SCzJwzpPQ.1At9iLhBPFm5TKCwGOBWzvyR3oYfee7szpVdHpS1rcM%26dib_tag%3Dse%26keywords%3Dmechanical%2Bkeyboard%26qid%3D1779247025%26refinements%3Dp_36%253A-15000%252Cp_72%253A1248879011%26s%3Delectronics%26sr%3D1-1-spons%26sp_csd%3Dd2lkZ2V0TmFtZT1zcF9hdGY%26psc%3D1\"\n    },\n    {\n      \"title\": \"Sponsored\",\n      \"price\": \"$74.99\",\n      \"rating\": \"4.5 out of 5 stars\",\n      \"href\": \"https://www.amazon.com/sspa/click?ie=UTF8&spc=MToyNDA0NzQ1MDU4MjA4Njk2OjE3NzkyNDcwMjU6c3BfYXRmOjMwMTEwODMzNjg2MzYwMjo6MDo6&url=%2FRK-ROYAL-KLUDGE-Mechanical-Swappable%2Fdp%2FB0CQ2MSP2B%2Fref%3Dsr_1_2_sspa%3Fdib%3DeyJ2IjoiMSJ9.fXMEJZQR6LAstADcGwqfZ0Uyl6aLaYOdAdBpFFTEc4Xqn9SgjP4Vzs0-mZfAyRvSGJ5iE3iaUYNSbg1LijzHu1IrLldZMx161Io0FApHv4BOBGagHu44ZlWXpQNp69wa6uMpGVGJYIVSBHoEgoQXzwwhKHM6Wkq2QGp77uVuHRjIs7tG0T6WCpqDfSISzc9yJ6vm5bH-yu5MmDK3AhCct01DvnW1SDu60Wa4Z7lNTgAyLPWiIlpst1VmbP-EDNU_oBmk5B6N4feUiXS-UxNIuhZoNUp_jNJRF8SCzJwzpPQ.1At9iLhBPFm5TKCwGOBWzvyR3oYfee7szpVdHpS1rcM%26dib_tag%3Dse%26keywords%3Dmechanical%2Bkeyboard%26qid%3D1779247025%26refinements%3Dp_36%253A-15000%252Cp_72%253A1248879011%26s%3Delectronics%26sr%3D1-2-spons%26sp_csd%3Dd2lkZ2V0TmFtZT1zcF9hdGY%26psc%3D1\"\n    },\n    {\n      \"title\": \"Logitech G413 SE Full-Size Mechanical Gaming Keyboard - Backlit Keyboard with Tactile Mechanical Switches, Anti-Ghosting, Compatible with Windows, macOS - Black Aluminum\",\n      \"price\": \"$59.99\",\n      \"rating\": \"4.6 out of 5 stars\",\n      \"href\": \"https://www.amazon.com/Logitech-Full-Size-Mechanical-Anti-Ghosting-Keys-White/dp/B08Z6X4NK3/ref=sr_1_3?dib=eyJ2IjoiMSJ9.fXMEJZQR6LAstADcGwqfZ0Uyl6aLaYOdAdBpFFTEc4Xqn9SgjP4Vzs0-mZfAyRvSGJ5iE3iaUYNSbg1LijzHu1IrLldZMx161Io0FApHv4BOBGagHu44ZlWXpQNp69wa6uMpGVGJYIVSBHoEgoQXzwwhKHM6Wkq2QGp77uVuHRjIs7tG0T6WCpqDfSISzc9yJ6vm5bH-yu5MmDK3AhCct01DvnW1SDu60Wa4Z7lNTgAyLPWiIlpst1VmbP-EDNU_oBmk5B6N4feUiXS-UxNIuhZoNUp_jNJRF8SCzJwzpPQ.1At9iLhBPFm5TKCwGOBWzvyR3oYfee7szpVdHpS1rcM&dib_tag=se&keywords=mechanical+keyboard&qid=1779247025&refinements=p_36%3A-15000%2Cp_72%3A1248879011&s=electronics&sr=1-3\"\n    },\n    {\n      \"title\": \"Redragon Mechanical Gaming Keyboard Wired, 11 Programmable Backlit Modes, Hot-Swappable Red Switch, Anti-Ghosting, Double-Shot PBT Keycaps, Light Up Keyboard for PC Mac\",\n      \"price\": \"$29.99\",\n      \"rating\": \"4.3 out of 5 stars\",\n      \"href\": \"https://www.amazon.com/Redragon-Programmable-Hot-Swappable-Anti-Ghosting-Double-Shot/dp/B0CF3VGQFL/ref=sr_1_4?dib=eyJ2IjoiMSJ9.fXMEJZQR6LAstADcGwqfZ0Uyl6aLaYOdAdBpFFTEc4Xqn9SgjP4Vzs0-mZfAyRvSGJ5iE3iaUYNSbg1LijzHu1IrLldZMx161Io0FApHv4BOBGagHu44ZlWXpQNp69wa6uMpGVGJYIVSBHoEgoQXzwwhKHM6Wkq2QGp77uVuHRjIs7tG0T6WCpqDfSISzc9yJ6vm5bH-yu5MmDK3AhCct01DvnW1SDu60Wa4Z7lNTgAyLPWiIlpst1VmbP-EDNU_oBmk5B6N4feUiXS-UxNIuhZoNUp_jNJRF8SCzJwzpPQ.1At9iLhBPFm5TKCwGOBWzvyR3oYfee7szpVdHpS1rcM&dib_tag=se&keywords=mechanical+keyboard&qid=1779247025&refinements=p_36%3A-15000%2Cp_72%3A1248879011&s=electronics&sr=1-4\"\n    },\n    {\n      \"title\": \"AULA F75 Pro Wireless Mechanical Keyboard,75% Hot Swappable Custom Keyboard with Knob,RGB Backlit,Pre-lubed Reaper Switches,Side Printed PBT Keycaps,2.4GHz/USB-C/BT5.0 Mechanical Gaming Keyboards\",\n      \"price\": \"$65.54\",\n      \"rating\": \"4.6 out of 5 stars\",\n      \"href\": \"https://www.amazon.com/F75-Pro/dp/B0D14N2QZF/ref=sr_1_5?dib=eyJ2IjoiMSJ9.fXMEJZQR6LAstADcGwqfZ0Uyl6aLaYOdAdBpFFTEc4Xqn9SgjP4Vzs0-mZfAyRvSGJ5iE3iaUYNSbg1LijzHu1IrLldZMx161Io0FApHv4BOBGagHu44ZlWXpQNp69wa6uMpGVGJYIVSBHoEgoQXzwwhKHM6Wkq2QGp77uVuHRjIs7tG0T6WCpqDfSISzc9yJ6vm5bH-yu5MmDK3AhCct01DvnW1SDu60Wa4Z7lNTgAyLPWiIlpst1VmbP-EDNU_oBmk5B6N4feUiXS-UxNIuhZoNUp_jNJRF8SCzJwzpPQ.1At9iLhBPFm5TKCwGOBWzvyR3oYfee7szpVdHpS1rcM&dib_tag=se&keywords=mechanical+keyboard&qid=1779247025&refinements=p_36%3A-15000%2Cp_72%3A1248879011&s=electronics&sr=1-5\"\n    }\n  ],\n  \"textPreview\": \"Skip to\\nMain content\\nResults\\nFilters\\nKeyboard shortcuts\\nSearch\\nopt\\n+\\n/\\nCart\\nshift\\n+\\nopt\\n+\\nC\\nHome\\nshift\\n+\\nopt\\n+\\nH\\nOrders\\nshift\\n+\\nopt\\n+\\nO\\nShow/Hide shortcuts\\nshift\\n+\\nopt\\n+\\nZ\\nTo move between items, use your keyboard's up or down arrows.\\nDelivering to Seattle 98107\\nUpdate location\\nElectronics\\nAll Departments\\nAlexa Skills\\nAll the Best Pet Care\\nAmazon Autos\\nAmazon Devices\\nAmazon Fresh\\nAmazon Global Store\\nAmazon Haul\\nAmazon One Medical\\nAmazon Pharmacy\\nAmazon Resale\\nAppliances\\nApps & Games\\nArts, Crafts & Sewing\\nAudible Books & Originals\\nAutomotive Parts & Accessories\\nBaby\\nBeauty & Personal Care\\nBooks\\nCDs & Vinyl\\nCell Phones & Accessories\\nClothing, Shoes & Jewelry\\nWomen's Clothing, Shoes & Jewelry\\nMen's Clothing, Shoes & Jewelry\\nGirl's Clothing, Shoes & Jewelry\\nBoy's Clothing, Shoes & Jewelry\\nBaby Clothing, Shoes & Jewelry\\nCollectibles & Fine Art\\nComputers\\nCredit and Payment Cards\\nDigital Music\\nElectronics\\nGarden & Outdoor\\nGift Cards\\nGrocery & Gourmet Food\\nHandmade\\nHealth, Household & Baby Care\\nHome & Business Services\\nHome & Kitchen\\nIndustrial & Scientific\\nJust for Prime\\nKindle Store\\nLuggage & Travel Gear\\nLuxury Stores\\nMagazine Subscriptions\\nMetropolitan Market\\nMovies & TV\\nMusical Instruments\\nOffice Products\\nPet Supplies\\nPremium Beauty\\nPrime Video\\nSame-Day Store\\nSmart Home\\nSoftware\\nSports & Outdoors\\nSubscribe & Save\\nSubscription Boxes\\nTools & Home Improvement\\nToys & Games\\nUnder $10\\nVideo Games\\nWhole Foods Market\\nEN\\nHello, sign in\\nAccount & Lists\\nReturns\\n& Orders\\n0\\nCart\\nAll\\nAmazon Haul\\nMedical Care\\nAmazon Basics\\nBest Sellers\\nPrime\\nBooks\\nToday's Deals\\nNew Releases\\nGroceries\\nGift Cards\\nSell\\nRegistry\\nMusic\\nSmart Home\\nFashion\\nAmazon Home\\nAutomotive\\nToys & Games\\nSports & Outdoors\\nHome Improvement\\nBaby\\nShop By Interest\\nPharmacy\\nKindle Books\\nBeauty & Personal Care\\nNew Arrivals\\nDeals\\nCell Phones\\nComputers\\nTV & Video\\nHeadphones\\nOffice Electronics\\nCamera & Photo\\nWearable Technology\\nAudio & Home Theater\\nMusical Instruments\\nVideo Games\\nSoftware\\nSign in\\nNew customer? Start here.\\n1-24 of over 5,000 results for \\\"mechanical keyboard\\\"\\nSort by:\\nFeatured\\nPrice: Low to High\\nPrice: High to Low\\nAvg. Customer Review\\nBest Sellers\\nSort by:Featured\\nAmazonChoice: AULA Win60 HE - Hall Effect Keyboard\\nAmazonChoice: AULA Win60 HE - Hall Effect Keyboard\\nSponsored\\n|\\nShop CORBOBO\u00a0\\nAula WIN60 HE - 60% Mechanical Gaming Keyboard Wired, Magnetic Switch Hot Swappable, Adjustable Actuation Rapid Trigger Mode, 8000 Hz Polling Rate, RGB Small Keyboard 60 Percent Compact Design for PC\\nAula WIN60 HE - 60% \"\n}",
+            "stderr": "",
+            "ok": true,
+            "parsed": {
+              "url": "https://www.amazon.com/s?k=mechanical+keyboard&i=electronics&rh=p_36%3A-15000%2Cp_72%3A1248879011",
+              "title": "Amazon.com : mechanical keyboard",
+              "blocked": false,
+              "resultCount": 12,
+              "items": [
+                {
+                  "title": "Sponsored",
+                  "price": "$139.95",
+                  "rating": "4.3 out of 5 stars",
+                  "href": "https://www.amazon.com/sspa/click?ie=UTF8&spc=MToyNDA0NzQ1MDU4MjA4Njk2OjE3NzkyNDcwMjU6c3BfYXRmOjMwMDk0MDIyMDIxNTAwMjo6MDo6&url=%2Fnuphy-Air75-V3-Mechanical-Black-Blush%2Fdp%2FB0FFG49DGP%2Fref%3Dsr_1_1_sspa%3Fdib%3DeyJ2IjoiMSJ9.fXMEJZQR6LAstADcGwqfZ0Uyl6aLaYOdAdBpFFTEc4Xqn9SgjP4Vzs0-mZfAyRvSGJ5iE3iaUYNSbg1LijzHu1IrLldZMx161Io0FApHv4BOBGagHu44ZlWXpQNp69wa6uMpGVGJYIVSBHoEgoQXzwwhKHM6Wkq2QGp77uVuHRjIs7tG0T6WCpqDfSISzc9yJ6vm5bH-yu5MmDK3AhCct01DvnW1SDu60Wa4Z7lNTgAyLPWiIlpst1VmbP-EDNU_oBmk5B6N4feUiXS-UxNIuhZoNUp_jNJRF8SCzJwzpPQ.1At9iLhBPFm5TKCwGOBWzvyR3oYfee7szpVdHpS1rcM%26dib_tag%3Dse%26keywords%3Dmechanical%2Bkeyboard%26qid%3D1779247025%26refinements%3Dp_36%253A-15000%252Cp_72%253A1248879011%26s%3Delectronics%26sr%3D1-1-spons%26sp_csd%3Dd2lkZ2V0TmFtZT1zcF9hdGY%26psc%3D1"
+                },
+                {
+                  "title": "Sponsored",
+                  "price": "$74.99",
+                  "rating": "4.5 out of 5 stars",
+                  "href": "https://www.amazon.com/sspa/click?ie=UTF8&spc=MToyNDA0NzQ1MDU4MjA4Njk2OjE3NzkyNDcwMjU6c3BfYXRmOjMwMTEwODMzNjg2MzYwMjo6MDo6&url=%2FRK-ROYAL-KLUDGE-Mechanical-Swappable%2Fdp%2FB0CQ2MSP2B%2Fref%3Dsr_1_2_sspa%3Fdib%3DeyJ2IjoiMSJ9.fXMEJZQR6LAstADcGwqfZ0Uyl6aLaYOdAdBpFFTEc4Xqn9SgjP4Vzs0-mZfAyRvSGJ5iE3iaUYNSbg1LijzHu1IrLldZMx161Io0FApHv4BOBGagHu44ZlWXpQNp69wa6uMpGVGJYIVSBHoEgoQXzwwhKHM6Wkq2QGp77uVuHRjIs7tG0T6WCpqDfSISzc9yJ6vm5bH-yu5MmDK3AhCct01DvnW1SDu60Wa4Z7lNTgAyLPWiIlpst1VmbP-EDNU_oBmk5B6N4feUiXS-UxNIuhZoNUp_jNJRF8SCzJwzpPQ.1At9iLhBPFm5TKCwGOBWzvyR3oYfee7szpVdHpS1rcM%26dib_tag%3Dse%26keywords%3Dmechanical%2Bkeyboard%26qid%3D1779247025%26refinements%3Dp_36%253A-15000%252Cp_72%253A1248879011%26s%3Delectronics%26sr%3D1-2-spons%26sp_csd%3Dd2lkZ2V0TmFtZT1zcF9hdGY%26psc%3D1"
+                },
+                {
+                  "title": "Logitech G413 SE Full-Size Mechanical Gaming Keyboard - Backlit Keyboard with Tactile Mechanical Switches, Anti-Ghosting, Compatible with Windows, macOS - Black Aluminum",
+                  "price": "$59.99",
+                  "rating": "4.6 out of 5 stars",
+                  "href": "https://www.amazon.com/Logitech-Full-Size-Mechanical-Anti-Ghosting-Keys-White/dp/B08Z6X4NK3/ref=sr_1_3?dib=eyJ2IjoiMSJ9.fXMEJZQR6LAstADcGwqfZ0Uyl6aLaYOdAdBpFFTEc4Xqn9SgjP4Vzs0-mZfAyRvSGJ5iE3iaUYNSbg1LijzHu1IrLldZMx161Io0FApHv4BOBGagHu44ZlWXpQNp69wa6uMpGVGJYIVSBHoEgoQXzwwhKHM6Wkq2QGp77uVuHRjIs7tG0T6WCpqDfSISzc9yJ6vm5bH-yu5MmDK3AhCct01DvnW1SDu60Wa4Z7lNTgAyLPWiIlpst1VmbP-EDNU_oBmk5B6N4feUiXS-UxNIuhZoNUp_jNJRF8SCzJwzpPQ.1At9iLhBPFm5TKCwGOBWzvyR3oYfee7szpVdHpS1rcM&dib_tag=se&keywords=mechanical+keyboard&qid=1779247025&refinements=p_36%3A-15000%2Cp_72%3A1248879011&s=electronics&sr=1-3"
+                },
+                {
+                  "title": "Redragon Mechanical Gaming Keyboard Wired, 11 Programmable Backlit Modes, Hot-Swappable Red Switch, Anti-Ghosting, Double-Shot PBT Keycaps, Light Up Keyboard for PC Mac",
+                  "price": "$29.99",
+                  "rating": "4.3 out of 5 stars",
+                  "href": "https://www.amazon.com/Redragon-Programmable-Hot-Swappable-Anti-Ghosting-Double-Shot/dp/B0CF3VGQFL/ref=sr_1_4?dib=eyJ2IjoiMSJ9.fXMEJZQR6LAstADcGwqfZ0Uyl6aLaYOdAdBpFFTEc4Xqn9SgjP4Vzs0-mZfAyRvSGJ5iE3iaUYNSbg1LijzHu1IrLldZMx161Io0FApHv4BOBGagHu44ZlWXpQNp69wa6uMpGVGJYIVSBHoEgoQXzwwhKHM6Wkq2QGp77uVuHRjIs7tG0T6WCpqDfSISzc9yJ6vm5bH-yu5MmDK3AhCct01DvnW1SDu60Wa4Z7lNTgAyLPWiIlpst1VmbP-EDNU_oBmk5B6N4feUiXS-UxNIuhZoNUp_jNJRF8SCzJwzpPQ.1At9iLhBPFm5TKCwGOBWzvyR3oYfee7szpVdHpS1rcM&dib_tag=se&keywords=mechanical+keyboard&qid=1779247025&refinements=p_36%3A-15000%2Cp_72%3A1248879011&s=electronics&sr=1-4"
+                },
+                {
+                  "title": "AULA F75 Pro Wireless Mechanical Keyboard,75% Hot Swappable Custom Keyboard with Knob,RGB Backlit,Pre-lubed Reaper Switches,Side Printed PBT Keycaps,2.4GHz/USB-C/BT5.0 Mechanical Gaming Keyboards",
+                  "price": "$65.54",
+                  "rating": "4.6 out of 5 stars",
+                  "href": "https://www.amazon.com/F75-Pro/dp/B0D14N2QZF/ref=sr_1_5?dib=eyJ2IjoiMSJ9.fXMEJZQR6LAstADcGwqfZ0Uyl6aLaYOdAdBpFFTEc4Xqn9SgjP4Vzs0-mZfAyRvSGJ5iE3iaUYNSbg1LijzHu1IrLldZMx161Io0FApHv4BOBGagHu44ZlWXpQNp69wa6uMpGVGJYIVSBHoEgoQXzwwhKHM6Wkq2QGp77uVuHRjIs7tG0T6WCpqDfSISzc9yJ6vm5bH-yu5MmDK3AhCct01DvnW1SDu60Wa4Z7lNTgAyLPWiIlpst1VmbP-EDNU_oBmk5B6N4feUiXS-UxNIuhZoNUp_jNJRF8SCzJwzpPQ.1At9iLhBPFm5TKCwGOBWzvyR3oYfee7szpVdHpS1rcM&dib_tag=se&keywords=mechanical+keyboard&qid=1779247025&refinements=p_36%3A-15000%2Cp_72%3A1248879011&s=electronics&sr=1-5"
+                }
+              ],
+              "textPreview": "Skip to\nMain content\nResults\nFilters\nKeyboard shortcuts\nSearch\nopt\n+\n/\nCart\nshift\n+\nopt\n+\nC\nHome\nshift\n+\nopt\n+\nH\nOrders\nshift\n+\nopt\n+\nO\nShow/Hide shortcuts\nshift\n+\nopt\n+\nZ\nTo move between items, use your keyboard's up or down arrows.\nDelivering to Seattle 98107\nUpdate location\nElectronics\nAll Departments\nAlexa Skills\nAll the Best Pet Care\nAmazon Autos\nAmazon Devices\nAmazon Fresh\nAmazon Global Store\nAmazon Haul\nAmazon One Medical\nAmazon Pharmacy\nAmazon Resale\nAppliances\nApps & Games\nArts, Crafts & Sewing\nAudible Books & Originals\nAutomotive Parts & Accessories\nBaby\nBeauty & Personal Care\nBooks\nCDs & Vinyl\nCell Phones & Accessories\nClothing, Shoes & Jewelry\nWomen's Clothing, Shoes & Jewelry\nMen's Clothing, Shoes & Jewelry\nGirl's Clothing, Shoes & Jewelry\nBoy's Clothing, Shoes & Jewelry\nBaby Clothing, Shoes & Jewelry\nCollectibles & Fine Art\nComputers\nCredit and Payment Cards\nDigital Music\nElectronics\nGarden & Outdoor\nGift Cards\nGrocery & Gourmet Food\nHandmade\nHealth, Household & Baby Care\nHome & Business Services\nHome & Kitchen\nIndustrial & Scientific\nJust for Prime\nKindle Store\nLuggage & Travel Gear\nLuxury Stores\nMagazine Subscriptions\nMetropolitan Market\nMovies & TV\nMusical Instruments\nOffice Products\nPet Supplies\nPremium Beauty\nPrime Video\nSame-Day Store\nSmart Home\nSoftware\nSports & Outdoors\nSubscribe & Save\nSubscription Boxes\nTools & Home Improvement\nToys & Games\nUnder $10\nVideo Games\nWhole Foods Market\nEN\nHello, sign in\nAccount & Lists\nReturns\n& Orders\n0\nCart\nAll\nAmazon Haul\nMedical Care\nAmazon Basics\nBest Sellers\nPrime\nBooks\nToday's Deals\nNew Releases\nGroceries\nGift Cards\nSell\nRegistry\nMusic\nSmart Home\nFashion\nAmazon Home\nAutomotive\nToys & Games\nSports & Outdoors\nHome Improvement\nBaby\nShop By Interest\nPharmacy\nKindle Books\nBeauty & Personal Care\nNew Arrivals\nDeals\nCell Phones\nComputers\nTV & Video\nHeadphones\nOffice Electronics\nCamera & Photo\nWearable Technology\nAudio & Home Theater\nMusical Instruments\nVideo Games\nSoftware\nSign in\nNew customer? Start here.\n1-24 of over 5,000 results for \"mechanical keyboard\"\nSort by:\nFeatured\nPrice: Low to High\nPrice: High to Low\nAvg. Customer Review\nBest Sellers\nSort by:Featured\nAmazonChoice: AULA Win60 HE - Hall Effect Keyboard\nAmazonChoice: AULA Win60 HE - Hall Effect Keyboard\nSponsored\n|\nShop CORBOBO\u00a0\nAula WIN60 HE - 60% Mechanical Gaming Keyboard Wired, Magnetic Switch Hot Swappable, Adjustable Actuation Rapid Trigger Mode, 8000 Hz Polling Rate, RGB Small Keyboard 60 Percent Compact Design for PC\nAula WIN60 HE - 60% "
+            }
+          }
+        ],
+        "outcome": "completed"
+      },
+      {
+        "task": {
+          "id": "cross_site_research",
+          "official_case": "Cross-Site Search / information research",
+          "url": "https://www.kimi.com/help/kimi-webbridge/kimi-webbridge-how-it-works",
+          "goal": "Extract Kimi's own WebBridge features and use cases from the Help Center.",
+          "extractor": "kimi_help"
+        },
+        "steps": [
+          {
+            "name": "goto",
+            "args": [
+              "goto",
+              "https://www.kimi.com/help/kimi-webbridge/kimi-webbridge-how-it-works"
+            ],
+            "duration_ms": 2863,
+            "exit_code": 0,
+            "stdout": "Navigated to https://www.kimi.com/help/kimi-webbridge/kimi-webbridge-how-it-works (200)",
+            "stderr": "",
+            "ok": true
+          },
+          {
+            "name": "extract_specific",
+            "args": [
+              "js",
+              "\n(() => {\n  const text = document.body?.innerText || \"\";\n  const headings = [...document.querySelectorAll('h1,h2,h3')].map(h => h.innerText.trim()).filter(Boolean);\n  const bullets = [...document.querySelectorAll('li')].map(li => li.innerText.trim().replace(/\\s+/g, ' ')).filter(Boolean).slice(0, 30);\n  const featureRows = [...document.querySelectorAll('table tr')].map(tr => [...tr.cells].map(td => td.innerText.trim().replace(/\\s+/g, ' '))).filter(r => r.length);\n  return {url: location.href, title: document.title, headings, bullets, featureRows, textPreview: text.slice(0, 3000)};\n})()\n"
+            ],
+            "duration_ms": 53,
+            "exit_code": 0,
+            "stdout": "{\n  \"url\": \"https://www.kimi.com/help/kimi-webbridge/kimi-webbridge-how-it-works\",\n  \"title\": \"How Kimi WebBridge Works - Kimi Help Center\",\n  \"headings\": [\n    \"How Kimi WebBridge Works\",\n    \"Workflow\",\n    \"Extension Interface\",\n    \"Features\"\n  ],\n  \"bullets\": [\n    \"Features\",\n    \"Research\",\n    \"Resources\",\n    \"Pricing\",\n    \"Help Center\",\n    \"Kimi K2.6\",\n    \"Getting Started\",\n    \"Agent Mode\",\n    \"Kimi Claw\",\n    \"Kimi WebBridge Kimi WebBridge Introduction How Kimi WebBridge Works FAQ\",\n    \"Kimi WebBridge Introduction\",\n    \"How Kimi WebBridge Works\",\n    \"FAQ\",\n    \"Slides\",\n    \"Docs & Sheets\",\n    \"Deep Research\",\n    \"Websites\",\n    \"Membership\",\n    \"Kimi Code\",\n    \"Kimi API\",\n    \"Others\",\n    \"Local Bridge Service: A local service runs on your computer to receive instructions from the Agent\",\n    \"Browser Extension: Executes specific actions in the browser based on the Chrome DevTools Protocol\",\n    \"Security Isolation: All execution happens locally\u2014login states and web page content never leave your device\",\n    \"E-commerce price comparison: Automatically search for products and compare prices across multiple platforms\",\n    \"Information research: Deeply browse web pages and extract structured information\",\n    \"Form filling: Automatically fill out various online forms\",\n    \"Data entry: Automatically organize and enter web data into a specified format\",\n    \"Workflow\",\n    \"Extension Interface\"\n  ],\n  \"featureRows\": [\n    [\n      \"Feature\",\n      \"Description\"\n    ],\n    [\n      \"Web Navigation\",\n      \"Automatically open specified URLs\"\n    ],\n    [\n      \"Element Clicking\",\n      \"Simulate clicks on buttons, links, and other page elements\"\n    ],\n    [\n      \"Form Filling\",\n      \"Automatically input text and select options\"\n    ],\n    [\n      \"Page Screenshots\",\n      \"Capture the current page or a specific area\"\n    ],\n    [\n      \"Content Extraction\",\n      \"Read page text, tables, and other structured data\"\n    ],\n    [\n      \"Login Session Persistence\",\n      \"Use existing login states saved in the browser\"\n    ]\n  ],\n  \"textPreview\": \"Features\\nResearch\\nResources\\nPricing\\nHelp Center\\nKimi K2.6\\nTry Kimi\\nGetting Started\\nAgent Mode\\nKimi Claw\\nKimi WebBridge\\nKimi WebBridge Introduction\\nHow Kimi WebBridge Works\\nFAQ\\nSlides\\nDocs & Sheets\\nDeep Research\\nWebsites\\nMembership\\nKimi Code\\nKimi API\\nOthers\\nHelp Center\\nKimi WebBridge\\nHow Kimi WebBridge Works\\nHow Kimi WebBridge Works\\nWorkflow\\n\\nKimi WebBridge operates as follows:\\n\\nLocal Bridge Service: A local service runs on your computer to receive instructions from the Agent\\nBrowser Extension: Executes specific actions in the browser based on the Chrome DevTools Protocol\\nSecurity Isolation: All execution happens locally\u2014login states and web page content never leave your device\\nExtension Interface\\n\\nClick the WebBridge icon in the browser toolbar to check the current connection status:\\n\\nConnected: WebBridge is working properly and can collaborate with the Agent.\\n\\nDisconnected: Check your configuration or re-run the connection command.\\n\\nFeatures\\nFeature\\tDescription\\nWeb Navigation\\tAutomatically open specified URLs\\nElement Clicking\\tSimulate clicks on buttons, links, and other page elements\\nForm Filling\\tAutomatically input text and select options\\nPage Screenshots\\tCapture the current page or a specific area\\nContent Extraction\\tRead page text, tables, and other structured data\\nLogin Session Persistence\\tUse existing login states saved in the browser\\n\\nUse cases:\\n\\nE-commerce price comparison: Automatically search for products and compare prices across multiple platforms\\nInformation research: Deeply browse web pages and extract structured information\\nForm filling: Automatically fill out various online forms\\nData entry: Automatically organize and enter web data into a specified format\\n\\nFor more use cases, please refer to the Kimi WebBridge official website.\\n\\nPrevious\\nKimi WebBridge Introduction\\nNext\\nFAQ\\nWorkflow\\nExtension Interface\\nFeatures\\nProducts\\nKimi\\nOpen Platform\\nKimi Code\\nPricing\\nFeatures\\nAI Agent\\nAgent Swarm\\nAI Website Builder\\nAI Document Agent\\nAI Slides Generator\\nAI Sheets Agent\\nDeep Research\\nCompany\\nMoonshot AI\\nTerms of Service\\nPrivacy Policy\"\n}",
+            "stderr": "",
+            "ok": true,
+            "parsed": {
+              "url": "https://www.kimi.com/help/kimi-webbridge/kimi-webbridge-how-it-works",
+              "title": "How Kimi WebBridge Works - Kimi Help Center",
+              "headings": [
+                "How Kimi WebBridge Works",
+                "Workflow",
+                "Extension Interface",
+                "Features"
+              ],
+              "bullets": [
+                "Features",
+                "Research",
+                "Resources",
+                "Pricing",
+                "Help Center",
+                "Kimi K2.6",
+                "Getting Started",
+                "Agent Mode",
+                "Kimi Claw",
+                "Kimi WebBridge Kimi WebBridge Introduction How Kimi WebBridge Works FAQ",
+                "Kimi WebBridge Introduction",
+                "How Kimi WebBridge Works",
+                "FAQ",
+                "Slides",
+                "Docs & Sheets",
+                "Deep Research",
+                "Websites",
+                "Membership",
+                "Kimi Code",
+                "Kimi API",
+                "Others",
+                "Local Bridge Service: A local service runs on your computer to receive instructions from the Agent",
+                "Browser Extension: Executes specific actions in the browser based on the Chrome DevTools Protocol",
+                "Security Isolation: All execution happens locally\u2014login states and web page content never leave your device",
+                "E-commerce price comparison: Automatically search for products and compare prices across multiple platforms",
+                "Information research: Deeply browse web pages and extract structured information",
+                "Form filling: Automatically fill out various online forms",
+                "Data entry: Automatically organize and enter web data into a specified format",
+                "Workflow",
+                "Extension Interface"
+              ],
+              "featureRows": [
+                [
+                  "Feature",
+                  "Description"
+                ],
+                [
+                  "Web Navigation",
+                  "Automatically open specified URLs"
+                ],
+                [
+                  "Element Clicking",
+                  "Simulate clicks on buttons, links, and other page elements"
+                ],
+                [
+                  "Form Filling",
+                  "Automatically input text and select options"
+                ],
+                [
+                  "Page Screenshots",
+                  "Capture the current page or a specific area"
+                ],
+                [
+                  "Content Extraction",
+                  "Read page text, tables, and other structured data"
+                ],
+                [
+                  "Login Session Persistence",
+                  "Use existing login states saved in the browser"
+                ]
+              ],
+              "textPreview": "Features\nResearch\nResources\nPricing\nHelp Center\nKimi K2.6\nTry Kimi\nGetting Started\nAgent Mode\nKimi Claw\nKimi WebBridge\nKimi WebBridge Introduction\nHow Kimi WebBridge Works\nFAQ\nSlides\nDocs & Sheets\nDeep Research\nWebsites\nMembership\nKimi Code\nKimi API\nOthers\nHelp Center\nKimi WebBridge\nHow Kimi WebBridge Works\nHow Kimi WebBridge Works\nWorkflow\n\nKimi WebBridge operates as follows:\n\nLocal Bridge Service: A local service runs on your computer to receive instructions from the Agent\nBrowser Extension: Executes specific actions in the browser based on the Chrome DevTools Protocol\nSecurity Isolation: All execution happens locally\u2014login states and web page content never leave your device\nExtension Interface\n\nClick the WebBridge icon in the browser toolbar to check the current connection status:\n\nConnected: WebBridge is working properly and can collaborate with the Agent.\n\nDisconnected: Check your configuration or re-run the connection command.\n\nFeatures\nFeature\tDescription\nWeb Navigation\tAutomatically open specified URLs\nElement Clicking\tSimulate clicks on buttons, links, and other page elements\nForm Filling\tAutomatically input text and select options\nPage Screenshots\tCapture the current page or a specific area\nContent Extraction\tRead page text, tables, and other structured data\nLogin Session Persistence\tUse existing login states saved in the browser\n\nUse cases:\n\nE-commerce price comparison: Automatically search for products and compare prices across multiple platforms\nInformation research: Deeply browse web pages and extract structured information\nForm filling: Automatically fill out various online forms\nData entry: Automatically organize and enter web data into a specified format\n\nFor more use cases, please refer to the Kimi WebBridge official website.\n\nPrevious\nKimi WebBridge Introduction\nNext\nFAQ\nWorkflow\nExtension Interface\nFeatures\nProducts\nKimi\nOpen Platform\nKimi Code\nPricing\nFeatures\nAI Agent\nAgent Swarm\nAI Website Builder\nAI Document Agent\nAI Slides Generator\nAI Sheets Agent\nDeep Research\nCompany\nMoonshot AI\nTerms of Service\nPrivacy Policy"
+            }
+          }
+        ],
+        "outcome": "completed"
+      },
+      {
+        "task": {
+          "id": "job_collection",
+          "official_case": "Collect Job Listings",
+          "url": "https://www.ycombinator.com/jobs?query=ai%20agent",
+          "goal": "Collect public AI-agent-related job listings without logging in or applying.",
+          "extractor": "yc_jobs"
+        },
+        "steps": [
+          {
+            "name": "goto",
+            "args": [
+              "goto",
+              "https://www.ycombinator.com/jobs?query=ai%20agent"
+            ],
+            "duration_ms": 3186,
+            "exit_code": 0,
+            "stdout": "Navigated to https://www.ycombinator.com/jobs?query=ai%20agent (200)",
+            "stderr": "",
+            "ok": true
+          },
+          {
+            "name": "extract_specific",
+            "args": [
+              "js",
+              "\n(() => {\n  const text = document.body?.innerText || \"\";\n  const links = [...document.querySelectorAll('a')].map(a => ({\n    text: (a.innerText || a.getAttribute('aria-label') || '').trim().replace(/\\s+/g, ' '),\n    href: a.href\n  })).filter(x => x.text && /job|companies|apply|engineer|agent|ai|founding|product/i.test(x.text + ' ' + x.href));\n  const seen = new Set();\n  const items = [];\n  for (const link of links) {\n    const key = link.text + link.href;\n    if (seen.has(key)) continue;\n    seen.add(key);\n    items.push(link);\n    if (items.length >= 10) break;\n  }\n  return {url: location.href, title: document.title, blocked: /captcha|blocked|enable javascript/i.test(text), items, textPreview: text.slice(0, 3000)};\n})()\n"
+            ],
+            "duration_ms": 49,
+            "exit_code": 0,
+            "stdout": "{\n  \"url\": \"https://www.ycombinator.com/jobs?query=ai%20agent\",\n  \"title\": \"Find the best startup jobs and remote jobs curated by Y Combinator. | Y Combinator\",\n  \"blocked\": false,\n  \"items\": [\n    {\n      \"text\": \"Apply\",\n      \"href\": \"https://www.ycombinator.com/apply\"\n    },\n    {\n      \"text\": \"Companies\",\n      \"href\": \"https://www.ycombinator.com/companies\"\n    },\n    {\n      \"text\": \"Startup Directory\",\n      \"href\": \"https://www.ycombinator.com/companies\"\n    },\n    {\n      \"text\": \"Startup School\",\n      \"href\": \"https://startupschool.org/?utm_source=yc&utm_campaign=ycdc_header\"\n    },\n    {\n      \"text\": \"Startup Jobs\",\n      \"href\": \"https://www.ycombinator.com/jobs\"\n    },\n    {\n      \"text\": \"Log in\",\n      \"href\": \"https://account.ycombinator.com/?continue=https://www.ycombinator.com/jobs?query=ai%20agent\"\n    },\n    {\n      \"text\": \"Find a job \u203a\",\n      \"href\": \"https://account.ycombinator.com/authenticate?continue=https%3A%2F%2Fwww.workatastartup.com%2Fapplication&defaults%5BsignUpActive%5D=true\"\n    },\n    {\n      \"text\": \"New: Get personalized resume feedback for startups \u2014 and job recommendations just for you. Try it \u203a\",\n      \"href\": \"https://www.workatastartup.com/resume\"\n    },\n    {\n      \"text\": \"Design & UI/UX\",\n      \"href\": \"https://www.ycombinator.com/jobs/role/designer\"\n    },\n    {\n      \"text\": \"Product\",\n      \"href\": \"https://www.ycombinator.com/jobs/role/product-manager\"\n    }\n  ],\n  \"textPreview\": \"About\\nCompanies\\nLibrary\\nPartners\\nResources\\nStartup Jobs\\nLog in\\nApply\\nFind the best startup jobs,\\ncurated by YC\\nApply to thousands of startup jobs with a single profile.\\nLet YC founders contact you or browse companies privately.\\nFind the next Airbnb, Instacart or Coinbase \u2014 only YC companies.\\nFind a job \u203a\\nAlready work at a YC startup? \u00a0Browse privately\\n\\nNew: Get personalized resume feedback for startups \u2014 and job recommendations just for you.\\n\\nTry it \u203a\\nSoftware Engineer jobs added recently\\nDesign & UI/UXProductRecruiting & HRSalesScience\\nLaylo (S20)\u2022The CRM powering iconic musicians and events(12 days ago)\\nSenior Fullstack Engineer\\nFull-time\\n\u2022\\nEngineering\\n\u2022\\nFull stack\\n\u2022\\n$150 - $180K\\n\u2022\\nLos Angeles, CA, US / CA, US / Remote (Los Angeles, CA, US; CA, US)\\nApply\\nOneChronos (S16)\u2022The Smart Market for Institutional Investors(13 days ago)\\nSoftware Engineer, Data Platform\\nFull-time\\n\u2022\\nEngineering\\n\u2022\\nData science\\n\u2022\\n$115K - $200K\\n\u2022\\nNew York, NY, US / Amsterdam, NH, NL / London, England, GB / Tokyo, JP\\nApply\\nWasmer (S19)\u2022The Operating System for Edge Computing(6 days ago)\\nHead of Developer Relations\\nFull-time\\n\u2022\\nEngineering\\n\u2022\\nFull stack\\n\u2022\\n$1\\n\u2022\\nSan Francisco, CA, US\\nApply\\nSeal (S20)\u2022All-in-one workspace for companies making regulated products(about 11 hours ago)\\nProduct Engineer\\nFull-time\\n\u2022\\nEngineering\\n\u2022\\nFull stack\\n\u2022\\n\u00a350K - \u00a3120K GBP\\n\u2022\\nEngland, GB\\nApply\\nCyble (W21)\u2022Cyble - World\u2019s First Intelligence-Driven, AI-Native Security\u2026(1 day ago)\\nData Engineer - Web Scraping\\nFull-time\\n\u2022\\nEngineering\\n\u2022\\nBackend\\n\u2022\\n$50K - $75K\\n\u2022\\nRemote\\nApply\\nLamar Health (W21)\u2022Take Care of Shitty Paperwork for Expensive Drugs(5 days ago)\\nForward Deployed Engineer\\nFull-time\\n\u2022\\nEngineering\\n\u2022\\nBackend\\n\u2022\\n$100K - $220K\\n\u2022\\nSan Francisco, CA, US / San Mateo, CA, US / Remote (US; CA)\\nApply\\nAviator (S21)\u2022Google-level engineering productivity suite(8 days ago)\\nSenior Software engineer, Founding team\\nFull-time\\n\u2022\\nEngineering\\n\u2022\\nBackend\\n\u2022\\n$160K - $200K\\n\u2022\\nSan Francisco, CA, US\\nApply\\nMethod Financial (S19)\u2022Financial connectivity API for consumer liabilities(1 day ago)\\nSenior Software Engineer\\nFull-time\\n\u2022\\nEngineering\\n\u2022\\nFull stack\\n\u2022\\n$185K - $225K\\n\u2022\\nNew York, NY, US / Austin, TX, US / Washington, DC, US\\nApply\\nBanner (S19)\u2022Banner makes software for CRE owners to manage capital spend(5 days ago)\\nSenior Software Engineer\\nFull-time\\n\u2022\\nEngineering\\n\u2022\\nFull stack\\n\u2022\\n$160 - $200\\n\u2022\\nUS / Remote (US)\\nApply\\nStrac (W22)\u2022Data Discovery, DLP, DSPM for SaaS, Cloud, Gen AI & Endpoints(7 days ago)\\nSoftware Engineer (India)\\nFull-time\\n\u2022\\nEngineering\\n\u2022\\nFull stack\\n\u2022\\n\u20b92.5M - \u20b95M INR\\n\u2022\\nBengaluru, KA, IN / Bengaluru, Karnataka, IN / Pune, MH, IN / Pune, Maharashtra, IN / Mumbai, MH, IN / Mumbai, Maharashtra, IN\\nApply\\nAqua (S21)\u2022The AI-Native Turnkey Alternative Investment Platform (TAIP)(4 days ago)\\nFounding Engineer\\nFull-time\\n\u2022\\nEngineering\\n\u2022\\nFull stack\\n\u2022\\n$100K - $160K\\n\u2022\\nNew York, NY, US\\nApply\\nText Blaze (W21)\u2022Slash commands anywhere(8 days ago)\\nThe Blaze \\\"No AI Summer\\\" Internship\\nInternship\\n\u2022\\nEngineering\\n\u2022\\nFull stack\\n\u2022\\n$2K - $5K / monthly\\n\u2022\\nR\"\n}",
+            "stderr": "",
+            "ok": true,
+            "parsed": {
+              "url": "https://www.ycombinator.com/jobs?query=ai%20agent",
+              "title": "Find the best startup jobs and remote jobs curated by Y Combinator. | Y Combinator",
+              "blocked": false,
+              "items": [
+                {
+                  "text": "Apply",
+                  "href": "https://www.ycombinator.com/apply"
+                },
+                {
+                  "text": "Companies",
+                  "href": "https://www.ycombinator.com/companies"
+                },
+                {
+                  "text": "Startup Directory",
+                  "href": "https://www.ycombinator.com/companies"
+                },
+                {
+                  "text": "Startup School",
+                  "href": "https://startupschool.org/?utm_source=yc&utm_campaign=ycdc_header"
+                },
+                {
+                  "text": "Startup Jobs",
+                  "href": "https://www.ycombinator.com/jobs"
+                },
+                {
+                  "text": "Log in",
+                  "href": "https://account.ycombinator.com/?continue=https://www.ycombinator.com/jobs?query=ai%20agent"
+                },
+                {
+                  "text": "Find a job \u203a",
+                  "href": "https://account.ycombinator.com/authenticate?continue=https%3A%2F%2Fwww.workatastartup.com%2Fapplication&defaults%5BsignUpActive%5D=true"
+                },
+                {
+                  "text": "New: Get personalized resume feedback for startups \u2014 and job recommendations just for you. Try it \u203a",
+                  "href": "https://www.workatastartup.com/resume"
+                },
+                {
+                  "text": "Design & UI/UX",
+                  "href": "https://www.ycombinator.com/jobs/role/designer"
+                },
+                {
+                  "text": "Product",
+                  "href": "https://www.ycombinator.com/jobs/role/product-manager"
+                }
+              ],
+              "textPreview": "About\nCompanies\nLibrary\nPartners\nResources\nStartup Jobs\nLog in\nApply\nFind the best startup jobs,\ncurated by YC\nApply to thousands of startup jobs with a single profile.\nLet YC founders contact you or browse companies privately.\nFind the next Airbnb, Instacart or Coinbase \u2014 only YC companies.\nFind a job \u203a\nAlready work at a YC startup? \u00a0Browse privately\n\nNew: Get personalized resume feedback for startups \u2014 and job recommendations just for you.\n\nTry it \u203a\nSoftware Engineer jobs added recently\nDesign & UI/UXProductRecruiting & HRSalesScience\nLaylo (S20)\u2022The CRM powering iconic musicians and events(12 days ago)\nSenior Fullstack Engineer\nFull-time\n\u2022\nEngineering\n\u2022\nFull stack\n\u2022\n$150 - $180K\n\u2022\nLos Angeles, CA, US / CA, US / Remote (Los Angeles, CA, US; CA, US)\nApply\nOneChronos (S16)\u2022The Smart Market for Institutional Investors(13 days ago)\nSoftware Engineer, Data Platform\nFull-time\n\u2022\nEngineering\n\u2022\nData science\n\u2022\n$115K - $200K\n\u2022\nNew York, NY, US / Amsterdam, NH, NL / London, England, GB / Tokyo, JP\nApply\nWasmer (S19)\u2022The Operating System for Edge Computing(6 days ago)\nHead of Developer Relations\nFull-time\n\u2022\nEngineering\n\u2022\nFull stack\n\u2022\n$1\n\u2022\nSan Francisco, CA, US\nApply\nSeal (S20)\u2022All-in-one workspace for companies making regulated products(about 11 hours ago)\nProduct Engineer\nFull-time\n\u2022\nEngineering\n\u2022\nFull stack\n\u2022\n\u00a350K - \u00a3120K GBP\n\u2022\nEngland, GB\nApply\nCyble (W21)\u2022Cyble - World\u2019s First Intelligence-Driven, AI-Native Security\u2026(1 day ago)\nData Engineer - Web Scraping\nFull-time\n\u2022\nEngineering\n\u2022\nBackend\n\u2022\n$50K - $75K\n\u2022\nRemote\nApply\nLamar Health (W21)\u2022Take Care of Shitty Paperwork for Expensive Drugs(5 days ago)\nForward Deployed Engineer\nFull-time\n\u2022\nEngineering\n\u2022\nBackend\n\u2022\n$100K - $220K\n\u2022\nSan Francisco, CA, US / San Mateo, CA, US / Remote (US; CA)\nApply\nAviator (S21)\u2022Google-level engineering productivity suite(8 days ago)\nSenior Software engineer, Founding team\nFull-time\n\u2022\nEngineering\n\u2022\nBackend\n\u2022\n$160K - $200K\n\u2022\nSan Francisco, CA, US\nApply\nMethod Financial (S19)\u2022Financial connectivity API for consumer liabilities(1 day ago)\nSenior Software Engineer\nFull-time\n\u2022\nEngineering\n\u2022\nFull stack\n\u2022\n$185K - $225K\n\u2022\nNew York, NY, US / Austin, TX, US / Washington, DC, US\nApply\nBanner (S19)\u2022Banner makes software for CRE owners to manage capital spend(5 days ago)\nSenior Software Engineer\nFull-time\n\u2022\nEngineering\n\u2022\nFull stack\n\u2022\n$160 - $200\n\u2022\nUS / Remote (US)\nApply\nStrac (W22)\u2022Data Discovery, DLP, DSPM for SaaS, Cloud, Gen AI & Endpoints(7 days ago)\nSoftware Engineer (India)\nFull-time\n\u2022\nEngineering\n\u2022\nFull stack\n\u2022\n\u20b92.5M - \u20b95M INR\n\u2022\nBengaluru, KA, IN / Bengaluru, Karnataka, IN / Pune, MH, IN / Pune, Maharashtra, IN / Mumbai, MH, IN / Mumbai, Maharashtra, IN\nApply\nAqua (S21)\u2022The AI-Native Turnkey Alternative Investment Platform (TAIP)(4 days ago)\nFounding Engineer\nFull-time\n\u2022\nEngineering\n\u2022\nFull stack\n\u2022\n$100K - $160K\n\u2022\nNew York, NY, US\nApply\nText Blaze (W21)\u2022Slash commands anywhere(8 days ago)\nThe Blaze \"No AI Summer\" Internship\nInternship\n\u2022\nEngineering\n\u2022\nFull stack\n\u2022\n$2K - $5K / monthly\n\u2022\nR"
+            }
+          }
+        ],
+        "outcome": "completed"
+      },
+      {
+        "task": {
+          "id": "sheets_readiness",
+          "official_case": "Build Google Sheets / data-entry readiness",
+          "url": "https://docs.google.com/spreadsheets/u/0/",
+          "goal": "Check whether an authenticated Sheets workspace is reachable. Do not create or edit files.",
+          "extractor": "sheets_readiness"
+        },
+        "steps": [
+          {
+            "name": "goto",
+            "args": [
+              "goto",
+              "https://docs.google.com/spreadsheets/u/0/"
+            ],
+            "duration_ms": 7140,
+            "exit_code": 0,
+            "stdout": "Navigated to https://docs.google.com/spreadsheets/u/0/ (200)\nLOGIN_WALL_DETECTED: Login URL detected: https://accounts.google.com/v3/signin/confirmidentifier?authuser=0&continue=https%3A%2F%2Fdocs.google.com%2Fspreadsheets%2Fu%2F0%2F&dsh=S1108128632%3A1779247041729776&followup=https%3A%2F%2Fdocs.google.com%2Fspreadsheets%2Fu%2F0%2F&ltmpl=sheets&osid=1&passive=1209600&service=wise&flowName=GlifWebSignIn&flowEntry=ServiceLogin&ifkv=AWa2PasRKJdFbLEday7_uQgCAyfwKjX_0RRmpiJU6yTv_ZpvIEhuaVU61Fc4lWdqBc-LNvEMzw1o7A\nFINGERPRINT_PINNED: google.com \u2014 trying Arc cookie import first (auth cookies may still work despite bot protection).\nAuto-imported 63 cookies from arc for 27 host(s). Re-trying navigation...\nLogin wall cleared after auto-import. No window opened.",
+            "stderr": "",
+            "ok": true
+          },
+          {
+            "name": "extract_specific",
+            "args": [
+              "js",
+              "\n(() => {\n  const text = document.body?.innerText || \"\";\n  return {\n    url: location.href,\n    title: document.title,\n    loggedInLikely: /blank spreadsheet|template gallery|recent spreadsheets|Sheets|Start a new spreadsheet/i.test(text) && !/Sign in|Use your Google Account/i.test(text),\n    loginWallLikely: /Sign in|Use your Google Account|to continue to Sheets/i.test(text),\n    visibleSignals: text.split('\\n').map(s => s.trim()).filter(Boolean).slice(0, 30)\n  };\n})()\n"
+            ],
+            "duration_ms": 55,
+            "exit_code": 0,
+            "stdout": "{\n  \"url\": \"https://docs.google.com/spreadsheets/u/0/\",\n  \"title\": \"Google Sheets\",\n  \"loggedInLikely\": true,\n  \"loginWallLikely\": false,\n  \"visibleSignals\": [\n    \"Sheets\",\n    \"Recently used templates\",\n    \"Blank spreadsheet\",\n    \"To-do list\",\n    \"Annual budget\",\n    \"Monthly budget\",\n    \"Template gallery\",\n    \"Start a new spreadsheet\",\n    \"[recent file list redacted]\"\n  ]\n}",
+            "stderr": "",
+            "ok": true,
+            "parsed": {
+              "url": "https://docs.google.com/spreadsheets/u/0/",
+              "title": "Google Sheets",
+              "loggedInLikely": true,
+              "loginWallLikely": false,
+              "visibleSignals": [
+                "Sheets",
+                "Recently used templates",
+                "Blank spreadsheet",
+                "To-do list",
+                "Annual budget",
+                "Monthly budget",
+                "Template gallery",
+                "Start a new spreadsheet",
+                "[recent file list redacted]"
+              ]
+            }
+          }
+        ],
+        "outcome": "completed"
+      }
+    ],
+    "status": {
+      "args": [
+        "status"
+      ],
+      "duration_ms": 11763,
+      "exit_code": 0,
+      "stdout": "Status: healthy\nMode: launched\nURL: chrome-extension://lkbebcjgcmobigpeffafkodonchffocl/options/options.html\nTabs: 1\nPID: 12837",
+      "stderr": "[browse] Starting server...",
+      "ok": true
+    },
+    "stop": {
+      "args": [
+        "stop"
+      ],
+      "duration_ms": 3038,
+      "exit_code": 0,
+      "stdout": "nightCrawl was not responding; cleaned stale state.",
+      "stderr": "",
+      "ok": true
+    }
+  },
+  "csv_path": "/Users/yinanli/Documents/nightCrawl/artifacts/official-showcase-benchmark/official-showcase-extracted-items.csv"
+}

@@ -1,0 +1,373 @@
+{
+  "benchmark": "kimi-webbridge-chrome-boundary-suite",
+  "timestamp": "20260519-192253",
+  "main_url": "http://127.0.0.1:8876/main.html",
+  "frame_url": "http://127.0.0.1:8877/iframe.html",
+  "upload_file": "/Users/yinanli/Documents/nightCrawl/artifacts/webbridge-boundary-suite/upload-fixture.txt",
+  "sessions": {
+    "main": "chrome-boundary-20260519-192253",
+    "frame": "chrome-frame-20260519-192253"
+  },
+  "steps": [
+    {
+      "action": "navigate",
+      "session": "chrome-boundary-20260519-192253",
+      "elapsed_ms": 60.3,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": "<base64 omitted: 3 chars>"
+      },
+      "label": "navigate_main"
+    },
+    {
+      "action": "snapshot",
+      "session": "chrome-boundary-20260519-192253",
+      "elapsed_ms": 8.6,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": "<base64 omitted: 3 chars>"
+      },
+      "label": "snapshot_main"
+    },
+    {
+      "action": "evaluate",
+      "session": "chrome-boundary-20260519-192253",
+      "elapsed_ms": 5.0,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": "<base64 omitted: 2 chars>"
+      },
+      "label": "page_health"
+    },
+    {
+      "action": "fill",
+      "session": "chrome-boundary-20260519-192253",
+      "elapsed_ms": 2.7,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": "<base64 omitted: 3 chars>"
+      },
+      "label": "fill_name"
+    },
+    {
+      "action": "fill",
+      "session": "chrome-boundary-20260519-192253",
+      "elapsed_ms": 6.1,
+      "ok": true,
+      "response": {
+        "ok": false,
+        "error": {
+          "code": "extension_error",
+          "message": "fill: Uncaught"
+        }
+      },
+      "label": "fill_notes"
+    },
+    {
+      "action": "fill",
+      "session": "chrome-boundary-20260519-192253",
+      "elapsed_ms": 4.8,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": "<base64 omitted: 3 chars>"
+      },
+      "label": "fill_contenteditable"
+    },
+    {
+      "action": "click",
+      "session": "chrome-boundary-20260519-192253",
+      "elapsed_ms": 1.8,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": "<base64 omitted: 3 chars>"
+      },
+      "label": "click_dynamic_submit"
+    },
+    {
+      "action": "evaluate",
+      "session": "chrome-boundary-20260519-192253",
+      "elapsed_ms": 1.3,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": "<base64 omitted: 2 chars>"
+      },
+      "label": "dynamic_result"
+    },
+    {
+      "action": "click",
+      "session": "chrome-boundary-20260519-192253",
+      "elapsed_ms": 1.5,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": "<base64 omitted: 3 chars>"
+      },
+      "label": "click_trusted_gate"
+    },
+    {
+      "action": "evaluate",
+      "session": "chrome-boundary-20260519-192253",
+      "elapsed_ms": 1.0,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": "<base64 omitted: 2 chars>"
+      },
+      "label": "trusted_gate_result"
+    },
+    {
+      "action": "fill",
+      "session": "chrome-boundary-20260519-192253",
+      "elapsed_ms": 1.6,
+      "ok": true,
+      "response": {
+        "ok": false,
+        "error": {
+          "code": "extension_error",
+          "message": "element not found: #shadow-name"
+        }
+      },
+      "label": "fill_shadow_direct"
+    },
+    {
+      "action": "evaluate",
+      "session": "chrome-boundary-20260519-192253",
+      "elapsed_ms": 2.2,
+      "ok": true,
+      "response": {
+        "ok": false,
+        "error": {
+          "code": "extension_error",
+          "message": "evaluate: TypeError: Cannot read properties of null (reading 'click')\n    at <anonymous>:1:246\n    at <anonymous>:1:315"
+        }
+      },
+      "label": "shadow_via_evaluate"
+    },
+    {
+      "action": "upload",
+      "session": "chrome-boundary-20260519-192253",
+      "elapsed_ms": 2.3,
+      "ok": true,
+      "response": {
+        "ok": false,
+        "error": {
+          "code": "extension_error",
+          "message": "{\"code\":-32000,\"message\":\"Not allowed\"}"
+        }
+      },
+      "label": "upload_file"
+    },
+    {
+      "action": "evaluate",
+      "session": "chrome-boundary-20260519-192253",
+      "elapsed_ms": 1.1,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": "<base64 omitted: 2 chars>"
+      },
+      "label": "upload_result"
+    },
+    {
+      "action": "fill",
+      "session": "chrome-boundary-20260519-192253",
+      "elapsed_ms": 1.0,
+      "ok": true,
+      "response": {
+        "ok": false,
+        "error": {
+          "code": "extension_error",
+          "message": "element not found: #frame-input"
+        }
+      },
+      "label": "fill_cross_origin_iframe_from_parent"
+    },
+    {
+      "action": "evaluate",
+      "session": "chrome-boundary-20260519-192253",
+      "elapsed_ms": 3.0,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": "<base64 omitted: 2 chars>"
+      },
+      "label": "cross_origin_parent_probe"
+    },
+    {
+      "action": "network",
+      "session": "chrome-boundary-20260519-192253",
+      "elapsed_ms": 1.1,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": "<base64 omitted: 2 chars>"
+      },
+      "label": "network_start"
+    },
+    {
+      "action": "evaluate",
+      "session": "chrome-boundary-20260519-192253",
+      "elapsed_ms": 2.7,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": "<base64 omitted: 2 chars>"
+      },
+      "label": "fetch_for_network_capture"
+    },
+    {
+      "action": "network",
+      "session": "chrome-boundary-20260519-192253",
+      "elapsed_ms": 0.6,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": "<base64 omitted: 2 chars>"
+      },
+      "label": "network_list"
+    },
+    {
+      "action": "network",
+      "session": "chrome-boundary-20260519-192253",
+      "elapsed_ms": 1.0,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": "<base64 omitted: 2 chars>"
+      },
+      "label": "network_stop"
+    },
+    {
+      "action": "navigate",
+      "session": "chrome-frame-20260519-192253",
+      "elapsed_ms": 29.9,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": "<base64 omitted: 3 chars>"
+      },
+      "label": "navigate_frame_direct"
+    },
+    {
+      "action": "fill",
+      "session": "chrome-frame-20260519-192253",
+      "elapsed_ms": 2.7,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": "<base64 omitted: 3 chars>"
+      },
+      "label": "fill_frame_direct"
+    },
+    {
+      "action": "click",
+      "session": "chrome-frame-20260519-192253",
+      "elapsed_ms": 5.3,
+      "ok": true,
+      "response": {
+        "ok": false,
+        "error": {
+          "code": "extension_error",
+          "message": "element not found: #frame-button"
+        }
+      },
+      "label": "click_frame_direct"
+    },
+    {
+      "action": "evaluate",
+      "session": "chrome-frame-20260519-192253",
+      "elapsed_ms": 1.2,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": "<base64 omitted: 2 chars>"
+      },
+      "label": "frame_direct_result"
+    },
+    {
+      "action": "click",
+      "session": "chrome-boundary-20260519-192253",
+      "elapsed_ms": 1.5,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": "<base64 omitted: 3 chars>"
+      },
+      "label": "click_summary"
+    },
+    {
+      "action": "evaluate",
+      "session": "chrome-boundary-20260519-192253",
+      "elapsed_ms": 3.7,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": "<base64 omitted: 2 chars>"
+      },
+      "label": "summary_result"
+    },
+    {
+      "action": "save_as_pdf",
+      "session": "chrome-boundary-20260519-192253",
+      "elapsed_ms": 169.4,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": "<base64 omitted: 4 chars>"
+      },
+      "label": "save_pdf"
+    },
+    {
+      "action": "screenshot",
+      "session": "chrome-boundary-20260519-192253",
+      "elapsed_ms": 161.5,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": "<base64 omitted: 3 chars>"
+      },
+      "label": "screenshot_png"
+    },
+    {
+      "action": "list_tabs",
+      "session": "chrome-boundary-20260519-192253",
+      "elapsed_ms": 4.9,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": "<base64 omitted: 2 chars>"
+      },
+      "label": "list_tabs"
+    },
+    {
+      "action": "close_session",
+      "session": "chrome-boundary-20260519-192253",
+      "elapsed_ms": 5.8,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": "<base64 omitted: 2 chars>"
+      },
+      "label": "close_main_session"
+    },
+    {
+      "action": "close_session",
+      "session": "chrome-frame-20260519-192253",
+      "elapsed_ms": 189.9,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": "<base64 omitted: 2 chars>"
+      },
+      "label": "close_frame_session"
+    }
+  ],
+  "screenshot_path": "/Users/yinanli/Documents/nightCrawl/artifacts/webbridge-boundary-suite/kimi-chrome-boundary-20260519-192253.png"
+}

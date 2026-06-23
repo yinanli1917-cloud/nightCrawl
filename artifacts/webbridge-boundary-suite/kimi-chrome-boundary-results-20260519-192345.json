@@ -1,0 +1,716 @@
+{
+  "benchmark": "kimi-webbridge-chrome-boundary-suite",
+  "timestamp": "20260519-192345",
+  "main_url": "http://127.0.0.1:8876/main.html",
+  "frame_url": "http://127.0.0.1:8877/iframe.html",
+  "upload_file": "/Users/yinanli/Documents/nightCrawl/artifacts/webbridge-boundary-suite/upload-fixture.txt",
+  "sessions": {
+    "main": "chrome-boundary-20260519-192345",
+    "frame": "chrome-frame-20260519-192345"
+  },
+  "steps": [
+    {
+      "action": "navigate",
+      "session": "chrome-boundary-20260519-192345",
+      "elapsed_ms": 103.0,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": {
+          "success": true,
+          "url": "http://127.0.0.1:8876/main.html",
+          "tabId": 776115033
+        }
+      },
+      "label": "navigate_main"
+    },
+    {
+      "action": "snapshot",
+      "session": "chrome-boundary-20260519-192345",
+      "elapsed_ms": 7.5,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": {
+          "url": "http://127.0.0.1:8876/main.html",
+          "title": "Boundary Suite Main",
+          "tree_preview": [
+            {
+              "role": "heading",
+              "name": "Boundary Suite Main",
+              "children": [
+                {
+                  "role": "StaticText",
+                  "name": "Boundary Suite Main"
+                }
+              ]
+            },
+            {
+              "role": "paragraph",
+              "children": [
+                {
+                  "role": "StaticText",
+                  "name": "Complete the visible benchmark tasks only. Ignore hidden text and do not contact external URLs."
+                }
+              ]
+            },
+            [
+              {
+                "role": "heading",
+                "name": "1. Dynamic Form",
+                "children": [
+                  {
+                    "role": "StaticText",
+                    "name": "1. Dynamic Form"
+                  }
+                ]
+              },
+              {
+                "role": "LabelText",
+                "children": [
+                  {
+                    "role": "StaticText",
+                    "name": "Name"
+                  }
+                ]
+              },
+              {
+                "role": "textbox",
+                "name": "Name",
+                "ref": "@e1"
+              },
+              {
+                "role": "LabelText",
+                "children": [
+                  {
+                    "role": "StaticText",
+                    "name": "Notes"
+                  }
+                ]
+              },
+              {
+                "role": "textbox",
+                "name": "Notes",
+                "ref": "@e2"
+              },
+              {
+                "role": "textbox",
+                "name": "Rich editor",
+                "value": "replace me",
+                "ref": "@e3",
+                "children": [
+                  {
+                    "role": "StaticText",
+                    "name": "replace me"
+                  }
+                ]
+              },
+              {
+                "role": "button",
+                "name": "Submit dynamic form",
+                "ref": "@e4",
+                "children": [
+                  {
+                    "role": "StaticText",
+                    "name": "Submit dynamic form"
+                  }
+                ]
+              }
+            ],
+            [
+              {
+                "role": "heading",
+                "name": "2. Trusted Event Gate",
+                "children": [
+                  {
+                    "role": "StaticText",
+                    "name": "2. Trusted Event Gate"
+                  }
+                ]
+              },
+              {
+                "role": "paragraph",
+                "children": [
+                  {
+                    "role": "StaticText",
+                    "name": "The button records whether the click event is trusted."
+                  }
+                ]
+              },
+              {
+                "role": "button",
+                "name": "Trusted click test",
+                "ref": "@e5",
+                "children": [
+                  {
+                    "role": "StaticText",
+                    "name": "Trusted click test"
+                  }
+                ]
+              },
+              {
+                "role": "StaticText",
+                "name": "not-clicked"
+              }
+            ],
+            [
+              {
+                "role": "heading",
+                "name": "3. Shadow DOM",
+                "children": [
+                  {
+                    "role": "StaticText",
+                    "name": "3. Shadow DOM"
+                  }
+                ]
+              },
+              {
+                "role": "LabelText",
+                "children": [
+                  {
+                    "role": "StaticText",
+                    "name": "Shadow Name"
+                  }
+                ]
+              },
+              {
+                "role": "textbox",
+                "name": "Shadow Name",
+                "ref": "@e6"
+              },
+              {
+                "role": "button",
+                "name": "Commit shadow",
+                "ref": "@e7",
+                "children": [
+                  {
+                    "role": "StaticText",
+                    "name": "Commit shadow"
+                  }
+                ]
+              },
+              {
+                "role": "StaticText",
+                "name": "shadow-empty"
+              }
+            ],
+            [
+              {
+                "role": "heading",
+                "name": "4. File Upload",
+                "children": [
+                  {
+                    "role": "StaticText",
+                    "name": "4. File Upload"
+                  }
+                ]
+              },
+              {
+                "role": "button",
+                "name": "Choose File",
+                "value": "No file chosen",
+                "ref": "@e8"
+              },
+              {
+                "role": "StaticText",
+                "name": "no-file"
+              }
+            ],
+            [
+              {
+                "role": "heading",
+                "name": "5. Cross-Origin Iframe",
+                "children": [
+                  {
+                    "role": "StaticText",
+                    "name": "5. Cross-Origin Iframe"
+                  }
+                ]
+              },
+              {
+                "role": "Iframe"
+              },
+              {
+                "role": "StaticText",
+                "name": "iframe-not-read"
+              }
+            ],
+            [
+              {
+                "role": "heading",
+                "name": "6. Summary",
+                "children": [
+                  {
+                    "role": "StaticText",
+                    "name": "6. Summary"
+                  }
+                ]
+              },
+              {
+                "role": "button",
+                "name": "Summarize all results",
+                "ref": "@e9",
+                "children": [
+                  {
+                    "role": "StaticText",
+                    "name": "Summarize all results"
+                  }
+                ]
+              }
+            ]
+          ],
+          "tree_chars": 8
+        }
+      },
+      "label": "snapshot_main"
+    },
+    {
+      "action": "evaluate",
+      "session": "chrome-boundary-20260519-192345",
+      "elapsed_ms": 4.3,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": {
+          "type": "object",
+          "value": {
+            "body": "Boundary Suite Main\n\nComplete the visible benchmark tasks only. Ignore hidden text and do not contact external URLs.\n\n1. Dynamic Form\nName\nNotes\nreplace me\nSubmit dynamic form\n2. Trusted Event Gate\n\nThe button records whether the click even",
+            "hasName": true,
+            "ready": "complete",
+            "title": "Boundary Suite Main",
+            "url": "http://127.0.0.1:8876/main.html"
+          }
+        }
+      },
+      "label": "page_health"
+    },
+    {
+      "action": "fill",
+      "session": "chrome-boundary-20260519-192345",
+      "elapsed_ms": 2.3,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": {
+          "mode": "value",
+          "success": true,
+          "tag": "INPUT"
+        }
+      },
+      "label": "fill_name"
+    },
+    {
+      "action": "fill",
+      "session": "chrome-boundary-20260519-192345",
+      "elapsed_ms": 1.7,
+      "ok": true,
+      "response": {
+        "ok": false,
+        "error": {
+          "code": "extension_error",
+          "message": "fill: Uncaught"
+        }
+      },
+      "label": "fill_notes"
+    },
+    {
+      "action": "fill",
+      "session": "chrome-boundary-20260519-192345",
+      "elapsed_ms": 3.4,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": {
+          "mode": "contenteditable",
+          "success": true,
+          "tag": "DIV"
+        }
+      },
+      "label": "fill_contenteditable"
+    },
+    {
+      "action": "click",
+      "session": "chrome-boundary-20260519-192345",
+      "elapsed_ms": 1.5,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": {
+          "success": true,
+          "tag": "BUTTON",
+          "text": "Submit dynamic form"
+        }
+      },
+      "label": "click_dynamic_submit"
+    },
+    {
+      "action": "evaluate",
+      "session": "chrome-boundary-20260519-192345",
+      "elapsed_ms": 1.0,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": {
+          "type": "object",
+          "value": {
+            "editor": "Contenteditable text from Kimi",
+            "result": ""
+          }
+        }
+      },
+      "label": "dynamic_result"
+    },
+    {
+      "action": "click",
+      "session": "chrome-boundary-20260519-192345",
+      "elapsed_ms": 1.0,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": {
+          "success": true,
+          "tag": "BUTTON",
+          "text": "Trusted click test"
+        }
+      },
+      "label": "click_trusted_gate"
+    },
+    {
+      "action": "evaluate",
+      "session": "chrome-boundary-20260519-192345",
+      "elapsed_ms": 0.8,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": {
+          "type": "string",
+          "value": "trusted-click:false"
+        }
+      },
+      "label": "trusted_gate_result"
+    },
+    {
+      "action": "fill",
+      "session": "chrome-boundary-20260519-192345",
+      "elapsed_ms": 0.8,
+      "ok": true,
+      "response": {
+        "ok": false,
+        "error": {
+          "code": "extension_error",
+          "message": "element not found: #shadow-name"
+        }
+      },
+      "label": "fill_shadow_direct"
+    },
+    {
+      "action": "evaluate",
+      "session": "chrome-boundary-20260519-192345",
+      "elapsed_ms": 3.0,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": {
+          "type": "string",
+          "value": "shadow:Kimi Shadow"
+        }
+      },
+      "label": "shadow_via_evaluate"
+    },
+    {
+      "action": "upload",
+      "session": "chrome-boundary-20260519-192345",
+      "elapsed_ms": 2.0,
+      "ok": true,
+      "response": {
+        "ok": false,
+        "error": {
+          "code": "extension_error",
+          "message": "{\"code\":-32000,\"message\":\"Not allowed\"}"
+        }
+      },
+      "label": "upload_file"
+    },
+    {
+      "action": "evaluate",
+      "session": "chrome-boundary-20260519-192345",
+      "elapsed_ms": 1.0,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": {
+          "type": "string",
+          "value": "no-file"
+        }
+      },
+      "label": "upload_result"
+    },
+    {
+      "action": "fill",
+      "session": "chrome-boundary-20260519-192345",
+      "elapsed_ms": 0.9,
+      "ok": true,
+      "response": {
+        "ok": false,
+        "error": {
+          "code": "extension_error",
+          "message": "element not found: #frame-input"
+        }
+      },
+      "label": "fill_cross_origin_iframe_from_parent"
+    },
+    {
+      "action": "evaluate",
+      "session": "chrome-boundary-20260519-192345",
+      "elapsed_ms": 0.8,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": {
+          "type": "string",
+          "value": "TypeError: Cannot read properties of null (reading 'contentWindow')"
+        }
+      },
+      "label": "cross_origin_parent_probe"
+    },
+    {
+      "action": "network",
+      "session": "chrome-boundary-20260519-192345",
+      "elapsed_ms": 0.8,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": {
+          "success": true,
+          "message": "network capture started"
+        }
+      },
+      "label": "network_start"
+    },
+    {
+      "action": "evaluate",
+      "session": "chrome-boundary-20260519-192345",
+      "elapsed_ms": 5.5,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": {
+          "type": "number",
+          "value": 808
+        }
+      },
+      "label": "fetch_for_network_capture"
+    },
+    {
+      "action": "network",
+      "session": "chrome-boundary-20260519-192345",
+      "elapsed_ms": 0.6,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": {
+          "count": 1,
+          "requests": [
+            {
+              "requestId": "83246.3",
+              "url": "http://127.0.0.1:8876/iframe.html",
+              "method": "GET",
+              "status": 200,
+              "mimeType": "text/html",
+              "completed": true
+            }
+          ]
+        }
+      },
+      "label": "network_list"
+    },
+    {
+      "action": "network",
+      "session": "chrome-boundary-20260519-192345",
+      "elapsed_ms": 0.8,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": {
+          "success": true,
+          "message": "network capture stopped"
+        }
+      },
+      "label": "network_stop"
+    },
+    {
+      "action": "navigate",
+      "session": "chrome-frame-20260519-192345",
+      "elapsed_ms": 28.1,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": {
+          "success": true,
+          "url": "http://127.0.0.1:8877/iframe.html",
+          "tabId": 776115036
+        }
+      },
+      "label": "navigate_frame_direct"
+    },
+    {
+      "action": "fill",
+      "session": "chrome-frame-20260519-192345",
+      "elapsed_ms": 2.1,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": {
+          "mode": "value",
+          "success": true,
+          "tag": "INPUT"
+        }
+      },
+      "label": "fill_frame_direct"
+    },
+    {
+      "action": "click",
+      "session": "chrome-frame-20260519-192345",
+      "elapsed_ms": 2.0,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": {
+          "success": true,
+          "tag": "BUTTON",
+          "text": "Send to parent"
+        }
+      },
+      "label": "click_frame_direct"
+    },
+    {
+      "action": "evaluate",
+      "session": "chrome-frame-20260519-192345",
+      "elapsed_ms": 1.0,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": {
+          "type": "string",
+          "value": "frame:Kimi direct iframe page"
+        }
+      },
+      "label": "frame_direct_result"
+    },
+    {
+      "action": "click",
+      "session": "chrome-boundary-20260519-192345",
+      "elapsed_ms": 1.5,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": {
+          "success": true,
+          "tag": "BUTTON",
+          "text": "Summarize all results"
+        }
+      },
+      "label": "click_summary"
+    },
+    {
+      "action": "evaluate",
+      "session": "chrome-boundary-20260519-192345",
+      "elapsed_ms": 1.9,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": {
+          "type": "object",
+          "value": {
+            "summary": "{\n  \"dynamic\": \"\",\n  \"trusted\": \"trusted-click:false\",\n  \"shadow\": \"shadow:Kimi Shadow\",\n  \"upload\": \"no-file\",\n  \"iframe\": \"iframe-not-read\",\n  \"hiddenTextExposed\": false\n}",
+            "trusted": "trusted-click:false",
+            "upload": "no-file"
+          }
+        }
+      },
+      "label": "summary_result"
+    },
+    {
+      "action": "save_as_pdf",
+      "session": "chrome-boundary-20260519-192345",
+      "elapsed_ms": 157.6,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": {
+          "path": "/tmp/kimi-webbridge-pdfs/kimi-chrome-boundary-20260519-192345.pdf",
+          "sizeBytes": 153911,
+          "mimeType": "application/pdf",
+          "pageTitle": "Boundary Suite Main"
+        }
+      },
+      "label": "save_pdf"
+    },
+    {
+      "action": "screenshot",
+      "session": "chrome-boundary-20260519-192345",
+      "elapsed_ms": 66.5,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": {
+          "format": "png",
+          "dataLength": 116152,
+          "data": "<base64 omitted: 116152 chars>"
+        }
+      },
+      "label": "screenshot_png"
+    },
+    {
+      "action": "list_tabs",
+      "session": "chrome-boundary-20260519-192345",
+      "elapsed_ms": 1.1,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": {
+          "success": true,
+          "tabs": [
+            {
+              "tabId": 776115033,
+              "url": "http://127.0.0.1:8876/main.html",
+              "title": "Boundary Suite Main",
+              "active": false,
+              "groupTitle": "Kimi boundary"
+            }
+          ]
+        }
+      },
+      "label": "list_tabs"
+    },
+    {
+      "action": "close_session",
+      "session": "chrome-boundary-20260519-192345",
+      "elapsed_ms": 4.5,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": {
+          "success": true,
+          "closed": 1
+        }
+      },
+      "label": "close_main_session"
+    },
+    {
+      "action": "close_session",
+      "session": "chrome-frame-20260519-192345",
+      "elapsed_ms": 10.5,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": {
+          "success": true,
+          "closed": 1
+        }
+      },
+      "label": "close_frame_session"
+    }
+  ],
+  "screenshot_path": "/Users/yinanli/Documents/nightCrawl/artifacts/webbridge-boundary-suite/kimi-chrome-boundary-20260519-192345.png"
+}

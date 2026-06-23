@@ -1,0 +1,9 @@
+{
+  "S2_example": true,
+  "S5_hostile_unit": true,
+  "S1_canvas": true,
+  "S4_restart": true,
+  "S4b_sync": true,
+  "S6_cf_dash": true,
+  "kimi_daemon": false
+}

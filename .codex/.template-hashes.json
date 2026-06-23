@@ -1,0 +1,15 @@
+{
+  ".codex/workflow.md": "6c852d4fade872b278a9cac5a1fbef0a9fabffa5241390f0e0676ebfe01b667e",
+  ".codex/config.yaml": "af2751b2d32bb5502821a9f0af36ec7d2f6eaf898c997014304627f69166e2c8",
+  ".codex/config.toml": "11dd0f0339ebbeb73cdae7f7693ffea8db53dc0841dc7064b1391564e82b53a3",
+  ".codex/hooks.json": "c99ca344c10794a640cc6e9075a98a6a566fafae940e53d1d2818ff262c24feb",
+  ".codex/hooks/session-start.py": "3f284623075102d51adfe0dc7f39f30a3950e69d2ccd60168183fbaffbfa9cd6",
+  ".codex/hooks/inject-workflow-state.py": "c96d77a2ac6efb254a067f754e5f9665254ea8cefb69b4ac5fba9d94379c33d3",
+  ".codex/agents/codex-research.toml": "205e9c396805ba4976f60a69bc77348fd97c6726f5b1fc9474493f3c2d08a2d3",
+  ".codex/agents/codex-implement.toml": "a3bd1065f957e73020235662b0088a8f391e358c1badcf216ff24afff525077f",
+  ".codex/agents/codex-check.toml": "0bdd983ab2b44e57c92223c03c2574ba087bb4958f5292bfc7032e4714259003",
+  ".codex/spec/project/cross-session-continuity.md": "166caaf6e0c4db5297d7538b993944a609a5800c68efad2ce3abbf334cdc8cc2",
+  ".codex/spec/project/spec-update-protocol.md": "7efb8b43de40ee8873270fc6dee430cdc5772d7ea9cca2c24235060b9956ddfb",
+  ".codex/spec/guides/index.md": "3282f4593afb7005684814618160110091234a3e0bd23cc633ab768afe0d8c79",
+  ".codex/spec/project/index.md": "f6c695e6c5c37c243b0d663ebac0ffbe9e532c6c38cc695e2ab295ed96facb22"
+}

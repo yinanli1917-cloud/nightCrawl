@@ -1,0 +1,325 @@
+{
+  "benchmark": "nightcrawl-boundary-suite",
+  "timestamp": "20260519-192456",
+  "main_url": "http://127.0.0.1:8876/main.html",
+  "upload_file": "/Users/yinanli/Documents/nightCrawl/artifacts/webbridge-boundary-suite/upload-fixture.txt",
+  "state_file": "/tmp/nightcrawl-boundary/state/browse.json",
+  "profile_dir": "/tmp/nightcrawl-boundary/profile",
+  "steps": [
+    {
+      "args": [
+        "status"
+      ],
+      "elapsed_ms": 11140.3,
+      "exit_code": 0,
+      "stdout": "Status: healthy\nMode: launched\nURL: about:blank\nTabs: 1\nPID: 84824",
+      "stderr": "[browse] Starting server...",
+      "label": "status_cold_start"
+    },
+    {
+      "args": [
+        "goto",
+        "http://127.0.0.1:8876/main.html"
+      ],
+      "elapsed_ms": 2263.7,
+      "exit_code": 0,
+      "stdout": "Navigated to http://127.0.0.1:8876/main.html (200)",
+      "stderr": "",
+      "label": "goto_main"
+    },
+    {
+      "args": [
+        "snapshot",
+        "-i"
+      ],
+      "elapsed_ms": 5050.5,
+      "exit_code": 0,
+      "stdout": "--- BEGIN UNTRUSTED EXTERNAL CONTENT (source: http://127.0.0.1:8876/main.html) ---\n(accessibility snapshot unavailable: accessibility snapshot timed out after 5000ms)\n\u2500\u2500 DOM interactive fallback \u2500\u2500\n@e1 [textbox] \"Name\"\n@e2 [textbox] \"Notes\"\n@e3 [button] \"Submit dynamic form\"\n@e4 [button] \"Trusted click test\"\n@e5 [textbox] \"input\"\n@e6 [button] \"Summarize all results\"\n--- END UNTRUSTED EXTERNAL CONTENT ---",
+      "stderr": "",
+      "label": "snapshot_main"
+    },
+    {
+      "args": [
+        "fill",
+        "#name",
+        "nightCrawl Chrome comparison"
+      ],
+      "elapsed_ms": 76.3,
+      "exit_code": 0,
+      "stdout": "Filled #name",
+      "stderr": "",
+      "label": "fill_name"
+    },
+    {
+      "args": [
+        "fill",
+        "#notes",
+        "Boundary benchmark notes from nightCrawl"
+      ],
+      "elapsed_ms": 62.9,
+      "exit_code": 0,
+      "stdout": "Filled #notes",
+      "stderr": "",
+      "label": "fill_notes"
+    },
+    {
+      "args": [
+        "fill",
+        "#editor",
+        "Contenteditable text from nightCrawl"
+      ],
+      "elapsed_ms": 56.4,
+      "exit_code": 0,
+      "stdout": "Filled #editor",
+      "stderr": "",
+      "label": "fill_contenteditable"
+    },
+    {
+      "args": [
+        "click",
+        "#dynamic-submit"
+      ],
+      "elapsed_ms": 66.9,
+      "exit_code": 0,
+      "stdout": "Clicked #dynamic-submit \u2192 now at http://127.0.0.1:8876/main.html",
+      "stderr": "",
+      "label": "click_dynamic_submit"
+    },
+    {
+      "args": [
+        "js",
+        "(() => ({result: document.querySelector('#dynamic-result')?.textContent, editor: document.querySelector('#editor')?.textContent}))()"
+      ],
+      "elapsed_ms": 37.1,
+      "exit_code": 0,
+      "stdout": "{\n  \"result\": \"{\\\"name\\\":\\\"nightCrawl Chrome comparison\\\",\\\"notes\\\":\\\"Boundary benchmark notes from nightCrawl\\\",\\\"editor\\\":\\\"Contenteditable text from nightCrawl\\\",\\\"trusted\\\":true}\",\n  \"editor\": \"Contenteditable text from nightCrawl\"\n}",
+      "stderr": "",
+      "label": "dynamic_result"
+    },
+    {
+      "args": [
+        "click",
+        "#trusted-click"
+      ],
+      "elapsed_ms": 52.0,
+      "exit_code": 0,
+      "stdout": "Clicked #trusted-click \u2192 now at http://127.0.0.1:8876/main.html",
+      "stderr": "",
+      "label": "click_trusted_gate"
+    },
+    {
+      "args": [
+        "js",
+        "document.querySelector('#trusted-result')?.textContent"
+      ],
+      "elapsed_ms": 37.0,
+      "exit_code": 0,
+      "stdout": "trusted-click:true",
+      "stderr": "",
+      "label": "trusted_gate_result"
+    },
+    {
+      "args": [
+        "fill",
+        "#shadow-name",
+        "nightCrawl Shadow"
+      ],
+      "elapsed_ms": 38.8,
+      "exit_code": 0,
+      "stdout": "Filled #shadow-name",
+      "stderr": "",
+      "label": "fill_shadow_direct"
+    },
+    {
+      "args": [
+        "click",
+        "#shadow-button"
+      ],
+      "elapsed_ms": 50.0,
+      "exit_code": 0,
+      "stdout": "Clicked #shadow-button \u2192 now at http://127.0.0.1:8876/main.html",
+      "stderr": "",
+      "label": "click_shadow_direct"
+    },
+    {
+      "args": [
+        "js",
+        "document.querySelector('#shadow-result')?.textContent"
+      ],
+      "elapsed_ms": 34.9,
+      "exit_code": 0,
+      "stdout": "shadow:nightCrawl Shadow",
+      "stderr": "",
+      "label": "shadow_result"
+    },
+    {
+      "args": [
+        "upload",
+        "#file-input",
+        "/Users/yinanli/Documents/nightCrawl/artifacts/webbridge-boundary-suite/upload-fixture.txt"
+      ],
+      "elapsed_ms": 45.1,
+      "exit_code": 0,
+      "stdout": "Uploaded: upload-fixture.txt (24B)",
+      "stderr": "",
+      "label": "upload_file"
+    },
+    {
+      "args": [
+        "js",
+        "document.querySelector('#upload-result')?.textContent"
+      ],
+      "elapsed_ms": 34.4,
+      "exit_code": 0,
+      "stdout": "upload-fixture.txt:24",
+      "stderr": "",
+      "label": "upload_result"
+    },
+    {
+      "args": [
+        "fill",
+        "#frame-input",
+        "nightCrawl parent iframe attempt"
+      ],
+      "elapsed_ms": 5041.0,
+      "exit_code": 1,
+      "stdout": "",
+      "stderr": "Operation timed out: fill: Timeout 5000ms exceeded.",
+      "label": "fill_cross_origin_iframe_without_frame"
+    },
+    {
+      "args": [
+        "js",
+        "(() => { try { return document.querySelector('#xframe').contentWindow.document.body.innerText; } catch (error) { return error.name + ': ' + error.message; } })()"
+      ],
+      "elapsed_ms": 47.0,
+      "exit_code": 0,
+      "stdout": "SecurityError: Failed to read a named property 'document' from 'Window': Blocked a frame with origin \"http://127.0.0.1:8876\" from accessing a cross-origin frame.",
+      "stderr": "",
+      "label": "cross_origin_parent_probe"
+    },
+    {
+      "args": [
+        "frame",
+        "#xframe"
+      ],
+      "elapsed_ms": 52.6,
+      "exit_code": 0,
+      "stdout": "Switched to frame: http://127.0.0.1:8877/iframe.html",
+      "stderr": "",
+      "label": "switch_to_iframe"
+    },
+    {
+      "args": [
+        "fill",
+        "#frame-input",
+        "nightCrawl iframe value"
+      ],
+      "elapsed_ms": 44.6,
+      "exit_code": 0,
+      "stdout": "Filled #frame-input",
+      "stderr": "",
+      "label": "fill_frame"
+    },
+    {
+      "args": [
+        "click",
+        "#frame-send"
+      ],
+      "elapsed_ms": 61.8,
+      "exit_code": 0,
+      "stdout": "Clicked #frame-send \u2192 now at http://127.0.0.1:8876/main.html",
+      "stderr": "",
+      "label": "click_frame"
+    },
+    {
+      "args": [
+        "js",
+        "document.querySelector('#frame-result')?.textContent"
+      ],
+      "elapsed_ms": 36.2,
+      "exit_code": 0,
+      "stdout": "frame:nightCrawl iframe value",
+      "stderr": "",
+      "label": "frame_result"
+    },
+    {
+      "args": [
+        "frame",
+        "main"
+      ],
+      "elapsed_ms": 32.3,
+      "exit_code": 0,
+      "stdout": "Switched to main frame",
+      "stderr": "",
+      "label": "switch_to_main"
+    },
+    {
+      "args": [
+        "click",
+        "#summarize"
+      ],
+      "elapsed_ms": 39.6,
+      "exit_code": 0,
+      "stdout": "Clicked #summarize \u2192 now at http://127.0.0.1:8876/main.html",
+      "stderr": "",
+      "label": "click_summary"
+    },
+    {
+      "args": [
+        "js",
+        "JSON.parse(document.querySelector('#summary').textContent)"
+      ],
+      "elapsed_ms": 33.6,
+      "exit_code": 0,
+      "stdout": "{\n  \"dynamic\": \"{\\\"name\\\":\\\"nightCrawl Chrome comparison\\\",\\\"notes\\\":\\\"Boundary benchmark notes from nightCrawl\\\",\\\"editor\\\":\\\"Contenteditable text from nightCrawl\\\",\\\"trusted\\\":true}\",\n  \"trusted\": \"trusted-click:true\",\n  \"shadow\": \"shadow:nightCrawl Shadow\",\n  \"upload\": \"upload-fixture.txt:24\",\n  \"iframe\": \"iframe-message:frame:nightCrawl iframe value\",\n  \"hiddenTextExposed\": false\n}",
+      "stderr": "",
+      "label": "summary_result"
+    },
+    {
+      "args": [
+        "network"
+      ],
+      "elapsed_ms": 32.0,
+      "exit_code": 0,
+      "stdout": "GET http://127.0.0.1:8876/main.html \u2192 200 (4ms, 5437B)\nGET http://127.0.0.1:8877/iframe.html \u2192 200 (2ms, 808B)",
+      "stderr": "",
+      "label": "network"
+    },
+    {
+      "args": [
+        "screenshot",
+        "--viewport",
+        "/tmp/nightcrawl-boundary-20260519-192456.png"
+      ],
+      "elapsed_ms": 80.8,
+      "exit_code": 0,
+      "stdout": "Screenshot saved (viewport): /tmp/nightcrawl-boundary-20260519-192456.png",
+      "stderr": "",
+      "label": "screenshot_viewport"
+    },
+    {
+      "args": [
+        "pdf",
+        "/tmp/nightcrawl-boundary-20260519-192456.pdf"
+      ],
+      "elapsed_ms": 151.6,
+      "exit_code": 0,
+      "stdout": "PDF saved: /tmp/nightcrawl-boundary-20260519-192456.pdf",
+      "stderr": "",
+      "label": "pdf"
+    },
+    {
+      "args": [
+        "stop"
+      ],
+      "elapsed_ms": 3026.0,
+      "exit_code": 0,
+      "stdout": "nightCrawl was not responding; cleaned stale state.",
+      "stderr": "",
+      "label": "stop"
+    }
+  ],
+  "screenshot_path": "/tmp/nightcrawl-boundary-20260519-192456.png",
+  "pdf_path": "/tmp/nightcrawl-boundary-20260519-192456.pdf"
+}

@@ -1,0 +1,4 @@
+Navigated to https://www.xiaohongshu.com/explore (200)
+LOGIN_WALL_DETECTED: QR code login detected at https://www.xiaohongshu.com/explore
+CONSENT_REQUIRED: xiaohongshu.com
+No window opened. Ask the user "Approve auto-handoff for xiaohongshu.com?" — if yes, run 'grant-handoff xiaohongshu.com'.

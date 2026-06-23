@@ -1,0 +1,82 @@
+{
+  "started_at": "2026-05-19T22-34-27",
+  "pre_status": {
+    "command": "~/.kimi-webbridge/bin/kimi-webbridge status",
+    "duration_ms": 31.0,
+    "exit_code": 0,
+    "stdout": "{\"extension_connected\":true,\"extension_id\":\"fldmhceldgbpfpkbgopacenieobmligc\",\"extension_version\":\"1.9.7\",\"port\":10086,\"running\":true,\"uptime_seconds\":8265,\"version\":\"v1.9.7\"}",
+    "stderr": ""
+  },
+  "restart": {
+    "command": "~/.kimi-webbridge/bin/kimi-webbridge restart >/tmp/kimi-diag-restart.log 2>&1; sleep 8; ~/.kimi-webbridge/bin/kimi-webbridge status",
+    "duration_ms": 8219.0,
+    "exit_code": 0,
+    "stdout": "{\"extension_connected\":true,\"extension_id\":\"fldmhceldgbpfpkbgopacenieobmligc\",\"extension_version\":\"1.9.7\",\"port\":10086,\"running\":true,\"uptime_seconds\":8,\"version\":\"v1.9.7\"}",
+    "stderr": ""
+  },
+  "extensions": [],
+  "probe_session": "kimi-diag-1779255275",
+  "probe_steps": [
+    {
+      "name": "navigate_example",
+      "ok": false,
+      "duration_ms": 25016.3,
+      "error": "TimeoutError('timed out')"
+    },
+    {
+      "name": "evaluate_after_0s",
+      "ok": false,
+      "duration_ms": 1.6,
+      "error": "<HTTPError 502: 'Bad Gateway'>"
+    },
+    {
+      "name": "evaluate_after_2s",
+      "ok": false,
+      "duration_ms": 0.9,
+      "error": "<HTTPError 502: 'Bad Gateway'>"
+    },
+    {
+      "name": "evaluate_after_6s",
+      "ok": false,
+      "duration_ms": 1.0,
+      "error": "<HTTPError 502: 'Bad Gateway'>"
+    },
+    {
+      "name": "evaluate_after_12s",
+      "ok": false,
+      "duration_ms": 0.6,
+      "error": "<HTTPError 502: 'Bad Gateway'>"
+    },
+    {
+      "name": "snapshot",
+      "ok": false,
+      "duration_ms": 0.3,
+      "error": "<HTTPError 502: 'Bad Gateway'>"
+    },
+    {
+      "name": "list_tabs",
+      "ok": true,
+      "duration_ms": 1.1,
+      "response": {
+        "ok": true,
+        "data": {
+          "success": true,
+          "tabs": []
+        }
+      }
+    },
+    {
+      "name": "close_session",
+      "ok": true,
+      "duration_ms": 0.5,
+      "response": {
+        "ok": true,
+        "data": {
+          "success": true,
+          "closed": 0
+        }
+      }
+    }
+  ],
+  "recent_log_tail": "[WARN:]2026/05/19 22:34:27 logLevel not set, use default 0: trace\n[DEBUG:]2026/05/19 22:34:27 init goroutine pool success\n[INFO:]2026/05/19 22:34:27 init hook\n[DEBUG:]2026/05/19 22:34:27 user config :{\"SdkConfig\":{\"Mode\":\"http\",\"Env\":\"saas_native\",\"LogLevel\":\"\"},\"BatchConfig\":{\"Enable\":false,\"Size\":0,\"WaitTimeMs\":0},\"FileConfig\":{\"EventSendEnable\":false,\"Path\":\"logs/datarangers.log\",\"MaxSize\":100,\"MaxBackup\":0,\"MaxAge\":0,\"ErrPath\":\"logs/error-datarangers.log\"},\"HttpConfig\":{\"HttpAddr\":\"https://gator.volces.com\",\"SocketTimeOut\":0,\"Headers\":null},\"AsynConfig\":{\"Routine\":20,\"QueueSize\":10240,\"WaitTimeout\":0},\"OpenapiConfig\":{\"HttpAddr\":\"\",\"Ak\":\"\",\"Sk\":\"\"},\"VerifyConfig\":{\"Url\":\"\"},\"KafkaConfig\":null,\"AppKeys\":{\"20013735\":\"2d4280f8a647f8e505b5cd952accb2045c9deae6754f246e0119d7697097332a\"},\"AlwaysWriteToErrFile\":false}\n2026/05/19 22:34:27 telemetry: enabled, device_id=d86h41ur3qcumvsfkpvg\n2026/05/19 22:34:27 [agent-extension-daemon] listening on 127.0.0.1:10086\n[DEBUG:]2026/05/19 22:34:27 request Header : {\"Content-Type\":[\"application/json\"],\"User-Agent\":[\"DataRangers Golang SDK\"],\"X-Mcs-Appkey\":[\"2d4280f8a647f8e505b5cd952accb2045c9deae6754f246e0119d7697097332a\"]}\n[DEBUG:]2026/05/19 22:34:27 request Header : {\"Content-Type\":[\"application/json\"],\"User-Agent\":[\"DataRangers Golang SDK\"],\"X-Mcs-Appkey\":[\"2d4280f8a647f8e505b5cd952accb2045c9deae6754f246e0119d7697097332a\"]}\n[DEBUG:]2026/05/19 22:34:27 send success\uff01message json : {\"header\":{\"timezone\":17,\"user_unique_id\":\"d86h41ur3qcumvsfkpvg\"},\"event_v3\":[{\"event\":\"webbridge_daemon_alive\",\"params\":{\"arch\":\"arm64\",\"daemon_version\":\"v1.9.7\",\"os\":\"darwin\"},\"local_time_ms\":1779255267416,\"datetime\":\"2026-05-19 22:34:27\"}],\"app_type\":\"app\",\"user_unique_id\":\"d86h41ur3qcumvsfkpvg\"}, resp: {\"e\":0,\"magic_tag\":\"server_sdk_log\",\"message\":\"success\",\"server_time\":1779255267}\n[DEBUG:]2026/05/19 22:34:27 send success\uff01message json : {\"header\":{\"timezone\":17,\"user_unique_id\":\"d86h41ur3qcumvsfkpvg\"},\"event_v3\":[{\"event\":\"webbridge_daemon_start\",\"params\":{\"arch\":\"arm64\",\"daemon_version\":\"v1.9.7\",\"os\":\"darwin\"},\"local_time_ms\":1779255267416,\"datetime\":\"2026-05-19 22:34:27\"}],\"app_type\":\"app\",\"user_unique_id\":\"d86h41ur3qcumvsfkpvg\"}, resp: {\"e\":0,\"magic_tag\":\"server_sdk_log\",\"message\":\"success\",\"server_time\":1779255267}\n2026/05/19 22:34:32 [ws] extension connected\n2026/05/19 22:34:32 [ws] hello from extension v1.9.7 (daemon v1.9.7)\n[DEBUG:]2026/05/19 22:34:35 request Header : {\"Content-Type\":[\"application/json\"],\"User-Agent\":[\"DataRangers Golang SDK\"],\"X-Mcs-Appkey\":[\"2d4280f8a647f8e505b5cd952accb2045c9deae6754f246e0119d7697097332a\"]}\n[DEBUG:]2026/05/19 22:34:35 send success\uff01message json : {\"header\":{\"timezone\":17,\"user_unique_id\":\"d86h41ur3qcumvsfkpvg\"},\"event_v3\":[{\"event\":\"webbridge_command_call\",\"params\":{\"session\":\"kimi-diag-1779255275\",\"tool\":\"navigate\"},\"local_time_ms\":1779255275442,\"datetime\":\"2026-05-19 22:34:35\"}],\"app_type\":\"app\",\"user_unique_id\":\"d86h41ur3qcumvsfkpvg\"}, resp: {\"e\":0,\"magic_tag\":\"server_sdk_log\",\"message\":\"success\",\"server_time\":1779255275}\n[DEBUG:]2026/05/19 22:35:00 request Header : {\"Content-Type\":[\"application/json\"],\"User-Agent\":[\"DataRangers Golang SDK\"],\"X-Mcs-Appkey\":[\"2d4280f8a647f8e505b5cd952accb2045c9deae6754f246e0119d7697097332a\"]}\n[DEBUG:]2026/05/19 22:35:00 send success\uff01message json : {\"header\":{\"timezone\":17,\"user_unique_id\":\"d86h41ur3qcumvsfkpvg\"},\"event_v3\":[{\"event\":\"webbridge_command_call\",\"params\":{\"session\":\"kimi-diag-1779255275\",\"tool\":\"evaluate\"},\"local_time_ms\":1779255300444,\"datetime\":\"2026-05-19 22:35:00\"}],\"app_type\":\"app\",\"user_unique_id\":\"d86h41ur3qcumvsfkpvg\"}, resp: {\"e\":0,\"magic_tag\":\"server_sdk_log\",\"message\":\"success\",\"server_time\":1779255300}\n[DEBUG:]2026/05/19 22:35:02 request Header : {\"Content-Type\":[\"application/json\"],\"User-Agent\":[\"DataRangers Golang SDK\"],\"X-Mcs-Appkey\":[\"2d4280f8a647f8e505b5cd952accb2045c9deae6754f246e0119d7697097332a\"]}\n[DEBUG:]2026/05/19 22:35:02 send success\uff01message json : {\"header\":{\"timezone\":17,\"user_unique_id\":\"d86h41ur3qcumvsfkpvg\"},\"event_v3\":[{\"event\":\"webbridge_command_call\",\"params\":{\"session\":\"kimi-diag-1779255275\",\"tool\":\"evaluate\"},\"local_time_ms\":1779255302449,\"datetime\":\"2026-05-19 22:35:02\"}],\"app_type\":\"app\",\"user_unique_id\":\"d86h41ur3qcumvsfkpvg\"}, resp: {\"e\":0,\"magic_tag\":\"server_sdk_log\",\"message\":\"success\",\"server_time\":1779255302}\n[DEBUG:]2026/05/19 22:35:08 request Header : {\"Content-Type\":[\"application/json\"],\"User-Agent\":[\"DataRangers Golang SDK\"],\"X-Mcs-Appkey\":[\"2d4280f8a647f8e505b5cd952accb2045c9deae6754f246e0119d7697097332a\"]}\n[DEBUG:]2026/05/19 22:35:08 send success\uff01message json : {\"header\":{\"timezone\":17,\"user_unique_id\":\"d86h41ur3qcumvsfkpvg\"},\"event_v3\":[{\"event\":\"webbridge_command_call\",\"params\":{\"session\":\"kimi-diag-1779255275\",\"tool\":\"evaluate\"},\"local_time_ms\":1779255308455,\"datetime\":\"2026-05-19 22:35:08\"}],\"app_type\":\"app\",\"user_unique_id\":\"d86h41ur3qcumvsfkpvg\"}, resp: {\"e\":0,\"magic_tag\":\"server_sdk_log\",\"message\":\"success\",\"server_time\":1779255308}\n[DEBUG:]2026/05/19 22:35:20 request Header : {\"Content-Type\":[\"application/json\"],\"User-Agent\":[\"DataRangers Golang SDK\"],\"X-Mcs-Appkey\":[\"2d4280f8a647f8e505b5cd952accb2045c9deae6754f246e0119d7697097332a\"]}\n[DEBUG:]2026/05/19 22:35:20 request Header : {\"Content-Type\":[\"application/json\"],\"User-Agent\":[\"DataRangers Golang SDK\"],\"X-Mcs-Appkey\":[\"2d4280f8a647f8e505b5cd952accb2045c9deae6754f246e0119d7697097332a\"]}\n[DEBUG:]2026/05/19 22:35:20 request Header : {\"Content-Type\":[\"application/json\"],\"User-Agent\":[\"DataRangers Golang SDK\"],\"X-Mcs-Appkey\":[\"2d4280f8a647f8e505b5cd952accb2045c9deae6754f246e0119d7697097332a\"]}\n[DEBUG:]2026/05/19 22:35:20 request Header : {\"Content-Type\":[\"application/json\"],\"User-Agent\":[\"DataRangers Golang SDK\"],\"X-Mcs-Appkey\":[\"2d4280f8a647f8e505b5cd952accb2045c9deae6754f246e0119d7697097332a\"]}"
+}

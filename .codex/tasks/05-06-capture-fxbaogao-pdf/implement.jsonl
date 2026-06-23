@@ -1,0 +1,2 @@
+{"file":"HANDOFF.md","reason":"Prior continuity record identifies unresolved handoff/session persistence bugs and end-to-end verification gaps that match the FXBaogao headed-window collapse."}
+{"file":".codex/tasks/05-06-capture-fxbaogao-pdf/prd.md","reason":"Current task goal and acceptance criteria for stabilizing FXBaogao-triggered handoff/auth behavior before returning to PDF capture."}

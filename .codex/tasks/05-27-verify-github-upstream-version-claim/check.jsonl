@@ -1,0 +1,3 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research/planning files only, not code paths. Delete this line once real entries are added."}
+{"file": "stealth/browser/test/hostile-domains.test.ts", "reason": "Verifies Xiaohongshu and hostile-domain unit safety invariants."}
+{"file": "stealth/browser/test/browser-manager-hostile.test.ts", "reason": "Verifies BrowserManager refuses hostile navigation and filters hostile cookies."}

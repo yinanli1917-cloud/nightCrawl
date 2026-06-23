@@ -1,0 +1,6 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research/planning files only, not code paths. Delete this line once real entries are added."}
+{"file":"HANDOFF.md","reason":"Prior cross-session evidence of unresolved nightCrawl UX/performance bugs: js latency, login-wall false positives, handoff state loss, and verification gaps."}
+{"file":".codex/tasks/05-06-capture-fxbaogao-pdf/prd.md","reason":"Recent real-world regression scenario that recorded complex `nc js` blank output and authenticated handoff issues."}
+{"file":"stealth/browser/src/server.ts","reason":"Command routing, post-command login-wall detection, sensitive-page detection, and latency-sensitive stabilization logic live here."}
+{"file":"stealth/browser/src/read-commands.ts","reason":"JavaScript/eval wrapping behavior and async expression correctness live here."}
+{"file":"stealth/browser/test/commands.test.ts","reason":"Existing deterministic coverage for js/eval behavior can be extended for confirmed regressions."}

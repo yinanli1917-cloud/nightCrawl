@@ -1,0 +1,43 @@
+{
+  "stamp": "2026-06-19T01-54-41-654Z",
+  "git": "5cac91149b731cfdbb8a63ddcd503aabbf958e53",
+  "profile": "/Users/yinanli/.nightcrawl/chromium-profile",
+  "engineSeed": true,
+  "phase": "B",
+  "kind": "capability+reliability",
+  "results": {
+    "nc-headless": {
+      "T1_read": true,
+      "T2_asyncJS": true,
+      "T3_trustedClick": true,
+      "T4_reliability": {
+        "ok": 5,
+        "n": 5,
+        "successRate": 1,
+        "medianMs": 256
+      }
+    },
+    "nc-real": {
+      "T1_read": true,
+      "T2_asyncJS": true,
+      "T3_trustedClick": true,
+      "T4_reliability": {
+        "ok": 5,
+        "n": 5,
+        "successRate": 1,
+        "medianMs": 178
+      }
+    },
+    "kimi-chrome": {
+      "T1_read": true,
+      "T2_asyncJS": true,
+      "T3_trustedClick": false,
+      "T4_reliability": {
+        "ok": 5,
+        "n": 5,
+        "successRate": 1,
+        "medianMs": 29
+      }
+    }
+  }
+}

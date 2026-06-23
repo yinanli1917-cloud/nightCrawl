@@ -1,0 +1,2 @@
+{"file":"HANDOFF.md","reason":"Use prior known issues as regression checklist: session persistence, headed handoff state preservation, notifications, and false-positive login detection."}
+{"file":".codex/tasks/05-06-capture-fxbaogao-pdf/prd.md","reason":"Acceptance criteria to verify before claiming the FXBaogao capture/handoff regression is resolved."}

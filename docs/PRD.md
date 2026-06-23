@@ -125,7 +125,45 @@ nightcrawl state load canvas-session     # next day, still logged in
 Auto-detects login walls and CAPTCHAs. Opens headed Chrome for user to resolve manually.
 Auto-resumes headless when done. No manual commands needed.
 
-### 6. Snapshot & Element Refs
+### 6. Real-Browser Bridge Mode (roadmap)
+
+Kimi WebBridge proved that a visible, real-profile browser bridge is a strong fit for
+identity-heavy tasks: the user can see the page, use their existing Chrome/Arc/Edge
+profile, inherit password managers and extensions, and avoid exporting cookies for
+fingerprint-sensitive SSO flows.
+
+nightCrawl should add this as an explicit opt-in mode, not as the default engine. The
+default remains CloakBrowser/headless for batch work, repeatability, stealth, and
+non-disruptive automation. The bridge mode is for tasks where identity continuity,
+visible user control, or profile-bound authentication matters more than isolation.
+
+Required bridge shapes:
+- **Active-tab mode**: attach to the user's current visible tab after explicit consent.
+- **Owned-tab mode**: create and control a clearly labeled nightCrawl tab/window.
+- **Visible session mirror**: expose what the agent is doing, current URL, last command,
+  and recovery state without forcing the user to inspect logs.
+
+Required reliability contract:
+- Keep stable tab ownership across reconnects using tab id plus URL, title, group/window,
+  and last task metadata as fallbacks.
+- Detect stale tab ids immediately and rebind after extension, daemon, or browser restart.
+- Report session state as `connected`, `attached`, `stale`, `recovering`, or `failed`
+  instead of surfacing opaque transport errors.
+- Diagnose extension conflicts before benchmarking or live work by enumerating extensions
+  and flagging risky permissions/classes such as `debugger`, `<all_urls>`,
+  `webRequestBlocking`, `nativeMessaging`, `scripting`, screen recording, AI assistant,
+  and scraper extensions.
+
+Input must be tiered instead of treated as a single "click" primitive:
+- DOM click/fill for simple, inspectable pages.
+- CDP mouse/key input for browser-level event requirements.
+- OS-level user handoff only for WebAuthn, 2FA, CAPTCHA, or genuinely trusted user input.
+
+All bridge endpoints remain local and token-gated. Browser-extension HTTP/WebSocket
+commands must enforce auth tokens and origin checks, keep telemetry local by default,
+and retain domain-scoped consent plus audit logs.
+
+### 7. Snapshot & Element Refs
 
 ARIA-based accessibility tree with @ref targeting. Stable element references instead of
 fragile CSS selectors.
@@ -136,7 +174,7 @@ nightcrawl click @e3            # click by ref
 nightcrawl snapshot -D          # diff: what changed?
 ```
 
-### 7. X Feed & Daily Briefing
+### 8. X Feed & Daily Briefing
 
 Browse X/Twitter as the user (with their real cookies and follow list), extract feed
 content for AI summarization. Extends to any information source the user regularly checks.
@@ -147,7 +185,7 @@ nightcrawl goto "https://x.com/home"
 nightcrawl text                          # agent summarizes → daily briefing
 ```
 
-### 8. Cookie Export (Composable CLI)
+### 9. Cookie Export (Composable CLI)
 
 Export cookies in standard formats so specialized tools can use nightCrawl's authenticated
 sessions. nightCrawl handles auth and anti-bot; other tools handle extraction.
@@ -164,7 +202,7 @@ yt-dlp --cookies /tmp/bili-cookies.txt "https://bilibili.com/video/BVxxx"
 not a data pipeline. For video subtitles, use yt-dlp. For PDFs, use curl. For APIs, use
 httpie. nightCrawl provides the authenticated session; specialized tools do the rest.
 
-### 9. Proactive Workflow Detection
+### 10. Proactive Workflow Detection
 
 Analyzes the user's Chrome/Arc browsing history (local SQLite database, read-only) to
 identify repetitive patterns and suggest automations.
@@ -405,11 +443,19 @@ Each identity has:
 - Multi-identity sessions (isolated browser profiles)
 - CloakBrowser integration (48 C++ patches — fingerprint spoofing)
 - Behavioral humanization (mouse curves, keyboard timing, scroll patterns)
+- Bridge reliability groundwork: session-state model, tab ownership/rebinding rules,
+  input-tier abstraction, extension-conflict diagnostic design, and local endpoint
+  security requirements
 - Proactive workflow detection from session replay (audit log patterns)
 - MCP server wrapper (if demand from non-Claude-Code users)
 - Chinese internet support via separate identities (Xiaohongshu, Zhihu)
 
 ### v0.3 — The Autonomous Twin (months 4+)
+- Real-browser bridge mode for explicit "use my live browser" workflows: active-tab,
+  owned-tab, and visible session mirror modes with domain-scoped consent
+- Bridge benchmark suite covering cold/warm latency, navigation success, session
+  retention through reconnect/restart/tab switching, DOM vs CDP input, snapshots,
+  cross-origin iframes, file upload, authenticated workflows, and recovery clarity
 - Scheduled workflows (via Claude Code /schedule integration)
 - Recorded action sequences (record → replay)
 - Session replay pattern detection (audit log analysis)
@@ -464,6 +510,7 @@ Each scenario: one paragraph + one code snippet. Show the power, not the plumbin
 - [Browser Use CLI](https://linux.do/t/topic/1805601) — linux.do reception
 - [knil's browser-cli](https://linux.do/t/topic/1744692) — developer building exactly what we're building
 - [Xiaohongshu scraping tools](https://github.com/jackwener/xiaohongshu-cli) — reverse-engineered API approach
+- `research/kimi-webbridge-reliability-diagnosis-2026-05-20.md` — lessons for real-browser bridge UX, session recovery, extension diagnostics, input tiers, and benchmark design
 
 ## Appendix: Original Brainstorm Notes (Apple Notes, 2026-04-05)
 

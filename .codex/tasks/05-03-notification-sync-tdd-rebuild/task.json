@@ -1,0 +1,31 @@
+{
+  "id": "notification-sync-tdd-rebuild",
+  "name": "notification-sync-tdd-rebuild",
+  "title": "Notification sync TDD rebuild",
+  "description": "",
+  "slug": "notification-sync-tdd-rebuild",
+  "status": "planning",
+  "priority": "P1",
+  "creator": "yinanli",
+  "assignee": "yinanli",
+  "package": null,
+  "scope": null,
+  "branch": null,
+  "base_branch": "main",
+  "parent": null,
+  "children": [],
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {},
+  "created_at": "2026-05-03T11:20:54.903006+00:00",
+  "started_at": null,
+  "completed_at": null,
+  "archived_at": null,
+  "current_phase": "planning",
+  "next_action": [
+    "grill-plan: resolve open decisions and write a substantive PRD",
+    "prepare-context: curate implement.jsonl and check.jsonl",
+    "validate: run task validate until readiness is READY"
+  ],
+  "schema_version": 2
+}

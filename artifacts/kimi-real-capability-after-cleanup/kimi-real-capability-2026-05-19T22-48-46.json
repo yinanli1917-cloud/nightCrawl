@@ -1,0 +1,519 @@
+{
+  "started_at": "2026-05-19T22-48-46",
+  "status_before": "{\"extension_connected\":true,\"extension_id\":\"fldmhceldgbpfpkbgopacenieobmligc\",\"extension_version\":\"1.9.7\",\"port\":10086,\"running\":true,\"uptime_seconds\":859,\"version\":\"v1.9.7\"}",
+  "tasks": [
+    {
+      "id": "sanity_example",
+      "session": "kimi-real-sanity_example-1779256126",
+      "steps": [
+        {
+          "action": "navigate",
+          "ok": true,
+          "duration_ms": 45,
+          "status": 200,
+          "response": {
+            "ok": true,
+            "data": {
+              "success": true,
+              "url": "https://example.com",
+              "tabId": 776115318
+            }
+          }
+        },
+        {
+          "action": "evaluate",
+          "ok": true,
+          "duration_ms": 1,
+          "status": 200,
+          "response": {
+            "ok": true,
+            "data": {
+              "type": "string",
+              "value": "Example Domain"
+            }
+          }
+        },
+        {
+          "action": "snapshot",
+          "ok": true,
+          "duration_ms": 5,
+          "status": 200,
+          "response": {
+            "ok": true,
+            "data": {
+              "url": "https://example.com/",
+              "title": "Example Domain",
+              "tree": [
+                {
+                  "role": "heading",
+                  "name": "Example Domain",
+                  "children": [
+                    {
+                      "role": "StaticText",
+                      "name": "Example Domain"
+                    }
+                  ]
+                },
+                {
+                  "role": "paragraph",
+                  "children": [
+                    {
+                      "role": "StaticText",
+                      "name": "This domain is for use in documentation examples without needing permission. Avoid use in operations."
+                    }
+                  ]
+                },
+                {
+                  "role": "paragraph",
+                  "children": [
+                    {
+                      "role": "link",
+                      "name": "Learn more",
+                      "ref": "@e1",
+                      "children": [
+                        {
+                          "role": "StaticText",
+                          "name": "Learn more"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "action": "list_tabs",
+          "ok": true,
+          "duration_ms": 0,
+          "status": 200,
+          "response": {
+            "ok": true,
+            "data": {
+              "success": true,
+              "tabs": [
+                {
+                  "tabId": 776115318,
+                  "url": "https://example.com/",
+                  "title": "Example Domain",
+                  "active": true,
+                  "groupTitle": "Kimi sanity"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "action": "close_session",
+          "ok": true,
+          "duration_ms": 12,
+          "status": 200,
+          "response": {
+            "ok": true,
+            "data": {
+              "success": true,
+              "closed": 1
+            }
+          }
+        }
+      ],
+      "summary": {
+        "title": "Example Domain"
+      },
+      "duration_ms": 65,
+      "log_delta": {
+        "connected": 0,
+        "disconnected": 0,
+        "context_canceled": 0,
+        "stale_tab": 0,
+        "command_call": 0
+      },
+      "success": true
+    },
+    {
+      "id": "local_input_boundary",
+      "session": "kimi-real-local_input_boundary-1779256127",
+      "steps": [
+        {
+          "action": "list_tabs",
+          "ok": true,
+          "duration_ms": 1,
+          "status": 200,
+          "response": {
+            "ok": true,
+            "data": {
+              "success": true,
+              "tabs": []
+            }
+          }
+        },
+        {
+          "action": "close_session",
+          "ok": true,
+          "duration_ms": 1,
+          "status": 200,
+          "response": {
+            "ok": true,
+            "data": {
+              "success": true,
+              "closed": 0
+            }
+          }
+        }
+      ],
+      "exception": "OSError(48, 'Address already in use')",
+      "duration_ms": 2,
+      "log_delta": {
+        "connected": 0,
+        "disconnected": 0,
+        "context_canceled": 0,
+        "stale_tab": 0,
+        "command_call": 0
+      },
+      "success": false
+    },
+    {
+      "id": "kimi_help_research",
+      "session": "kimi-real-kimi_help_research-1779256128",
+      "steps": [
+        {
+          "action": "navigate",
+          "ok": false,
+          "duration_ms": 45002,
+          "error": "TimeoutError('timed out')"
+        },
+        {
+          "action": "evaluate",
+          "ok": false,
+          "duration_ms": 1,
+          "status": 502,
+          "error": "{\"ok\":false,\"error\":{\"code\":\"tool_error\",\"message\":\"session \\\"kimi-real-kimi_help_research-1779256128\\\" has no tab — navigate or find_tab first\"}}\n"
+        },
+        {
+          "action": "list_tabs",
+          "ok": true,
+          "duration_ms": 1,
+          "status": 200,
+          "response": {
+            "ok": true,
+            "data": {
+              "success": true,
+              "tabs": []
+            }
+          }
+        },
+        {
+          "action": "close_session",
+          "ok": true,
+          "duration_ms": 0,
+          "status": 200,
+          "response": {
+            "ok": true,
+            "data": {
+              "success": true,
+              "closed": 0
+            }
+          }
+        }
+      ],
+      "summary": {
+        "title": null,
+        "heading_count": 0,
+        "table_row_count": 0,
+        "sample_headings": []
+      },
+      "duration_ms": 47009,
+      "log_delta": {
+        "connected": 9,
+        "disconnected": 9,
+        "context_canceled": 8,
+        "stale_tab": 0,
+        "command_call": 1
+      },
+      "success": false
+    },
+    {
+      "id": "uw_library_references",
+      "session": "kimi-real-uw_library_references-1779256176",
+      "steps": [
+        {
+          "action": "navigate",
+          "ok": true,
+          "duration_ms": 336,
+          "status": 200,
+          "response": {
+            "ok": true,
+            "data": {
+              "success": true,
+              "url": "https://lib.uw.edu/",
+              "tabId": 776115328
+            }
+          }
+        },
+        {
+          "action": "evaluate",
+          "ok": false,
+          "duration_ms": 2,
+          "status": 502,
+          "error": "{\"ok\":false,\"error\":{\"code\":\"tool_error\",\"message\":\"session \\\"kimi-real-uw_library_references-1779256176\\\" tab was closed — navigate first to recreate\"}}\n"
+        },
+        {
+          "action": "fill",
+          "ok": false,
+          "duration_ms": 1,
+          "status": 502,
+          "error": "{\"ok\":false,\"error\":{\"code\":\"tool_error\",\"message\":\"session \\\"kimi-real-uw_library_references-1779256176\\\" has no tab — navigate or find_tab first\"}}\n"
+        },
+        {
+          "action": "send_keys",
+          "ok": false,
+          "duration_ms": 0,
+          "status": 502,
+          "error": "{\"ok\":false,\"error\":{\"code\":\"tool_error\",\"message\":\"session \\\"kimi-real-uw_library_references-1779256176\\\" has no tab — navigate or find_tab first\"}}\n"
+        },
+        {
+          "action": "evaluate",
+          "ok": false,
+          "duration_ms": 1,
+          "status": 502,
+          "error": "{\"ok\":false,\"error\":{\"code\":\"tool_error\",\"message\":\"session \\\"kimi-real-uw_library_references-1779256176\\\" has no tab — navigate or find_tab first\"}}\n"
+        },
+        {
+          "action": "navigate",
+          "ok": true,
+          "duration_ms": 506,
+          "status": 200,
+          "response": {
+            "ok": true,
+            "data": {
+              "success": true,
+              "url": "https://orbiscascade-washington.primo.exlibrisgroup.com/discovery/search?query=any,contains,agentic%20browser%20automation&tab=Everything&search_scope=MyInst_and_CI&vid=01ALLIANCE_UW:UW&offset=0",
+              "tabId": 776115332
+            }
+          }
+        },
+        {
+          "action": "evaluate",
+          "ok": false,
+          "duration_ms": 3,
+          "status": 502,
+          "error": "{\"ok\":false,\"error\":{\"code\":\"tool_error\",\"message\":\"session \\\"kimi-real-uw_library_references-1779256176\\\" tab was closed — navigate first to recreate\"}}\n"
+        },
+        {
+          "action": "list_tabs",
+          "ok": true,
+          "duration_ms": 1,
+          "status": 200,
+          "response": {
+            "ok": true,
+            "data": {
+              "success": true,
+              "tabs": []
+            }
+          }
+        },
+        {
+          "action": "close_session",
+          "ok": true,
+          "duration_ms": 0,
+          "status": 200,
+          "response": {
+            "ok": true,
+            "data": {
+              "success": true,
+              "closed": 0
+            }
+          }
+        }
+      ],
+      "summary": {
+        "title": null,
+        "url": null,
+        "reference_count": 0,
+        "references": []
+      },
+      "duration_ms": 12860,
+      "log_delta": {
+        "connected": 3,
+        "disconnected": 3,
+        "context_canceled": 3,
+        "stale_tab": 2,
+        "command_call": 6
+      },
+      "success": false
+    },
+    {
+      "id": "shopping_compare",
+      "session": "kimi-real-shopping_compare-1779256190",
+      "steps": [
+        {
+          "action": "navigate",
+          "ok": false,
+          "duration_ms": 55002,
+          "error": "TimeoutError('timed out')"
+        },
+        {
+          "action": "evaluate",
+          "ok": false,
+          "duration_ms": 2,
+          "status": 502,
+          "error": "{\"ok\":false,\"error\":{\"code\":\"tool_error\",\"message\":\"session \\\"kimi-real-shopping_compare-1779256190\\\" has no tab — navigate or find_tab first\"}}\n"
+        },
+        {
+          "action": "list_tabs",
+          "ok": true,
+          "duration_ms": 2,
+          "status": 200,
+          "response": {
+            "ok": true,
+            "data": {
+              "success": true,
+              "tabs": []
+            }
+          }
+        },
+        {
+          "action": "close_session",
+          "ok": true,
+          "duration_ms": 1,
+          "status": 200,
+          "response": {
+            "ok": true,
+            "data": {
+              "success": true,
+              "closed": 0
+            }
+          }
+        }
+      ],
+      "summary": {
+        "title": null,
+        "url": null,
+        "blocked": null,
+        "item_count": 0,
+        "items": []
+      },
+      "duration_ms": 60012,
+      "log_delta": {
+        "connected": 12,
+        "disconnected": 12,
+        "context_canceled": 11,
+        "stale_tab": 0,
+        "command_call": 1
+      },
+      "success": false
+    },
+    {
+      "id": "sheets_readiness",
+      "session": "kimi-real-sheets_readiness-1779256251",
+      "steps": [
+        {
+          "action": "navigate",
+          "ok": false,
+          "duration_ms": 45002,
+          "error": "TimeoutError('timed out')"
+        },
+        {
+          "action": "evaluate",
+          "ok": false,
+          "duration_ms": 2,
+          "status": 502,
+          "error": "{\"ok\":false,\"error\":{\"code\":\"tool_error\",\"message\":\"session \\\"kimi-real-sheets_readiness-1779256251\\\" has no tab — navigate or find_tab first\"}}\n"
+        },
+        {
+          "action": "list_tabs",
+          "ok": true,
+          "duration_ms": 2,
+          "status": 200,
+          "response": {
+            "ok": true,
+            "data": {
+              "success": true,
+              "tabs": []
+            }
+          }
+        },
+        {
+          "action": "close_session",
+          "ok": true,
+          "duration_ms": 1,
+          "status": 200,
+          "response": {
+            "ok": true,
+            "data": {
+              "success": true,
+              "closed": 0
+            }
+          }
+        }
+      ],
+      "summary": {},
+      "duration_ms": 48009,
+      "log_delta": {
+        "connected": 10,
+        "disconnected": 10,
+        "context_canceled": 10,
+        "stale_tab": 0,
+        "command_call": 1
+      },
+      "success": false
+    },
+    {
+      "id": "canvas_readiness",
+      "session": "kimi-real-canvas_readiness-1779256300",
+      "steps": [
+        {
+          "action": "navigate",
+          "ok": false,
+          "duration_ms": 45002,
+          "error": "TimeoutError('timed out')"
+        },
+        {
+          "action": "evaluate",
+          "ok": false,
+          "duration_ms": 2,
+          "status": 502,
+          "error": "{\"ok\":false,\"error\":{\"code\":\"tool_error\",\"message\":\"session \\\"kimi-real-canvas_readiness-1779256300\\\" has no tab — navigate or find_tab first\"}}\n"
+        },
+        {
+          "action": "list_tabs",
+          "ok": true,
+          "duration_ms": 1,
+          "status": 200,
+          "response": {
+            "ok": true,
+            "data": {
+              "success": true,
+              "tabs": []
+            }
+          }
+        },
+        {
+          "action": "close_session",
+          "ok": true,
+          "duration_ms": 2,
+          "status": 200,
+          "response": {
+            "ok": true,
+            "data": {
+              "success": true,
+              "closed": 0
+            }
+          }
+        }
+      ],
+      "summary": {},
+      "duration_ms": 48013,
+      "log_delta": {
+        "connected": 10,
+        "disconnected": 10,
+        "context_canceled": 10,
+        "stale_tab": 0,
+        "command_call": 1
+      },
+      "success": false
+    }
+  ],
+  "status_after": "{\"extension_connected\":true,\"extension_id\":\"fldmhceldgbpfpkbgopacenieobmligc\",\"extension_version\":\"1.9.7\",\"port\":10086,\"running\":true,\"uptime_seconds\":1082,\"version\":\"v1.9.7\"}"
+}

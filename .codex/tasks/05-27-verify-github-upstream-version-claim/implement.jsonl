@@ -1,0 +1,5 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research/planning files only, not code paths. Delete this line once real entries are added."}
+{"file": "stealth/browser/src/hostile-domains.ts", "reason": "Defines hardcoded hostile-domain blocklist and incognito safety gate."}
+{"file": "artifacts/webbridge-boundary-suite/run_kimi_chrome_benchmark.py", "reason": "Existing Kimi local boundary benchmark runner shape."}
+{"file": "artifacts/official-showcase-benchmark/run_official_showcase_benchmark.py", "reason": "Existing side-by-side real web benchmark runner to extend."}
+{"file": "artifacts/webbridge-boundary-suite/run_nightcrawl_boundary_benchmark.py", "reason": "Existing nightCrawl local boundary benchmark runner shape."}

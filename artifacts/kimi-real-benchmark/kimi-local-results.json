@@ -1,0 +1,68 @@
+[
+  {
+    "name": "navigate_local",
+    "action": "navigate",
+    "latency_ms": 30015.0,
+    "response": {
+      "ok": false,
+      "exception": "TimeoutError('timed out')"
+    }
+  },
+  {
+    "name": "snapshot_local",
+    "action": "snapshot",
+    "latency_ms": 0.7,
+    "response": {
+      "ok": false,
+      "exception": "<HTTPError 502: 'Bad Gateway'>"
+    }
+  },
+  {
+    "name": "fill_name",
+    "action": "fill",
+    "latency_ms": 0.4,
+    "response": {
+      "ok": false,
+      "exception": "<HTTPError 502: 'Bad Gateway'>"
+    }
+  },
+  {
+    "name": "fill_notes",
+    "action": "fill",
+    "latency_ms": 0.4,
+    "response": {
+      "ok": false,
+      "exception": "<HTTPError 502: 'Bad Gateway'>"
+    }
+  },
+  {
+    "name": "click_generate",
+    "action": "click",
+    "latency_ms": 0.3,
+    "response": {
+      "ok": false,
+      "exception": "<HTTPError 502: 'Bad Gateway'>"
+    }
+  },
+  {
+    "name": "read_result",
+    "action": "evaluate",
+    "latency_ms": 0.3,
+    "response": {
+      "ok": false,
+      "exception": "<HTTPError 502: 'Bad Gateway'>"
+    }
+  },
+  {
+    "name": "list_tabs",
+    "action": "list_tabs",
+    "latency_ms": 0.8,
+    "response": {
+      "ok": true,
+      "data": {
+        "success": true,
+        "tabs": []
+      }
+    }
+  }
+]

@@ -1,0 +1,45 @@
+{
+  "stamp": "2026-06-19T01-50-50-534Z",
+  "git": "5cac91149b731cfdbb8a63ddcd503aabbf958e53",
+  "profile": "/Users/yinanli/.nightcrawl/chromium-profile",
+  "engineSeed": true,
+  "phase": "B",
+  "kind": "capability+reliability",
+  "results": {
+    "nc-headless": {
+      "T1_read": true,
+      "T2_asyncJS": false,
+      "T3_trustedClick": true,
+      "T4_reliability": {
+        "ok": 5,
+        "n": 5,
+        "successRate": 1,
+        "medianMs": 484
+      }
+    },
+    "nc-real": {
+      "T1_read": true,
+      "T2_asyncJS": true,
+      "T3_trustedClick": true,
+      "T4_reliability": {
+        "ok": 5,
+        "n": 5,
+        "successRate": 1,
+        "medianMs": 498
+      }
+    },
+    "kimi-chrome": {
+      "T1_read": true,
+      "T2_asyncJS": {
+        "error": "rec.step(\"T2\", kimiCmd(\"evaluate\", { code: ASYNC }, { timeoutMs: 20000 }).data?.value ?? \"\").slice is not a function. (In 'rec.step(\"T2\", kimiCmd(\"evaluate\", { code: ASYNC }, { timeoutMs: 20000 }).data?.value ?? \"\").slice(0, 40)', 'rec.step(\"T2\", kimiCmd(\"evaluate\", { code: ASYNC }, { timeoutMs: 20000 }).data?.value ?? \"\").slice' is undefined)"
+      },
+      "T3_trustedClick": false,
+      "T4_reliability": {
+        "ok": 5,
+        "n": 5,
+        "successRate": 1,
+        "medianMs": 46
+      }
+    }
+  }
+}

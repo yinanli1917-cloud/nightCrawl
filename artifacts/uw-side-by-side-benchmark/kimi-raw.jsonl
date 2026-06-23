@@ -1,0 +1,12 @@
+{"step":"canvas.list_tabs.after_failed_timer","started_ms":1779245483033,"ended_ms":1779245483066,"duration_ms":33,"response":{"ok":true,"data":{"success":true,"tabs":[{"tabId":776115074,"url":"https://canvas.uw.edu/","title":"Dashboard","active":true,"groupTitle":"kimi-uw-canvas"}]}}}
+{"step":"canvas.snapshot","started_ms":1779245488447,"ended_ms":1779245488481,"duration_ms":34,"response":{"ok":false,"error":{"code":"tool_error","message":"session \"kimi-uw-canvas\" tab was closed — navigate first to recreate"}}}
+{"step":"canvas.list_tabs.after_timeout","started_ms":1779245561061,"ended_ms":1779245561098,"duration_ms":37,"curl_exit":0,"response":{"ok":true,"data":{"success":true,"tabs":[]}}}
+{"step":"canvas.navigate.timeout20","started_ms":1779245569275,"ended_ms":1779245589321,"duration_ms":20046,"curl_exit":28,"response":null}
+{"step":"canvas.list_tabs.after_navigate_timeout20","started_ms":1779245595808,"ended_ms":1779245595842,"duration_ms":34,"curl_exit":0,"response":{"ok":true,"data":{"success":true,"tabs":[]}}}
+{"step":"canvas.find_tab.canvas","started_ms":1779245604940,"ended_ms":1779245614979,"duration_ms":10039,"curl_exit":28,"response":null}
+{"step":"library.navigate.home","started_ms":1779245624973,"ended_ms":1779245655046,"duration_ms":30073,"curl_exit":28,"response":null}
+{"step":"library.list_tabs.after_home_timeout","started_ms":1779245664097,"ended_ms":1779245664127,"duration_ms":30,"curl_exit":0,"response":{"ok":true,"data":{"success":true,"tabs":[]}}}
+{"step":"library.navigate.direct_search","started_ms":1779245674967,"ended_ms":1779245720009,"duration_ms":45042,"curl_exit":28,"response":null}
+{"step":"library.list_tabs.after_direct_search_timeout","started_ms":1779245727277,"ended_ms":1779245727310,"duration_ms":33,"curl_exit":0,"response":{"ok":true,"data":{"success":true,"tabs":[]}}}
+{"step":"library.close_session","started_ms":1779245738352,"ended_ms":1779245738397,"duration_ms":45,"curl_exit":0,"response":{"ok":true,"data":{"success":true,"closed":0}}}
+{"step":"canvas.close_session","started_ms":1779245738351,"ended_ms":1779245738397,"duration_ms":46,"curl_exit":0,"response":{"ok":true,"data":{"success":true,"closed":0}}}

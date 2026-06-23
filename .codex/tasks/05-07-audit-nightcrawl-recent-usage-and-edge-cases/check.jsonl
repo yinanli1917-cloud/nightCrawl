@@ -1,0 +1,5 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research/planning files only, not code paths. Delete this line once real entries are added."}
+{"file":"HANDOFF.md","reason":"Use known prior failures as the regression checklist before claiming the audit is complete."}
+{"file":".codex/tasks/05-07-audit-nightcrawl-recent-usage-and-edge-cases/prd.md","reason":"Acceptance criteria for this diagnostic and stabilization pass."}
+{"file":"stealth/browser/test/commands.test.ts","reason":"Targeted regression tests for JavaScript/eval correctness."}
+{"file":"stealth/browser/src/server.ts","reason":"Verify latency and handoff safety changes are scoped to command routing behavior."}

@@ -1,0 +1,139 @@
+{
+  "benchmark": "uw-side-by-side-benchmark",
+  "runner": "kimi-webbridge",
+  "daemon": {
+    "health_check_command": "~/.kimi-webbridge/bin/kimi-webbridge status",
+    "running": true,
+    "extension_connected": true,
+    "version": "v1.9.7",
+    "extension_version": "1.9.7",
+    "port": 10086
+  },
+  "constraints_observed": {
+    "used_os_mouse_keyboard": false,
+    "submitted_forms_other_than_search": false,
+    "edited_canvas_content": false,
+    "intentionally_viewed_grades_or_account_settings": false,
+    "downloaded_paywalled_full_text": false,
+    "write_scope": "/Users/yinanli/Documents/nightCrawl/artifacts/uw-side-by-side-benchmark/kimi-*"
+  },
+  "sessions": [
+    {
+      "name": "kimi-uw-canvas",
+      "target": "https://canvas.uw.edu/",
+      "outcome": "partial_failure",
+      "reachable_context": {
+        "url": "https://canvas.uw.edu/",
+        "title": "Dashboard",
+        "minimal_visible_indicators": [
+          "Kimi list_tabs briefly reported a Canvas tab titled Dashboard in group kimi-uw-canvas."
+        ],
+        "dashboard_or_course_context_reachable": "indeterminate",
+        "course_cards": {
+          "count": null,
+          "names": []
+        },
+        "login_wall_or_2fa": "not_observed"
+      },
+      "friction": [
+        "Initial timing wrapper failed before recording the navigate response, but list_tabs immediately after showed a Canvas Dashboard tab.",
+        "The subsequent snapshot call failed with: session \"kimi-uw-canvas\" tab was closed - navigate first to recreate.",
+        "A retry navigate to Canvas timed out after 20 seconds with curl exit 28 and left no Kimi session tab.",
+        "find_tab for canvas.uw.edu timed out after 10 seconds with curl exit 28."
+      ],
+      "steps": [
+        {
+          "step": "canvas.list_tabs.after_failed_timer",
+          "duration_ms": 33,
+          "success": true,
+          "current_url": "https://canvas.uw.edu/",
+          "title": "Dashboard"
+        },
+        {
+          "step": "canvas.snapshot",
+          "duration_ms": 34,
+          "success": false,
+          "error": "session \"kimi-uw-canvas\" tab was closed - navigate first to recreate"
+        },
+        {
+          "step": "canvas.list_tabs.after_timeout",
+          "duration_ms": 37,
+          "success": true,
+          "tabs_count": 0
+        },
+        {
+          "step": "canvas.navigate.timeout20",
+          "duration_ms": 20046,
+          "success": false,
+          "curl_exit": 28,
+          "response": null
+        },
+        {
+          "step": "canvas.list_tabs.after_navigate_timeout20",
+          "duration_ms": 34,
+          "success": true,
+          "tabs_count": 0
+        },
+        {
+          "step": "canvas.find_tab.canvas",
+          "duration_ms": 10039,
+          "success": false,
+          "curl_exit": 28,
+          "response": null
+        },
+        {
+          "step": "canvas.close_session",
+          "duration_ms": 46,
+          "success": true,
+          "closed": 0
+        }
+      ]
+    },
+    {
+      "name": "kimi-uw-library",
+      "target": "UW Libraries search for \"browser automation AI web agents\"",
+      "outcome": "failure",
+      "references": [],
+      "friction": [
+        "Navigation to https://www.lib.washington.edu/ timed out after 30 seconds with curl exit 28 and left no Kimi session tab.",
+        "Direct navigation to a UW Libraries discovery search URL for the query timed out after 45 seconds with curl exit 28 and left no Kimi session tab.",
+        "No search box snapshot or result-list snapshot was reachable, so no authenticated reference metadata could be extracted through Kimi."
+      ],
+      "steps": [
+        {
+          "step": "library.navigate.home",
+          "duration_ms": 30073,
+          "success": false,
+          "curl_exit": 28,
+          "response": null
+        },
+        {
+          "step": "library.list_tabs.after_home_timeout",
+          "duration_ms": 30,
+          "success": true,
+          "tabs_count": 0
+        },
+        {
+          "step": "library.navigate.direct_search",
+          "duration_ms": 45042,
+          "success": false,
+          "curl_exit": 28,
+          "response": null
+        },
+        {
+          "step": "library.list_tabs.after_direct_search_timeout",
+          "duration_ms": 33,
+          "success": true,
+          "tabs_count": 0
+        },
+        {
+          "step": "library.close_session",
+          "duration_ms": 45,
+          "success": true,
+          "closed": 0
+        }
+      ]
+    }
+  ],
+  "raw_log": "/Users/yinanli/Documents/nightCrawl/artifacts/uw-side-by-side-benchmark/kimi-raw.jsonl"
+}

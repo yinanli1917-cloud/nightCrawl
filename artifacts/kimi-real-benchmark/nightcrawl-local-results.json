@@ -1,0 +1,44 @@
+[
+  {
+    "name": "status",
+    "latency_ms": 10889.1,
+    "returncode": 0,
+    "stdout": "Status: healthy\nMode: launched\nURL: about:blank\nTabs: 1\nPID: 65191\n",
+    "stderr": "[browse] Starting server...\n"
+  },
+  {
+    "name": "goto_local",
+    "latency_ms": 2241.7,
+    "returncode": 0,
+    "stdout": "Navigated to http://127.0.0.1:8765/target.html (200)\n",
+    "stderr": ""
+  },
+  {
+    "name": "fill_name",
+    "latency_ms": 82.5,
+    "returncode": 0,
+    "stdout": "Filled #name\n",
+    "stderr": ""
+  },
+  {
+    "name": "fill_notes",
+    "latency_ms": 49.5,
+    "returncode": 0,
+    "stdout": "Filled #notes\n",
+    "stderr": ""
+  },
+  {
+    "name": "click_generate",
+    "latency_ms": 71.6,
+    "returncode": 0,
+    "stdout": "Clicked #generate → now at http://127.0.0.1:8765/target.html\n",
+    "stderr": ""
+  },
+  {
+    "name": "read_result",
+    "latency_ms": 46.7,
+    "returncode": 0,
+    "stdout": "Result: nightCrawl | real benchmark\n",
+    "stderr": ""
+  }
+]

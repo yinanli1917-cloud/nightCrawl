@@ -57,6 +57,12 @@ What did the agent do as me yesterday? Today? With what cookies? Can I review an
 
 The most powerful version of "your digital twin" learns from watching you actually use Arc/Chrome and proposes automations. Ship a passive mode that runs alongside Arc for a week and surfaces "you do X every Tuesday — want me to do it for you?" This is the proactive workflow detection line in the PRD that's never been built. Probably the single most differentiating feature on this entire list.
 
+### 7. Real-browser bridge mode for identity-pinned work
+
+Kimi WebBridge's lesson is that visible real-browser control is a product surface, not only an implementation detail. A bridge that attaches to the user's existing Chrome/Arc/Edge profile can inherit identity, password manager behavior, extensions, and fingerprint continuity without exporting cookies into a separate automation profile.
+
+nightCrawl should keep CloakBrowser/headless as the default, but add an explicit "use my live browser" path for SSO-heavy, fingerprint-pinned, or user-visible workflows. That path needs active-tab, owned-tab, and visible-session modes; robust tab/session rebinding after reconnects; extension-conflict diagnostics; and separate DOM, CDP, and OS-level input tiers. The benchmark suite must measure those tiers separately and include recovery from stale tab IDs, extension conflicts, daemon/browser restarts, and user tab switching.
+
 ## Recommended next-session shape
 
 1. NOT engineering. Product redefinition.

@@ -1,0 +1,219 @@
+{
+  "benchmark": "uw-side-by-side-benchmark-nightcrawl",
+  "startedAt": "2026-05-20T02:52:40.630Z",
+  "browserDir": "/Users/yinanli/Documents/nightCrawl/stealth/browser",
+  "artifactJson": "/Users/yinanli/Documents/nightCrawl/artifacts/uw-side-by-side-benchmark/nightcrawl-2026-05-20T02-52-40-619Z.json",
+  "artifactMarkdown": "/Users/yinanli/Documents/nightCrawl/artifacts/uw-side-by-side-benchmark/nightcrawl-2026-05-20T02-52-40-619Z.md",
+  "requestedEnvironment": {
+    "persistentState": true,
+    "BROWSE_EXTENSIONS": "all",
+    "BROWSE_IGNORE_HTTPS_ERRORS": "1"
+  },
+  "daemon": {
+    "beforeState": {
+      "pid": 65191,
+      "startedAt": "2026-05-20T01:48:48.975Z",
+      "socket": "/tmp/nightcrawl-4850a2d4.sock",
+      "serverPath": "/Users/yinanli/Documents/nightCrawl/stealth/browser/src/server.ts"
+    },
+    "beforeAlive": false,
+    "afterState": {
+      "pid": 99655,
+      "startedAt": "2026-05-20T02:52:40.886Z",
+      "socket": "/tmp/nightcrawl-4850a2d4.sock",
+      "serverPath": "/Users/yinanli/Documents/nightCrawl/stealth/browser/src/server.ts"
+    },
+    "startedByThisRun": true,
+    "stoppedByThisRun": true
+  },
+  "steps": [
+    {
+      "command": "nc status",
+      "startedAt": "2026-05-20T02:52:40.630Z",
+      "durationMs": 12872,
+      "exitCode": 0,
+      "stdout": "Status: healthy\nMode: launched\nURL: about:blank\nTabs: 1\nPID: 99655\n",
+      "stderr": "[browse] Starting server...\n",
+      "ok": true
+    },
+    {
+      "command": "nc goto https://canvas.uw.edu/",
+      "startedAt": "2026-05-20T02:52:53.506Z",
+      "durationMs": 3805,
+      "exitCode": 0,
+      "stdout": "Navigated to https://canvas.uw.edu/ (200)\n",
+      "stderr": "",
+      "ok": true
+    },
+    {
+      "command": "nc url",
+      "startedAt": "2026-05-20T02:52:57.311Z",
+      "durationMs": 49,
+      "exitCode": 0,
+      "stdout": "https://canvas.uw.edu/\n",
+      "stderr": "",
+      "ok": true
+    },
+    {
+      "command": "nc js document.title",
+      "startedAt": "2026-05-20T02:52:57.360Z",
+      "durationMs": 44,
+      "exitCode": 0,
+      "stdout": "Dashboard\n",
+      "stderr": "",
+      "ok": true
+    },
+    {
+      "command": "nc text",
+      "startedAt": "2026-05-20T02:52:57.404Z",
+      "durationMs": 52,
+      "exitCode": 0,
+      "stdout": "[redacted: Canvas page text not persisted]",
+      "stderr": "",
+      "ok": true,
+      "outputRedactedReason": "Canvas dashboard text may contain course or assignment details; safe booleans/counts are stored under canvas.indicators."
+    },
+    {
+      "command": "nc goto https://www.lib.washington.edu/",
+      "startedAt": "2026-05-20T02:52:57.457Z",
+      "durationMs": 768,
+      "exitCode": 0,
+      "stdout": "Navigated to https://www.lib.washington.edu/ (200)\n",
+      "stderr": "",
+      "ok": true
+    },
+    {
+      "command": "nc forms",
+      "startedAt": "2026-05-20T02:52:58.225Z",
+      "durationMs": 82,
+      "exitCode": 0,
+      "stdout": "--- BEGIN UNTRUSTED EXTERNAL CONTENT (source: https://lib.uw.edu/) ---\n[\n  {\n    \"index\": 0,\n    \"action\": \"https://lib.uw.edu/search/\",\n    \"method\": \"get\",\n    \"id\": \"searchFormSite\",\n    \"fields\": [\n      {\n        \"tag\": \"select\",\n        \"type\": \"select-one\",\n        \"id\": \"mobile-search-select\",\n        \"value\": \"site\",\n        \"options\": [\n          {\n            \"value\": \"site\",\n            \"text\": \"Current site\"\n          },\n          {\n            \"value\": \"uw\",\n            \"text\": \"All the UW\"\n          }\n        ]\n      },\n      {\n        \"tag\": \"input\",\n        \"type\": \"radio\",\n        \"name\": \"search\",\n        \"value\": \"site\"\n      },\n      {\n        \"tag\": \"input\",\n        \"type\": \"radio\",\n        \"name\": \"search\",\n        \"value\": \"uw\"\n      },\n      {\n        \"tag\": \"input\",\n        \"type\": \"search\",\n        \"name\": \"q\",\n        \"id\": \"uw-search-bar\",\n        \"placeholder\": \"Search\"\n      },\n      {\n        \"tag\": \"input\",\n        \"type\": \"hidden\",\n        \"name\": \"cx\",\n        \"value\": \"[number]:sx8jrb0rpjo\"\n      },\n      {\n        \"tag\": \"input\",\n        \"type\": \"hidden\",\n        \"name\": \"cof\",\n        \"value\": \"FORID:9\"\n      },\n      {\n        \"tag\": \"input\",\n        \"type\": \"submit\",\n        \"value\": \"search\"\n      }\n    ]\n  },\n  {\n    \"index\": 1,\n    \"action\": \"https://orbiscascade-washington.primo.exlibrisgroup.com/discovery/search\",\n    \"method\": \"get\",\n    \"id\": \"searchFormPrimoNUI\",\n    \"fields\": [\n      {\n        \"tag\": \"input\",\n        \"type\": \"hidden\",\n        \"name\": \"vid\",\n        \"value\": \"01ALLIANCE_UW:UW\"\n      },\n      {\n        \"tag\": \"input\",\n        \"type\": \"hidden\",\n        \"name\": \"tab\",\n        \"value\": \"UW_default\"\n      },\n      {\n        \"tag\": \"input\",\n        \"type\": \"hidden\",\n        \"name\": \"search_scope\",\n        \"value\": \"UW_EVERYTHING\"\n      },\n      {\n        \"tag\": \"input\",\n        \"type\": \"hidden\",\n        \"name\": \"lang\",\n        \"value\": \"en\"\n      },\n      {\n        \"tag\": \"input\",\n        \"type\": \"hidden\",\n        \"name\": \"query\",\n        \"id\": \"primoQuery\"\n      },\n      {\n        \"tag\": \"input\",\n        \"type\": \"text\",\n        \"name\": \"queryTemp\",\n        \"id\": \"primoQueryTemp\",\n        \"placeholder\": \"Search the catalog for articles, books & more!\"\n      }\n    ]\n  }\n]\n--- END UNTRUSTED EXTERNAL CONTENT ---\n",
+      "stderr": "",
+      "ok": true
+    },
+    {
+      "command": "nc snapshot -i -c -d 4",
+      "startedAt": "2026-05-20T02:52:58.307Z",
+      "durationMs": 5059,
+      "exitCode": 0,
+      "stdout": "--- BEGIN UNTRUSTED EXTERNAL CONTENT (source: https://lib.uw.edu/) ---\n(accessibility snapshot unavailable: accessibility snapshot timed out after 5000ms)\n── DOM interactive fallback ──\n@e1 [link] \"Skip to content\"\n@e2 [link] \"University Libraries - University of Washington\"\n@e3 [link] \"Make a Gift\"\n@e4 [link] \"Your Library Account\"\n@e5 [link] \"Ask Us!\"\n@e6 [button] \"open search area\"\n@e7 [link] \"FIND & BORROW\"\n@e8 [link] \"RESEARCH SERVICES\"\n@e9 [link] \"STUDENT PROGRAMS\"\n@e10 [link] \"TEACHING SUPPORT\"\n@e11 [link] \"LOCATIONS & TECHNOLOGY\"\n@e12 [link] \"ABOUT\"\n@e13 [textbox] \"Search the catalog for articles, books & more!\"\n@e14 [button] \"Search\"\n@e15 [link] \"Advanced Search\"\n@e16 [link] \"FAQ\"\n@e17 [link] \"Try the BETA! – submit feedback by June 12\"\n@e18 [link] \"Open Scholarship Commons\"\n@e19 [link] \"\"\n@e20 [link] \"Reserve a Study Space\"\n@e21 [link] \"a\"\n@e22 [link] \"\"\n@e23 [link] \"Access Resources from Off-Campus\"\n@e24 [link] \"a\"\n@e25 [link] \"\"\n@e26 [link] \"Get Help from a Subject Expert\"\n@e27 [link] \"\"\n@e28 [link] \"Request Materials from Other Libraries\"\n@e29 [link] \"\"\n@e30 [link] \"Use Technology in the Libraries\"\n@e31 [link] \"\"\n@e32 [link] \"Find Textbooks and Course Materials\"\n@e33 [link] \"\"\n@e34 [link] \"Frequently Asked Questions\"\n@e35 [link] \"Suzzallo and Allen Libraries\"\n@e36 [link] \"Odegaard Undergraduate Library\"\n@e37 [link] \"Foster Business Library\"\n@e38 [link] \"Health Sciences Library\"\n@e39 [link] \"Special Collections\"\n@e40 [link] \"See All Locations\"\n@e41 [link] \"See All Study Spaces\"\n@e42 [link] \"Research Guides\"\n@e43 [link] \"Databases\"\n@e44 [link] \"Research Guides\"\n@e45 [link] \"Databases\"\n@e46 [link] \"a\"\n@e47 [link] \"2026 Distinguished Librarian Award\"\n@e48 [link] \"A living archive: The UW Ethnomusicology Archives\"\n@e49 [link] \"UW Libraries May Update\"\n@e50 [link] \"A Message for Graduates from UW Libraries\"\n@e51 [link] \"Libraries News\"\n@e52 [link] \"University Libraries - University of Washington\"\n@e53 [link] \"News & Events\"\n@e54 [link] \"Facebook\"\n@e55 [link] \"Instagram\"\n@e56 [link] \"YouTube\"\n@e57 [link] \"Contact Us\"\n@e58 [link] \"About\"\n@e59 [link] \"Accounts & Privileges\"\n@e60 [link] \"Locations & Hours\"\n@e61 [link] \"Library Jobs\"\n@e62 [link] \"Accessibility\"\n@e63 [link] \"Visitor Information\"\n@e64 [link] \"See details.\"\n@e65 [link] \"UW Home\"\n@e66 [link] \"Privacy\"\n@e67 [link] \"Terms\"\n--- END UNTRUSTED EXTERNAL CONTENT ---\n",
+      "stderr": "",
+      "ok": true
+    },
+    {
+      "command": "nc fill @e6 browser automation AI web agents",
+      "startedAt": "2026-05-20T02:53:03.366Z",
+      "durationMs": 70,
+      "exitCode": 1,
+      "stdout": "",
+      "stderr": "fill: Error: Element is not an <input>, <textarea>, <select> or [contenteditable] and does not have a role allowing [aria-readonly]\nCall log:\n\u001b[2m  - waiting for locator('body:nth-child(2) > div:nth-child(3) > div:nth-child(1) > header:nth-child(1) > div:nth-child(1) > div:nth-child(2) > div:nth-child(2) > button:nth-child(1)')\u001b[22m\n\u001b[2m    - locator resolved to <button class=\"uw-search\" aria-haspopup=\"true\" aria-expanded=\"false\" aria-owns=\"uwsearcharea\" aria-controls=\"uwsearcharea\" aria-label=\"open search area\">…</button>\u001b[22m\n\u001b[2m    - fill(\"browser automation AI web agents\")\u001b[22m\n\u001b[2m  - attempting fill action\u001b[22m\n\u001b[2m    - waiting for element to be visible, enabled and editable\u001b[22m\n\n",
+      "ok": false
+    },
+    {
+      "command": "nc press Enter",
+      "startedAt": "2026-05-20T02:53:03.436Z",
+      "durationMs": 52,
+      "exitCode": 0,
+      "stdout": "Pressed Enter\n",
+      "stderr": "",
+      "ok": true
+    },
+    {
+      "command": "nc url",
+      "startedAt": "2026-05-20T02:53:03.488Z",
+      "durationMs": 47,
+      "exitCode": 0,
+      "stdout": "https://lib.uw.edu/\n",
+      "stderr": "",
+      "ok": true
+    },
+    {
+      "command": "nc js document.title",
+      "startedAt": "2026-05-20T02:53:03.535Z",
+      "durationMs": 51,
+      "exitCode": 0,
+      "stdout": "UW Libraries\n",
+      "stderr": "",
+      "ok": true
+    },
+    {
+      "command": "nc text",
+      "startedAt": "2026-05-20T02:53:03.586Z",
+      "durationMs": 59,
+      "exitCode": 0,
+      "stdout": "--- BEGIN UNTRUSTED EXTERNAL CONTENT (source: https://lib.uw.edu/) ---\nSkip to content\nMake a Gift\nYour Library Account\nAsk Us!\nFind & Borrow\nResearch Services\nStudent Programs\nTeaching Support\nLocations & Technology\nAbout\nUW Libraries Search\nSearch\nAdvanced Search, FAQ, Try the BETA! – submit feedback by June 12\nCreate a podcast or edit audio files for your research project! Explore the new recording studio in Suzzallo Library’s Open Scholarship Commons.\nHow Can We Help You?\nReserve a Study Space\nAccess Resources from Off-Campus\nGet Help from a Subject Expert\nRequest Materials from Other Libraries\nUse Technology in the Libraries\nFind Textbooks and Course Materials\nFrequently Asked Questions\nToday’s Library Hours\nSuzzallo and Allen Libraries\n8:00am – 8:00pm\nOdegaard Undergraduate Library\n8:00am – 12:00am\nFoster Business Library\n9:00am – 8:00pm\nHealth Sciences Library\n7:30am – 6:00pm\nSpecial Collections\n1:00pm – 4:45pm\nSee All Locations\nSee All Study Spaces\nResearch Guides & Databases\nNot sure where to find sources for an assignment or project? Our curated Research Guides recommend the best resources for your topic, and Databases list our scholarly databases and repositories. Research starts here!\nResearch Guides\nDatabases\nStories & Updates\n2026 Distinguished Librarian Award\nMay 11, 2026\nUW Libraries’ Ethnomusicology Archives Curator, John Vallier, has been awarded the 2026 Distinguished Librarian Award, in conjunction with the annual UW Awards of Excellence.\nA living archive: The UW Ethnomusicology Archives\nMay 12, 2026\nUW Libraries May Update\nMay 5, 2026\nA Message for Graduates from UW Libraries\nMay 4, 2026\nLibraries News\nUpcoming Events\nPlease update your browser to view the iframe content.\nExhibits\nPlease update your browser to view the iframe content.\nUniversity of Washington Libraries\nBox 352900\nSeattle, WA 98195-2900 USA\nphone: 206-543-0242  Contact Us\nAbout\nAccounts & Privileges\nLocations & Hours\nLibrary Jobs\nAccessibility\nVisitor Information\nText on this page created by UW Libraries is licensed under a CC BY-NC 4.0 license. Images and video are not included. See details.\n© 2026 University of Washington | Seattle, WA | UW Home | Privacy | Terms\n--- END UNTRUSTED EXTERNAL CONTENT ---\n",
+      "stderr": "",
+      "ok": true
+    },
+    {
+      "command": "nc links",
+      "startedAt": "2026-05-20T02:53:03.645Z",
+      "durationMs": 51,
+      "exitCode": 0,
+      "stdout": "--- BEGIN UNTRUSTED EXTERNAL CONTENT (source: https://lib.uw.edu/) ---\nSkip to content → https://lib.uw.edu/#primary\nMake a Gift → https://www.washington.edu/give-to-libraries/\nYour Library Account → https://search.lib.uw.edu/account\nAccount → https://search.lib.uw.edu/account\nAsk Us! → https://lib.uw.edu/ask-us/\nFind & Borrow → https://lib.uw.edu/find-borrow/\nUW Libraries Search → https://search.lib.uw.edu/\nTextbooks & Course Reserves → https://lib.uw.edu/find-borrow/find-materials/find-textbooks-course-reserves/\nOff-Campus Access → https://lib.uw.edu/find-borrow/borrow-request/off-campus-access/\nSpecial Collections → https://lib.uw.edu/find-borrow/find-materials/find-special-collections/\nFind Materials → https://lib.uw.edu/find-borrow/find-materials/\nUW Libraries Search → https://search.lib.uw.edu/\nDatabases → https://guides.lib.uw.edu/az/databases\nJournal Search → https://search.lib.uw.edu/journals\nVideo & Streaming Video → https://guides.lib.uw.edu/videostream\nGovernment Publications → https://lib.uw.edu/find-borrow/find-materials/find-government-publications/\nGeospatial Data, Maps, & Aerial Photography → https://lib.uw.edu/find-borrow/find-materials/find-geospatial-data-maps-aerial-photography/\nNewspapers & Microforms → https://lib.uw.edu/find-borrow/find-materials/find-newspapers-microforms/\nSpecial Collections → https://lib.uw.edu/find-borrow/find-materials/find-special-collections/\nTextbooks & Course Reserves → https://lib.uw.edu/find-borrow/find-materials/find-textbooks-course-reserves/\nFeatured Collections → https://lib.uw.edu/find-borrow/find-materials/featured-collections/\nBorrow & Request → https://lib.uw.edu/find-borrow/borrow-request/\nDue Dates & Renewals → https://lib.uw.edu/find-borrow/borrow-request/due-dates-renewals/\nBook Returns → https://lib.uw.edu/find-borrow/borrow-request/book-returns/\nFines & Appeals → https://lib.uw.edu/find-borrow/borrow-request/fines-appeals/\nInterlibrary Loan → https://lib.uw.edu/find-borrow/borrow-request/interlibrary-loan/\nAccounts & Privileges → https://lib.uw.edu/find-borrow/borrow-request/accounts-privileges/\nBorrower’s Cards → https://lib.uw.edu/find-borrow/borrow-request/borrowers-cards/\nOff-Campus Access → https://lib.uw.edu/find-borrow/borrow-request/off-campus-access/\nSuggest a Purchase → https://washington.libwizard.com/f/uwlib-purchase\nYour Library Account → https://search.lib.uw.edu/account\nResearch Services → https://lib.uw.edu/research-services/\nGet Help from a Subject Expert → https://lib.uw.edu/research-services/research-help/consultations/\nDigital Project Design → https://lib.uw.edu/research-services/digital-project-design/\nCiting Sources Guide → https://guides.lib.uw.edu/research/citations\nSharing and Publishing Your Work → https://lib.uw.edu/research-services/publishing/sharing-and-publishing-your-work/\nResearch Help → https://lib.uw.edu/research-services/research-help/\nGet Help from a Subject Expert → https://lib.uw.edu/research-services/research-help/consultations/\nStudent Research Tutorials → https://lib.uw.edu/research-services/research-help/student-research-tutorials/\nResearch Guides → https://guides.lib.uw.edu/research\nEvaluating Information → https://guides.lib.uw.edu/research/evaluate\nCiting Sources → https://guides.lib.uw.edu/research/citations\nOdegaard Writing & Research Center → https://depts.washington.edu/owrcweb/wordpress/\nPublishing → https://lib.uw.edu/research-services/publishing/\nSharing and Publishing Your Work → https://lib.uw.edu/research-services/publishing/sharing-and-publishing-your-work/\nCopyright & Author Rights → https://lib.uw.edu/research-services/publishing/copyright-author-rights/\nOpen Access → https://lib.uw.edu/research-services/publishing/open-access/\nData Services → https://lib.uw.edu/research-services/data-services/\nResearch Data Management → https://lib.uw.edu/research-services/data-services/research-data-management/\nData Visualization → https://lib.uw.edu/research-services/data-services/data-visualization/\nMapping Tools & Services → https://lib.uw.edu/research-services/data-services/mapping-tools-services/\nText Mining → https://lib.uw.edu/research-services/data-services/text-mining/\nStudent Programs → https://lib.uw.edu/student-programs/\nStudent Guide → https://lib.uw.edu/student-programs/student-guide/\nGraduate Funding Information Service (GFIS) → https://lib.uw.edu/student-programs/graduate-funding-information-service/\nStudent Programs → https://lib.uw.edu/student-programs/\nWellness and Connection → https://lib.uw.edu/student-programs/#wellness\nContests and Awards → https://lib.uw.edu/student-programs/#contests\nGraduate Student Support → https://lib.uw.edu/student-programs/#grad\nTeaching Support → https://lib.uw.edu/teaching-support/\nTeaching Support → https://lib.uw.edu/teaching-support/\nTeaching Support → https://lib.uw.edu/teaching-support/\nLibrarian Class Instruction & Consultations → https://lib.uw.edu/teaching-support/librarian-class-instruction-consultations/\nCourse Materials & Course Reserves → https://lib.uw.edu/teaching-support/course-materials-course-reserves/\nOpen Education and Open Pedagogy → https://lib.uw.edu/teaching-support/open-education-and-open-pedagogy/\nLocations & Technology → https://lib.uw.edu/locations-hours/\nSpaces & Technology → https://lib.uw.edu/locations-hours/spaces-technology/\nPrinting, Scanning, Computers → https://lib.uw.edu/locations-hours/spaces-technology/printing-scanning-computers/\nRecording & Audio Studios → https://lib.uw.edu/recording-audio-studios/\nOpen Scholarship Commons → https://lib.uw.edu/location/open-scholarship-commons/\nLocations & Hours → https://lib.uw.edu/locations-hours/\nArt Library → https://lib.uw.edu/location/art-library/\nBuilt Environments Library → https://lib.uw.edu/location/built-environments-library/\nDrama Library → https://lib.uw.edu/location/drama-library/\nEngineering Library → https://lib.uw.edu/location/engineering-library/\nFoster Business Library → https://lib.uw.edu/location/foster-business-library/\nFriday Harbor Library → https://lib.uw.edu/location/friday-harbor-library/\nGovernment Publications, Maps, Microforms & Newspapers → https://lib.uw.edu/location/government-publications-maps-microforms-newspapers/\nHealth Sciences Library → https://hsl.uw.edu/\nLi Lu Library → https://hsl.uw.edu/lilulibrary/\nMathematics Research Library → https://lib.uw.edu/location/mathematics-research-library/\nMusic Library → https://lib.uw.edu/location/music-library/\nOdegaard Undergraduate Library → https://lib.uw.edu/location/odegaard-undergraduate-library/\nOpen Scholarship Commons → https://lib.uw.edu/location/open-scholarship-commons/\nResearch Commons → https://lib.uw.edu/location/research-commons/\nSpecial Collections → https://lib.uw.edu/location/special-collections/\nSuzzallo and Allen Libraries → https://lib.uw.edu/location/suzzallo-and-allen-libraries/\nTateuchi East Asia Library → https://lib.uw.edu/location/tateuchi-east-asia-library/\nUW Bothell/Cascadia Library → https://library.uwb.edu/\nUW Tacoma Library → https://www.tacoma.uw.edu/library\nView All Locations → https://lib.uw.edu/locations-hours/\nAbout → https://lib.uw.edu/about/\nNews and Events → https://lib.uw.edu/about/news-events/\nAccessibility → https://lib.uw.edu/about/accessibility/\nVisitor Information → https://lib.uw.edu/about/visitor-information/\nAbout → https://lib.uw.edu/about/\nNews and Events → https://lib.uw.edu/about/news-events/\nCalendar → https://lib.uw.edu/about/news-events/calendar/\nMission and Strategy → https://lib.uw.edu/about/mission/\nAbout the Collection → https://lib.uw.edu/about/about-the-collection/\nQuick Facts and Data → https://lib.uw.edu/about/quick-facts-and-data/\nDiversity, Equity and Inclusion → https://lib.uw.edu/about/diversity-equity-and-inclusion/\nRecognition → https://lib.uw.edu/about/recognition/\nPartners → https://lib.uw.edu/about/partners/\nAdministration → https://lib.uw.edu/about/administration/\nStaff Directory → https://lib.uw.edu/about/administration/staff-directory/\nDepartments → https://lib.uw.edu/about/administration/departments/\nPolicies & Guidelines → https://lib.uw.edu/about/policies-guidelines/\nLibrary Jobs → https://lib.uw.edu/about/jobs/\nAccessibility → https://lib.uw.edu/about/accessibility/\nVisitor Information → https://lib.uw.edu/about/visitor-information/\nContact Us → https://lib.uw.edu/about/contact-us/\nAdvanced Search → https://search.lib.uw.edu/advanced\nFAQ → https://guides.lib.uw.edu/research/uwlibrariessearch\nTry the BETA! – submit feedback by June 12 → https://orbiscascade-washington.primo.exlibrisgroup.com/nde/home?vid=01ALLIANCE_UW:UW_NDE&lang=en\nOpen Scholarship Commons → https://lib.uw.edu/location/open-scholarship-commons/\nReserve a Study Space → https://cal.lib.uw.edu/\nAccess Resources from Off-Campus → https://lib.uw.edu/find-borrow/borrow-request/off-campus-access/\nGet Help from a Subject Expert → https://lib.uw.edu/research-services/research-help/consultations/\nRequest Materials from Other Libraries → https://lib.uw.edu/find-borrow/borrow-request/interlibrary-loan-scanning-services/\nUse Technology in the Libraries → https://lib.uw.edu/locations-hours/spaces-technology/\nFind Textbooks and Course Materials → https://lib.uw.edu/find-borrow/find-materials/find-textbooks-course-reserves/\nFrequently Asked Questions → https://guides.lib.uw.edu/research/faq\nSuzzallo and Allen Libraries → https://lib.uw.edu/location/suzzallo-and-allen-libraries/\nOdegaard Undergraduate Library → https://lib.uw.edu/location/odegaard-undergraduate-library/\nFoster Business Library → https://lib.uw.edu/location/foster-business-library/\nHealth Sciences Library → https://lib.uw.edu/location/health-sciences-library/\nSpecial Collections → https://lib.uw.edu/location/special-collections/\nSee All Locations → https://lib.uw.edu/locations-hours/all-libraries-hours/\nSee All Study Spaces → https://lib.uw.edu/locations-hours/spaces-technology/study-spaces/\nResearch Guides → https://guides.lib.uw.edu/research\nDatabases → https://guides.lib.uw.edu/az/databases\nResearch Guides → https://guides.lib.uw.edu/research\nDatabases → https://guides.lib.uw.edu/az/databases\n2026 Distinguished Librarian Award → https://lib.uw.edu/2026/05/11/2026-distinguished-librarian-award/\nContinue reading 2026 Distinguished Librarian Award → https://lib.uw.edu/2026/05/11/2026-distinguished-librarian-award/\nA living archive: The UW Ethnomusicology Archives → https://dailyuw.com/article/a-living-archive-the-uw-ethnomusicology-archives-[number]\nUW Libraries May Update → https://lib.uw.edu/2026/05/05/uw-libraries-may-update/\nA Message for Graduates from UW Libraries → https://lib.uw.edu/2026/05/04/a-message-for-graduates-from-uw-libraries/\nLibraries News → https://lib.uw.edu/about/news-events/news/\nNews & Events → https://lib.uw.edu/about/news-events/\nFacebook → https://facebook.com/uwlibraries\nInstagram → https://instagram.com/uofwalibraries\nYouTube → https://youtube.com/uwlibraries\nContact Us → https://lib.uw.edu/about/contact-us/\nAbout → https://lib.uw.edu/about/\nAccounts & Privileges → https://lib.uw.edu/find-borrow/borrow-request/accounts-privileges/\nLocations & Hours → https://lib.uw.edu/locations-hours/\nLibrary Jobs → https://lib.uw.edu/about/jobs/\nAccessibility → https://lib.uw.edu/about/accessibility/\nVisitor Information → https://lib.uw.edu/about/visitor-information/\nSee details. → https://lib.uw.edu/about/policies-guidelines/creative-commons-license/\nUW Home → https://www.washington.edu/\nPrivacy → https://www.washington.edu/online/privacy/\nTerms → https://www.washington.edu/online/terms/\n--- END UNTRUSTED EXTERNAL CONTENT ---\n",
+      "stderr": "",
+      "ok": true
+    },
+    {
+      "command": "nc stop",
+      "startedAt": "2026-05-20T02:53:03.701Z",
+      "durationMs": 3041,
+      "exitCode": 0,
+      "stdout": "nightCrawl was not responding; cleaned stale state.\n",
+      "stderr": "",
+      "ok": true
+    }
+  ],
+  "canvas": {
+    "reachable": true,
+    "loginWall": false,
+    "currentUrl": "https://canvas.uw.edu/",
+    "title": "Dashboard",
+    "indicators": {
+      "dashboardTextVisible": true,
+      "courseCardsMentioned": null,
+      "consentRequired": false,
+      "autoImportMentioned": false,
+      "handoffMentioned": false,
+      "visibleCourseLikeLineCount": 5,
+      "canvasDetailsPersisted": false
+    }
+  },
+  "uwLibraries": {
+    "startGotoOk": true,
+    "searchMethod": "search box @e6",
+    "currentUrl": "https://lib.uw.edu/",
+    "title": "UW Libraries",
+    "references": [
+      {
+        "title": "Please update your browser to view the iframe content.",
+        "authors": "",
+        "yearOrSource": "",
+        "linkOrAvailability": "Textbooks & Course Reserves → https://lib.uw.edu/find-borrow/find-materials/find-textbooks-course-reserves/",
+        "rawContext": [
+          "Please update your browser to view the iframe content.",
+          "Exhibits",
+          "Please update your browser to view the iframe content.",
+          "University of Washington Libraries",
+          "Box 352900",
+          "Seattle, WA 98195-2900 USA",
+          "phone: 206-543-0242  Contact Us",
+          "About"
+        ]
+      },
+      {
+        "title": "Text on this page created by UW Libraries is licensed under a CC BY-NC 4.0 license. Images and video are not included. See details.",
+        "authors": "Text on this page created by UW Libraries is licensed under a CC BY-NC 4.0 license. Images and video are not included. See details.",
+        "yearOrSource": "© 2026 University of Washington | Seattle, WA | UW Home | Privacy | Terms",
+        "linkOrAvailability": "Textbooks & Course Reserves → https://lib.uw.edu/find-borrow/find-materials/find-textbooks-course-reserves/",
+        "rawContext": [
+          "Text on this page created by UW Libraries is licensed under a CC BY-NC 4.0 license. Images and video are not included. See details.",
+          "© 2026 University of Washington | Seattle, WA | UW Home | Privacy | Terms",
+          "--- END UNTRUSTED EXTERNAL CONTENT ---"
+        ]
+      }
+    ]
+  },
+  "limitations": [],
+  "finishedAt": "2026-05-20T02:53:06.742Z"
+}

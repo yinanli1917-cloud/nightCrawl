@@ -1,0 +1,3 @@
+{"file": ".codex/tasks/05-26-backup-x-article-as-local-pdf-or-website/prd.md", "reason": "Defines target URL, approved login/handoff, backup formats, and fallback behavior."}
+{"file": "/Users/yinanli/.codex/skills/nightcrawl/SKILL.md", "reason": "Defines the approved browser handoff and authenticated browsing workflow."}
+{"file": "/Users/yinanli/.codex/skills/pdf/SKILL.md", "reason": "Defines PDF creation and visual verification expectations."}

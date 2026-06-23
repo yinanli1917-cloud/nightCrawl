@@ -1,0 +1,279 @@
+{
+  "benchmark": "kimi-webbridge-chrome-boundary-suite",
+  "timestamp": "20260527-010834",
+  "main_url": "http://127.0.0.1:8876/main.html",
+  "frame_url": "http://127.0.0.1:8877/iframe.html",
+  "upload_file": "/Users/yinanli/Documents/nightCrawl/artifacts/webbridge-boundary-suite/upload-fixture.txt",
+  "sessions": {
+    "main": "chrome-boundary-20260527-010834",
+    "frame": "chrome-frame-20260527-010834"
+  },
+  "steps": [
+    {
+      "action": "navigate",
+      "session": "chrome-boundary-20260527-010834",
+      "elapsed_ms": 25013.3,
+      "ok": false,
+      "error": "TimeoutError('timed out')",
+      "label": "navigate_main"
+    },
+    {
+      "action": "snapshot",
+      "session": "chrome-boundary-20260527-010834",
+      "elapsed_ms": 0.8,
+      "ok": false,
+      "error": "<HTTPError 502: 'Bad Gateway'>",
+      "label": "snapshot_main"
+    },
+    {
+      "action": "evaluate",
+      "session": "chrome-boundary-20260527-010834",
+      "elapsed_ms": 0.3,
+      "ok": false,
+      "error": "<HTTPError 502: 'Bad Gateway'>",
+      "label": "page_health"
+    },
+    {
+      "action": "fill",
+      "session": "chrome-boundary-20260527-010834",
+      "elapsed_ms": 0.3,
+      "ok": false,
+      "error": "<HTTPError 502: 'Bad Gateway'>",
+      "label": "fill_name"
+    },
+    {
+      "action": "fill",
+      "session": "chrome-boundary-20260527-010834",
+      "elapsed_ms": 0.3,
+      "ok": false,
+      "error": "<HTTPError 502: 'Bad Gateway'>",
+      "label": "fill_notes"
+    },
+    {
+      "action": "fill",
+      "session": "chrome-boundary-20260527-010834",
+      "elapsed_ms": 0.2,
+      "ok": false,
+      "error": "<HTTPError 502: 'Bad Gateway'>",
+      "label": "fill_contenteditable"
+    },
+    {
+      "action": "click",
+      "session": "chrome-boundary-20260527-010834",
+      "elapsed_ms": 0.2,
+      "ok": false,
+      "error": "<HTTPError 502: 'Bad Gateway'>",
+      "label": "click_dynamic_submit"
+    },
+    {
+      "action": "evaluate",
+      "session": "chrome-boundary-20260527-010834",
+      "elapsed_ms": 0.2,
+      "ok": false,
+      "error": "<HTTPError 502: 'Bad Gateway'>",
+      "label": "dynamic_result"
+    },
+    {
+      "action": "click",
+      "session": "chrome-boundary-20260527-010834",
+      "elapsed_ms": 0.2,
+      "ok": false,
+      "error": "<HTTPError 502: 'Bad Gateway'>",
+      "label": "click_trusted_gate"
+    },
+    {
+      "action": "evaluate",
+      "session": "chrome-boundary-20260527-010834",
+      "elapsed_ms": 0.2,
+      "ok": false,
+      "error": "<HTTPError 502: 'Bad Gateway'>",
+      "label": "trusted_gate_result"
+    },
+    {
+      "action": "fill",
+      "session": "chrome-boundary-20260527-010834",
+      "elapsed_ms": 0.2,
+      "ok": false,
+      "error": "<HTTPError 502: 'Bad Gateway'>",
+      "label": "fill_shadow_direct"
+    },
+    {
+      "action": "evaluate",
+      "session": "chrome-boundary-20260527-010834",
+      "elapsed_ms": 0.2,
+      "ok": false,
+      "error": "<HTTPError 502: 'Bad Gateway'>",
+      "label": "shadow_via_evaluate"
+    },
+    {
+      "action": "upload",
+      "session": "chrome-boundary-20260527-010834",
+      "elapsed_ms": 0.2,
+      "ok": false,
+      "error": "<HTTPError 502: 'Bad Gateway'>",
+      "label": "upload_file"
+    },
+    {
+      "action": "evaluate",
+      "session": "chrome-boundary-20260527-010834",
+      "elapsed_ms": 0.3,
+      "ok": false,
+      "error": "<HTTPError 502: 'Bad Gateway'>",
+      "label": "upload_result"
+    },
+    {
+      "action": "fill",
+      "session": "chrome-boundary-20260527-010834",
+      "elapsed_ms": 0.2,
+      "ok": false,
+      "error": "<HTTPError 502: 'Bad Gateway'>",
+      "label": "fill_cross_origin_iframe_from_parent"
+    },
+    {
+      "action": "evaluate",
+      "session": "chrome-boundary-20260527-010834",
+      "elapsed_ms": 0.2,
+      "ok": false,
+      "error": "<HTTPError 502: 'Bad Gateway'>",
+      "label": "cross_origin_parent_probe"
+    },
+    {
+      "action": "network",
+      "session": "chrome-boundary-20260527-010834",
+      "elapsed_ms": 0.2,
+      "ok": false,
+      "error": "<HTTPError 502: 'Bad Gateway'>",
+      "label": "network_start"
+    },
+    {
+      "action": "evaluate",
+      "session": "chrome-boundary-20260527-010834",
+      "elapsed_ms": 0.2,
+      "ok": false,
+      "error": "<HTTPError 502: 'Bad Gateway'>",
+      "label": "fetch_for_network_capture"
+    },
+    {
+      "action": "network",
+      "session": "chrome-boundary-20260527-010834",
+      "elapsed_ms": 0.2,
+      "ok": false,
+      "error": "<HTTPError 502: 'Bad Gateway'>",
+      "label": "network_list"
+    },
+    {
+      "action": "network",
+      "session": "chrome-boundary-20260527-010834",
+      "elapsed_ms": 0.2,
+      "ok": false,
+      "error": "<HTTPError 502: 'Bad Gateway'>",
+      "label": "network_stop"
+    },
+    {
+      "action": "navigate",
+      "session": "chrome-frame-20260527-010834",
+      "elapsed_ms": 25000.5,
+      "ok": false,
+      "error": "TimeoutError('timed out')",
+      "label": "navigate_frame_direct"
+    },
+    {
+      "action": "fill",
+      "session": "chrome-frame-20260527-010834",
+      "elapsed_ms": 0.6,
+      "ok": false,
+      "error": "<HTTPError 502: 'Bad Gateway'>",
+      "label": "fill_frame_direct"
+    },
+    {
+      "action": "click",
+      "session": "chrome-frame-20260527-010834",
+      "elapsed_ms": 0.3,
+      "ok": false,
+      "error": "<HTTPError 502: 'Bad Gateway'>",
+      "label": "click_frame_direct"
+    },
+    {
+      "action": "evaluate",
+      "session": "chrome-frame-20260527-010834",
+      "elapsed_ms": 0.3,
+      "ok": false,
+      "error": "<HTTPError 502: 'Bad Gateway'>",
+      "label": "frame_direct_result"
+    },
+    {
+      "action": "click",
+      "session": "chrome-boundary-20260527-010834",
+      "elapsed_ms": 0.3,
+      "ok": false,
+      "error": "<HTTPError 502: 'Bad Gateway'>",
+      "label": "click_summary"
+    },
+    {
+      "action": "evaluate",
+      "session": "chrome-boundary-20260527-010834",
+      "elapsed_ms": 0.3,
+      "ok": false,
+      "error": "<HTTPError 502: 'Bad Gateway'>",
+      "label": "summary_result"
+    },
+    {
+      "action": "save_as_pdf",
+      "session": "chrome-boundary-20260527-010834",
+      "elapsed_ms": 0.2,
+      "ok": false,
+      "error": "<HTTPError 502: 'Bad Gateway'>",
+      "label": "save_pdf"
+    },
+    {
+      "action": "screenshot",
+      "session": "chrome-boundary-20260527-010834",
+      "elapsed_ms": 0.2,
+      "ok": false,
+      "error": "<HTTPError 502: 'Bad Gateway'>",
+      "label": "screenshot_png"
+    },
+    {
+      "action": "list_tabs",
+      "session": "chrome-boundary-20260527-010834",
+      "elapsed_ms": 0.7,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": {
+          "success": true,
+          "tabs": []
+        }
+      },
+      "label": "list_tabs"
+    },
+    {
+      "action": "close_session",
+      "session": "chrome-boundary-20260527-010834",
+      "elapsed_ms": 0.4,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": {
+          "success": true,
+          "closed": 0
+        }
+      },
+      "label": "close_main_session"
+    },
+    {
+      "action": "close_session",
+      "session": "chrome-frame-20260527-010834",
+      "elapsed_ms": 0.4,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "data": {
+          "success": true,
+          "closed": 0
+        }
+      },
+      "label": "close_frame_session"
+    }
+  ]
+}
