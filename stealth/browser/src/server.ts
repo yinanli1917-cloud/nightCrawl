@@ -25,6 +25,7 @@ import { handleSnapshot, SNAPSHOT_FLAGS } from './snapshot';
 import { resolveConfig, ensureStateDir, readVersionHash, readConfigValue } from './config';
 import { TokenRegistry, checkPermission, type ScopedToken } from './token-registry';
 import { checkForUpdates, checkRebrowserCompatibility } from './update-checker';
+import { sanitizeSessionId, SESSION_HEADER, DEFAULT_SESSION_ID } from './session-id';
 import { maybeAutoUpdate } from './auto-updater';
 import {
   installPackage,
@@ -107,6 +108,16 @@ function getTokenFromRequest(req: Request): ScopedToken | null {
   if (!header?.startsWith('Bearer ')) return null;
   const tokenId = header.slice(7);
   return tokenRegistry.get(tokenId);
+}
+
+/**
+ * Extract the caller's session id from the X-Nightcrawl-Session header.
+ * Untagged callers (no header) share the DEFAULT_SESSION_ID — same behavior as
+ * before. Never trust the wire: the value is sanitized. (Header lookup is
+ * case-insensitive.)
+ */
+function getSessionFromRequest(req: Request): string {
+  return sanitizeSessionId(req.headers.get(SESSION_HEADER));
 }
 
 // ─── Help text (auto-generated from COMMAND_DESCRIPTIONS) ────────
@@ -895,7 +906,11 @@ function wrapError(err: any): string {
   return msg;
 }
 
-async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
+async function handleCommand(
+  body: any,
+  token: ScopedToken,
+  sessionId: string = DEFAULT_SESSION_ID,
+): Promise<Response> {
   const { command, args = [] } = body;
 
   if (!command) {
@@ -956,6 +971,7 @@ async function handleCommand(body: any, token: ScopedToken): Promise<Response> {
     url: browserManager.getCurrentUrl(),
     tabs: browserManager.getTabCount(),
     mode: browserManager.getConnectionMode(),
+    session: sessionId,
   });
 
   try {
@@ -2091,7 +2107,8 @@ async function start() {
             return await routeToBridge({ ...body, engine: 'real' }, startedAt, 'auto');
           }
         }
-        const resp = await handleCommand(body, token);
+        const sessionId = getSessionFromRequest(req);
+        const resp = await handleCommand(body, token, sessionId);
         return await appendEngineGuidance(resp, body, startedAt);
       }
 

@@ -14,6 +14,7 @@ import * as path from 'path';
 import { resolveConfig, ensureStateDir, readVersionHash } from './config';
 import { findInstalledBrowsers } from './cookie-import-browser';
 import { notifyWithAction } from './notify';
+import { resolveSessionId, SESSION_HEADER } from './session-id';
 
 const config = resolveConfig();
 const IS_WINDOWS = process.platform === 'win32';
@@ -499,6 +500,11 @@ async function ensureServer(): Promise<ServerState> {
 let cliEngine: 'auto' | 'headless' | 'real' = 'auto';
 let cliForce = false;
 
+// Session identity for THIS client process (one per agent window/run). Resolved
+// once and attached to every command so the daemon scopes tabs per session.
+// See session-id.ts for the data-driven source registry.
+const SESSION_ID = resolveSessionId();
+
 async function sendCommand(state: ServerState, command: string, args: string[], retries = 0): Promise<void> {
   const body = JSON.stringify({ command, args, engine: cliEngine, force: cliForce });
 
@@ -509,6 +515,7 @@ async function sendCommand(state: ServerState, command: string, args: string[], 
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${state.token}`,
+        [SESSION_HEADER]: SESSION_ID,
       },
       body,
       signal: AbortSignal.timeout(30000),

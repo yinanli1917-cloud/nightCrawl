@@ -31,6 +31,7 @@ export interface ActivityEntry {
   result?: string;
   tabs?: number;
   mode?: string;
+  session?: string;
 }
 
 // ─── Buffer & Subscribers ───────────────────────────────────────
