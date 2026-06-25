@@ -974,20 +974,25 @@ async function handleCommand(
     session: sessionId,
   });
 
+  // Per-session command facade: every handler operates on THIS session's view.
+  // Stage 3 is a passthrough (one global active tab); stage 4 makes the per-tab
+  // methods resolve the session's OWN tab. Untagged callers → the "default" view.
+  const view = browserManager.forSession(sessionId);
+
   try {
     let result: string;
 
     if (READ_COMMANDS.has(command)) {
-      result = await handleReadCommand(command, args, browserManager);
+      result = await handleReadCommand(command, args, view);
       if (PAGE_CONTENT_COMMANDS.has(command)) {
-        result = wrapUntrustedContent(result, browserManager.getCurrentUrl());
+        result = wrapUntrustedContent(result, view.getCurrentUrl());
       }
     } else if (WRITE_COMMANDS.has(command)) {
-      result = await handleWriteCommand(command, args, browserManager);
+      result = await handleWriteCommand(command, args, view);
       // Cookie-mutating command — snapshot soon so a crash can't lose it.
       scheduleCheckpoint();
     } else if (META_COMMANDS.has(command)) {
-      result = await handleMetaCommand(command, args, browserManager, shutdown);
+      result = await handleMetaCommand(command, args, view, shutdown);
       // Start periodic snapshot interval when watch mode begins
       if (command === 'watch' && args[0] !== 'stop' && browserManager.isWatching()) {
         const watchInterval = setInterval(async () => {

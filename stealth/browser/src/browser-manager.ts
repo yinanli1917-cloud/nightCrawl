@@ -42,6 +42,8 @@ import { loadDeviceAnchor, applyAnchor } from './fingerprint-clone';
 import { DEFAULT_USER_AGENT } from './stealth';
 import { markPinnedFromHeaders } from './fingerprint-pinned';
 import { TabStore, type RefEntry } from './tab-store';
+import { SessionView, type TabView } from './session-view';
+import { DEFAULT_SESSION_ID } from './session-id';
 
 export type { RefEntry };
 export { DEFAULT_USER_AGENT } from './stealth';
@@ -67,11 +69,15 @@ export interface BrowserState {
 }
 
 // ─── BrowserManager ─────────────────────────────────────────
-export class BrowserManager {
+export class BrowserManager implements TabView {
   /** @internal */ browser: Browser | null = null;
   /** @internal */ context: BrowserContext | null = null;
+  /** TabView identity: the manager itself IS the "default" session passthrough. */
+  readonly sessionId: string = DEFAULT_SESSION_ID;
   /** @internal — owns tabs + per-tab state (page, refMap, frame, snapshot baseline). */
   tabs = new TabStore();
+  /** @internal — cached per-session views (one facade per session id). */
+  private sessionViews = new Map<string, SessionView>();
   /** @internal */ extraHeaders: Record<string, string> = {};
   /** @internal */ customUserAgent: string | null = null;
 
@@ -373,6 +379,22 @@ export class BrowserManager {
       });
     }
     return tabs;
+  }
+
+  // ─── Per-session views ─────────────────────────────────────
+  /**
+   * The per-session command facade. Cached so a session's view is a stable
+   * instance across commands. Stage 3: every SessionView call is a passthrough
+   * to this manager's single global active tab. Stage 4 makes the per-tab
+   * methods resolve the session's OWN active tab.
+   */
+  forSession(sessionId: string): SessionView {
+    let view = this.sessionViews.get(sessionId);
+    if (!view) {
+      view = new SessionView(this, sessionId);
+      this.sessionViews.set(sessionId, view);
+    }
+    return view;
   }
 
   // ─── Page Access ───────────────────────────────────────────

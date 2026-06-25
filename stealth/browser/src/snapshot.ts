@@ -18,7 +18,8 @@
  */
 
 import type { Page, Frame, Locator } from 'playwright';
-import type { BrowserManager, RefEntry } from './browser-manager';
+import type { RefEntry } from './browser-manager';
+import type { TabView } from './session-view';
 import * as Diff from 'diff';
 import { TEMP_DIR, isPathWithin } from './platform';
 
@@ -87,7 +88,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 
 async function buildDomInteractiveFallback(
   target: Page | Frame,
-  bm: BrowserManager,
+  bm: TabView,
   reason: string
 ): Promise<string> {
   const elements = await target.evaluate(() => {
@@ -211,7 +212,7 @@ function parseLine(line: string): ParsedNode | null {
  */
 export async function handleSnapshot(
   args: string[],
-  bm: BrowserManager
+  bm: TabView
 ): Promise<string> {
   const opts = parseSnapshotArgs(args);
   const page = bm.getPage();

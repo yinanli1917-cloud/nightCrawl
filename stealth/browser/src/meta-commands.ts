@@ -2,7 +2,7 @@
  * Meta commands — tabs, server control, screenshots, chain, diff, snapshot
  */
 
-import type { BrowserManager } from './browser-manager';
+import type { TabView } from './session-view';
 import { handleSnapshot } from './snapshot';
 import { getCleanText } from './read-commands';
 import { READ_COMMANDS, WRITE_COMMANDS, META_COMMANDS, PAGE_CONTENT_COMMANDS, wrapUntrustedContent } from './commands';
@@ -57,7 +57,7 @@ function tokenizePipeSegment(segment: string): string[] {
 export async function handleMetaCommand(
   command: string,
   args: string[],
-  bm: BrowserManager,
+  bm: TabView,
   shutdown: () => Promise<void> | void
 ): Promise<string> {
   switch (command) {

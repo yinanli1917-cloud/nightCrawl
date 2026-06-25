@@ -5,7 +5,7 @@
  * press, scroll, wait, viewport, cookie, header, useragent, cleanup
  */
 
-import type { BrowserManager } from './browser-manager';
+import type { TabView } from './session-view';
 import { findInstalledBrowsers, importCookies, listSupportedBrowserNames } from './cookie-import-browser';
 import { replaceCookiesFor } from './handoff-cookie-import';
 import { validateNavigationUrl } from './url-validation';
@@ -19,7 +19,7 @@ import { TEMP_DIR, isPathWithin } from './platform';
 export async function handleWriteCommand(
   command: string,
   args: string[],
-  bm: BrowserManager
+  bm: TabView
 ): Promise<string> {
   const page = bm.getPage();
   // Frame-aware target for locator-based operations (click, fill, etc.)

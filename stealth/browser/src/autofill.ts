@@ -13,7 +13,7 @@
  * password/card/cvv/ssn/otp, and the vault has no key for them.
  */
 
-import type { BrowserManager } from './browser-manager';
+import type { TabView } from './session-view';
 import { matchFields, type AutofillField, type ProfileKey } from './field-matcher';
 import { readProfile } from './profile-store';
 import { detectSensitivePage } from './sensitive-page';
@@ -71,7 +71,7 @@ async function discoverFields(target: any): Promise<(AutofillField & { ref: numb
   });
 }
 
-export async function handleAutofill(args: string[], bm: BrowserManager): Promise<string> {
+export async function handleAutofill(args: string[], bm: TabView): Promise<string> {
   const opts = parseArgs(args);
   const page = bm.getPage();
   const target = bm.getActiveFrameOrPage();

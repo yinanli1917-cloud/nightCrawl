@@ -5,7 +5,7 @@
  * console, network, cookies, storage, perf
  */
 
-import type { BrowserManager } from './browser-manager';
+import type { TabView } from './session-view';
 import { consoleBuffer, networkBuffer, dialogBuffer } from './buffers';
 import type { Page, Frame } from 'playwright';
 import * as fs from 'fs';
@@ -97,7 +97,7 @@ export async function getCleanText(page: Page | Frame): Promise<string> {
 export async function handleReadCommand(
   command: string,
   args: string[],
-  bm: BrowserManager
+  bm: TabView
 ): Promise<string> {
   const page = bm.getPage();
   // Frame-aware target for content extraction
