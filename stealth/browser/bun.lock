@@ -5,7 +5,7 @@
     "": {
       "name": "nightcrawl-browser",
       "dependencies": {
-        "cloakbrowser": "0.3.21",
+        "cloakbrowser": "0.4.3",
         "diff": "^8.0.4",
         "playwright": "1.59.1",
         "playwright-core": "1.59.1",
@@ -17,7 +17,7 @@
 
     "chownr": ["chownr@3.0.0", "", {}, "sha512-+IxzY9BZOQd/XuYPRmrvEVjF/nqj5kgT4kEq7VofrDoM1MxoRjEWkrCC3EtLi59TVawxTAn+orJwFQcrqEN1+g=="],
 
-    "cloakbrowser": ["cloakbrowser@0.3.21", "", { "dependencies": { "tar": "^7.0.0" }, "peerDependencies": { "mmdb-lib": ">=2.0.0", "playwright-core": ">=1.40.0", "puppeteer-core": ">=21.0.0" }, "optionalPeers": ["mmdb-lib", "playwright-core", "puppeteer-core"], "bin": { "cloakbrowser": "dist/cli.js" } }, "sha512-aepGGSpup3aawVtmQbzLb0IFh8i+nRb2Txzkxg+/MqU6RAyzv3FgqbcHjEos5cTSa6PUVvQo9BSsSpNat+E1Eg=="],
+    "cloakbrowser": ["cloakbrowser@0.4.3", "", { "dependencies": { "tar": "^7.0.0" }, "peerDependencies": { "mmdb-lib": ">=2.0.0", "playwright-core": ">=1.53.0", "puppeteer-core": ">=21.0.0", "socks-proxy-agent": ">=10.0.0" }, "optionalPeers": ["mmdb-lib", "playwright-core", "puppeteer-core", "socks-proxy-agent"], "bin": { "cloakbrowser": "dist/cli.js" } }, "sha512-cbfT2+ET3LUlctxEytOocPs4yd7RfjCdi2wNwbTmbjERXHRnvfjh6WL2U5koIqp6p3GOsSGdhH70wQKjwsX49w=="],
 
     "diff": ["diff@8.0.4", "", {}, "sha512-DPi0FmjiSU5EvQV0++GFDOJ9ASQUVFh5kD+OzOnYdi7n3Wpm9hWWGfB/O2blfHcMVTL5WkQXSnRiK9makhrcnw=="],
 
