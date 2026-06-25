@@ -41,7 +41,9 @@ import { launchCloakBrowser, type CloakBrowserLaunchOptions } from './cloakbrows
 import { loadDeviceAnchor, applyAnchor } from './fingerprint-clone';
 import { DEFAULT_USER_AGENT } from './stealth';
 import { markPinnedFromHeaders } from './fingerprint-pinned';
+import { TabStore, type RefEntry } from './tab-store';
 
+export type { RefEntry };
 export { DEFAULT_USER_AGENT } from './stealth';
 export { isPatchCurrent } from './stealth';
 export { generateLaunchAgentPlist } from './launch-agent';
@@ -53,12 +55,6 @@ function exitOnUnexpectedDisconnect(code: number): void {
 
 function noExitOnUnexpectedDisconnect(): boolean {
   return process.env.NIGHTCRAWL_NO_EXIT_ON_DISCONNECT === '1';
-}
-
-export interface RefEntry {
-  locator: Locator;
-  role: string;
-  name: string;
 }
 
 export interface BrowserState {
@@ -74,18 +70,13 @@ export interface BrowserState {
 export class BrowserManager {
   /** @internal */ browser: Browser | null = null;
   /** @internal */ context: BrowserContext | null = null;
-  /** @internal */ pages: Map<number, Page> = new Map();
-  /** @internal */ activeTabId: number = 0;
-  /** @internal */ nextTabId: number = 1;
+  /** @internal — owns tabs + per-tab state (page, refMap, frame, snapshot baseline). */
+  tabs = new TabStore();
   /** @internal */ extraHeaders: Record<string, string> = {};
   /** @internal */ customUserAgent: string | null = null;
 
   /** Server port -- set after server starts, used by cookie-import-browser command */
   public serverPort: number = 0;
-
-  /** @internal */ refMap: Map<string, RefEntry> = new Map();
-  /** @internal -- NOT cleared on navigation, it's a text baseline for diffing */
-  lastSnapshot: string | null = null;
 
   // ─── Dialog Handling ──────────────────────────────────────
   /** @internal */ dialogAutoAccept: boolean = true;
@@ -182,9 +173,8 @@ export class BrowserManager {
    */
   getRefMap(): Array<{ ref: string; role: string; name: string }> {
     const refs: Array<{ ref: string; role: string; name: string }> = [];
-    for (const [ref, entry] of this.refMap) {
-      refs.push({ ref, role: entry.role, name: entry.name });
-    }
+    const map = this.tabs.active()?.refMap;
+    if (map) for (const [ref, entry] of map) refs.push({ ref, role: entry.role, name: entry.name });
     return refs;
   }
 
@@ -312,7 +302,7 @@ export class BrowserManager {
   async isHealthy(): Promise<boolean> {
     if (!this.browser || !this.browser.isConnected()) return false;
     try {
-      const page = this.pages.get(this.activeTabId);
+      const page = this.tabs.active()?.page;
       if (!page) return true;
       await Promise.race([
         page.evaluate('1'),
@@ -333,10 +323,8 @@ export class BrowserManager {
     }
 
     const page = await this.context.newPage();
-    const id = this.nextTabId++;
-    this.pages.set(id, page);
-    this.activeTabId = id;
-    this.wirePageEvents(page);
+    const id = this.tabs.add(page);
+    this.wirePageEvents(page, id);
 
     if (url) {
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
@@ -346,17 +334,18 @@ export class BrowserManager {
   }
 
   async closeTab(id?: number): Promise<void> {
-    const tabId = id ?? this.activeTabId;
-    const page = this.pages.get(tabId);
-    if (!page) throw new Error(`Tab ${tabId} not found`);
+    const tabId = id ?? this.tabs.activeId;
+    const tab = this.tabs.get(tabId);
+    if (!tab) throw new Error(`Tab ${tabId} not found`);
 
-    await page.close();
-    this.pages.delete(tabId);
+    await tab.page.close();
+    const wasActive = tabId === this.tabs.activeId;
+    this.tabs.drop(tabId);
 
-    if (tabId === this.activeTabId) {
-      const remaining = [...this.pages.keys()];
+    if (wasActive) {
+      const remaining = this.tabs.ids();
       if (remaining.length > 0) {
-        this.activeTabId = remaining[remaining.length - 1];
+        this.tabs.setActive(remaining[remaining.length - 1]);
       } else {
         await this.newTab();
       }
@@ -364,23 +353,23 @@ export class BrowserManager {
   }
 
   switchTab(id: number): void {
-    if (!this.pages.has(id)) throw new Error(`Tab ${id} not found`);
-    this.activeTabId = id;
-    this.activeFrame = null;
+    this.tabs.setActive(id); // throws `Tab ${id} not found` if unknown
+    const t = this.tabs.active();
+    if (t) t.activeFrame = null;
   }
 
   getTabCount(): number {
-    return this.pages.size;
+    return this.tabs.size();
   }
 
   async getTabListWithTitles(): Promise<Array<{ id: number; url: string; title: string; active: boolean }>> {
     const tabs: Array<{ id: number; url: string; title: string; active: boolean }> = [];
-    for (const [id, page] of this.pages) {
+    for (const [id, tab] of this.tabs.entries()) {
       tabs.push({
         id,
-        url: page.url(),
-        title: await page.title().catch(() => ''),
-        active: id === this.activeTabId,
+        url: tab.page.url(),
+        title: await tab.page.title().catch(() => ''),
+        active: id === this.tabs.activeId,
       });
     }
     return tabs;
@@ -388,9 +377,7 @@ export class BrowserManager {
 
   // ─── Page Access ───────────────────────────────────────────
   getPage(): Page {
-    const page = this.pages.get(this.activeTabId);
-    if (!page) throw new Error('No active page. Use "browse goto <url>" first.');
-    return page;
+    return this.tabs.activePage();
   }
 
   getCurrentUrl(): string {
@@ -403,17 +390,18 @@ export class BrowserManager {
 
   // ─── Ref Map ──────────────────────────────────────────────
   setRefMap(refs: Map<string, RefEntry>) {
-    this.refMap = refs;
+    const t = this.tabs.active();
+    if (t) t.refMap = refs;
   }
 
   clearRefs() {
-    this.refMap.clear();
+    this.tabs.active()?.refMap.clear();
   }
 
   async resolveRef(selector: string): Promise<{ locator: Locator } | { selector: string }> {
     if (selector.startsWith('@e') || selector.startsWith('@c')) {
       const ref = selector.slice(1);
-      const entry = this.refMap.get(ref);
+      const entry = this.tabs.active()?.refMap.get(ref);
       if (!entry) {
         throw new Error(`Ref ${selector} not found. Run 'snapshot' to get fresh refs.`);
       }
@@ -431,19 +419,19 @@ export class BrowserManager {
 
   getRefRole(selector: string): string | null {
     if (selector.startsWith('@e') || selector.startsWith('@c')) {
-      const entry = this.refMap.get(selector.slice(1));
+      const entry = this.tabs.active()?.refMap.get(selector.slice(1));
       return entry?.role ?? null;
     }
     return null;
   }
 
   getRefCount(): number {
-    return this.refMap.size;
+    return this.tabs.active()?.refMap.size ?? 0;
   }
 
-  // ─── Snapshot Diffing ─────────────────────────────────────
-  setLastSnapshot(text: string | null) { this.lastSnapshot = text; }
-  getLastSnapshot(): string | null { return this.lastSnapshot; }
+  // ─── Snapshot Diffing (per active tab) ────────────────────
+  setLastSnapshot(text: string | null) { const t = this.tabs.active(); if (t) t.lastSnapshot = text; }
+  getLastSnapshot(): string | null { return this.tabs.active()?.lastSnapshot ?? null; }
 
   // ─── Dialog Control ───────────────────────────────────────
   setDialogAutoAccept(accept: boolean) { this.dialogAutoAccept = accept; }
@@ -481,29 +469,26 @@ export class BrowserManager {
 
   // ─── Lifecycle helpers ───────────────────────────────
   async closeAllPages(): Promise<void> {
-    for (const page of this.pages.values()) {
-      await page.close().catch(() => {});
+    for (const [, tab] of this.tabs.entries()) {
+      await tab.page.close().catch(() => {});
     }
-    this.pages.clear();
-    this.clearRefs();
+    this.tabs.clear();
   }
 
-  // ─── Frame context ─────────────────────────────────
-  /** @internal */ activeFrame: import('playwright').Frame | null = null;
-
+  // ─── Frame context (per active tab) ────────────────
   setFrame(frame: import('playwright').Frame | null): void {
-    this.activeFrame = frame;
+    const t = this.tabs.active();
+    if (t) t.activeFrame = frame;
   }
 
   getFrame(): import('playwright').Frame | null {
-    return this.activeFrame;
+    return this.tabs.active()?.activeFrame ?? null;
   }
 
   getActiveFrameOrPage(): import('playwright').Page | import('playwright').Frame {
-    if (this.activeFrame?.isDetached()) {
-      this.activeFrame = null;
-    }
-    return this.activeFrame ?? this.getPage();
+    const t = this.tabs.active();
+    if (t?.activeFrame?.isDetached()) t.activeFrame = null;
+    return t?.activeFrame ?? this.getPage();
   }
 
   // ─── State Save/Restore ───────────────────────────────────
@@ -513,7 +498,8 @@ export class BrowserManager {
     const cookies = await this.context.cookies();
     const pages: BrowserState['pages'] = [];
 
-    for (const [id, page] of this.pages) {
+    for (const [id, tab] of this.tabs.entries()) {
+      const page = tab.page;
       const url = page.url();
       let storage = null;
       try {
@@ -524,7 +510,7 @@ export class BrowserManager {
       } catch {}
       pages.push({
         url: url === 'about:blank' ? '' : url,
-        isActive: id === this.activeTabId,
+        isActive: id === this.tabs.activeId,
         storage,
       });
     }
@@ -565,9 +551,8 @@ export class BrowserManager {
     let activeId: number | null = null;
     for (const saved of state.pages) {
       const page = await this.context.newPage();
-      const id = this.nextTabId++;
-      this.pages.set(id, page);
-      this.wirePageEvents(page);
+      const id = this.tabs.add(page);
+      this.wirePageEvents(page, id);
 
       if (saved.url) {
         // SAFETY: refuse to re-navigate to hostile domains during state restore.
@@ -596,13 +581,11 @@ export class BrowserManager {
       if (saved.isActive) activeId = id;
     }
 
-    if (this.pages.size === 0) {
+    if (this.tabs.size() === 0) {
       await this.newTab();
     } else {
-      this.activeTabId = activeId ?? [...this.pages.keys()][0];
+      this.tabs.setActive(activeId ?? this.tabs.ids()[0]);
     }
-
-    this.clearRefs();
   }
 
   async recreateContext(): Promise<string | null> {
@@ -616,10 +599,10 @@ export class BrowserManager {
     try {
       const state = await this.saveState();
 
-      for (const page of this.pages.values()) {
-        await page.close().catch(() => {});
+      for (const [, tab] of this.tabs.entries()) {
+        await tab.page.close().catch(() => {});
       }
-      this.pages.clear();
+      this.tabs.clear();
       await this.context.close().catch(() => {});
 
       const ua = this.customUserAgent || DEFAULT_USER_AGENT;
@@ -638,7 +621,7 @@ export class BrowserManager {
       return null;
     } catch (err: unknown) {
       try {
-        this.pages.clear();
+        this.tabs.clear();
         if (this.context) await this.context.close().catch(() => {});
 
         const fallbackUa = this.customUserAgent || DEFAULT_USER_AGENT;
@@ -652,18 +635,19 @@ export class BrowserManager {
           'User-Agent': fallbackUa,
         });
         await this.newTab();
-        this.clearRefs();
       } catch {}
       return `Context recreation failed: ${err instanceof Error ? err.message : String(err)}. Browser reset to blank tab.`;
     }
   }
 
   // ─── Console/Network/Dialog/Ref Wiring ────────────────────
-  wirePageEvents(page: Page) {
+  wirePageEvents(page: Page, tabId: number) {
     page.on('framenavigated', (frame) => {
       if (frame === page.mainFrame()) {
-        this.clearRefs();
-        this.activeFrame = null;
+        // Per-tab: navigating THIS tab clears only ITS refs/frame, never
+        // another tab's (or another session's) — that is the isolation core.
+        const tab = this.tabs.get(tabId);
+        if (tab) { tab.refMap.clear(); tab.activeFrame = null; }
       }
     });
 

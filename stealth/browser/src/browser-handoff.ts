@@ -70,9 +70,7 @@ export async function launchHeaded(this: any, authToken?: string): Promise<void>
   await applyStealthPatches();
   process.env.REBROWSER_PATCHES_RUNTIME_FIX_MODE = 'addBinding';
 
-  this.pages.clear();
-  this.refMap.clear();
-  this.nextTabId = 1;
+  this.tabs.reset();
 
   const extensionMode = process.env.BROWSE_EXTENSIONS || 'all';
   const extensionPath = extensionMode !== 'none' ? this.findExtensionPath() : null;
@@ -157,10 +155,8 @@ export async function launchHeaded(this: any, authToken?: string): Promise<void>
   const existingPages = this.context.pages();
   if (existingPages.length > 0) {
     const page = existingPages[0];
-    const id = this.nextTabId++;
-    this.pages.set(id, page);
-    this.activeTabId = id;
-    this.wirePageEvents(page);
+    const id = this.tabs.add(page);
+    this.wirePageEvents(page, id);
     try { await page.evaluate(indicatorScript); } catch {}
   } else {
     await this.newTab();
@@ -250,7 +246,7 @@ export async function handoff(this: any, message: string): Promise<string> {
   } catch {}
   this.browser = null;
   this.context = null;
-  this.pages.clear();
+  this.tabs.clear();
   this.intentionalDisconnect = false;
 
   // If the Chromium process survived graceful close, escalate:
@@ -345,7 +341,7 @@ export async function handoff(this: any, message: string): Promise<string> {
 
   this.context = newContext;
   this.browser = newContext.browser();
-  this.pages.clear();
+  this.tabs.clear();
   this.connectionMode = 'headed';
   this.isHeaded = true;
   this.dialogAutoAccept = false;
@@ -378,10 +374,8 @@ export async function handoff(this: any, message: string): Promise<string> {
   } else {
     // Navigate the headed browser to where the user was.
     const page = newContext.pages()[0] || await newContext.newPage();
-    const tabId = this.nextTabId++;
-    this.pages.set(tabId, page);
-    this.activeTabId = tabId;
-    this.wirePageEvents(page);
+    const tabId = this.tabs.add(page);
+    this.wirePageEvents(page, tabId);
     if (currentUrl && currentUrl !== 'about:blank') {
       try { await page.goto(currentUrl, { waitUntil: 'load', timeout: 15000 }); } catch {}
     }
@@ -404,7 +398,7 @@ export async function handoff(this: any, message: string): Promise<string> {
 export async function resume(this: any): Promise<string> {
   this.clearRefs();
   this.resetFailures();
-  this.activeFrame = null;
+  this.setFrame(null);
 
   if (!this.isHeaded || this.connectionMode !== 'headed') {
     return 'Resumed (already headless).';
@@ -445,7 +439,7 @@ export async function resume(this: any): Promise<string> {
 
     this.browser = null;
     this.context = null;
-    this.pages.clear();
+    this.tabs.clear();
     this.connectionMode = 'launched';
     this.isHeaded = false;
     this.intentionalDisconnect = false;
@@ -493,10 +487,8 @@ export async function resume(this: any): Promise<string> {
     } else {
       // Navigate to where the user was.
       const page = context.pages()[0] || await context.newPage();
-      const tabId = this.nextTabId++;
-      this.pages.set(tabId, page);
-      this.activeTabId = tabId;
-      this.wirePageEvents(page);
+      const tabId = this.tabs.add(page);
+      this.wirePageEvents(page, tabId);
       if (currentUrl && currentUrl !== 'about:blank') {
         try { await page.goto(currentUrl, { waitUntil: 'load', timeout: 15000 }); } catch {}
       }
