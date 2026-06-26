@@ -37,6 +37,12 @@ fs.mkdirSync(path.join(TMP, 'state'), { recursive: true });
 function sh(args: string[]) {
   return Bun.spawn(['bun', 'run', cli, ...args], { env, stdout: 'pipe', stderr: 'pipe', stdin: 'pipe' });
 }
+// Spawn with an explicit session id (mirrors a per-window agent setting it).
+function shS(args: string[], sessionId: string) {
+  return Bun.spawn(['bun', 'run', cli, ...args], {
+    env: { ...env, NIGHTCRAWL_SESSION_ID: sessionId }, stdout: 'pipe', stderr: 'pipe', stdin: 'pipe',
+  });
+}
 async function out(proc: any): Promise<string> {
   return (await new Response(proc.stdout).text()) + (await new Response(proc.stderr).text());
 }
@@ -53,6 +59,7 @@ function cleanup() {
 
 // ── Simulated extension: a self-reconnecting WS client that auto-replies. ──
 let client: WebSocket | null = null;
+const seenSessions = new Set<string>(); // every sessionId the daemon put on a tool_call
 function startClient() {
   let c: WebSocket;
   try { c = new (globalThis as any).WebSocket(WS_URL); } catch { setTimeout(startClient, 500); return; }
@@ -60,6 +67,7 @@ function startClient() {
   c.onmessage = (ev: any) => {
     let m: any; try { m = JSON.parse(ev.data); } catch { return; }
     if (m.type === 'tool_call') {
+      if (typeof m.sessionId === 'string') seenSessions.add(m.sessionId);
       c.send(JSON.stringify({ type: 'tool_result', responseToRequestId: m.requestId, payload: { data: `SIM-OK:${m.payload?.name}` } }));
     }
   };
@@ -101,6 +109,14 @@ await Bun.sleep(500);
 await bootDaemon();
 await pollReal('extension reconnected to the restarted daemon and round-trips again', 25000);
 
-console.log('\n✅ PASS: Engine-R WebSocket transport works + survives daemon restart (Chrome hop excluded).');
+console.log('5. per-session routing: tool_call carries the caller session id...');
+await out(shS(['goto', 'https://example.com', '--engine=real'], 'claude:sess7'));
+await out(shS(['goto', 'https://example.org', '--engine=real'], 'codex:sessZ'));
+await Bun.sleep(800);
+if (!seenSessions.has('claude:sess7')) fail(`tool_call never carried claude:sess7 (saw: ${[...seenSessions].join(', ')})`);
+if (!seenSessions.has('codex:sessZ')) fail(`tool_call never carried codex:sessZ (saw: ${[...seenSessions].join(', ')})`);
+console.log(`   ✓ tool_call carried claude:sess7 and codex:sessZ (two sessions multiplex one socket)`);
+
+console.log('\n✅ PASS: Engine-R WebSocket transport works + survives daemon restart + per-session sessionId on tool_call (Chrome hop excluded).');
 cleanup();
 process.exit(0);

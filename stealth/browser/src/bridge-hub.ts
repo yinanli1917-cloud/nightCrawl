@@ -11,10 +11,14 @@
  * attaches an SSE writer as the `send` sink and routes /bridge/result to deliver().
  */
 
+import { DEFAULT_SESSION_ID } from './session-id';
+
 export interface BridgeCommand {
   id: string;
   command: string;
   args: string[];
+  /** Session that issued this command — the extension binds one tab per session. */
+  sessionId: string;
 }
 
 export interface BridgeResult {
@@ -61,7 +65,7 @@ export class BridgeHub {
   }
 
   /** Push a command to the bridge and await its result (always settles). */
-  dispatch(command: string, args: string[], timeoutMs = 30000): Promise<any> {
+  dispatch(command: string, args: string[], timeoutMs = 30000, sessionId: string = DEFAULT_SESSION_ID): Promise<any> {
     if (!this.send) return Promise.reject(new Error('real-browser bridge is offline'));
     const id = `b${++this.seq}`;
     const send = this.send;
@@ -72,7 +76,7 @@ export class BridgeHub {
       }, timeoutMs);
       this.pending.set(id, { resolve, reject, timer });
       try {
-        send({ id, command, args });
+        send({ id, command, args, sessionId });
       } catch (err) {
         clearTimeout(timer);
         this.pending.delete(id);

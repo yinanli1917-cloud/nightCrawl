@@ -11,20 +11,28 @@
  * Protocol over the socket:
  *   → {type:'hello', payload:{extensionVersion}}     (we send on open)
  *   ← {type:'hello_ack'}
- *   ← {type:'tool_call', requestId, payload:{name,args}}
+ *   ← {type:'tool_call', requestId, sessionId, payload:{name,args}}
  *   → {type:'tool_result', responseToRequestId, payload:{data|error}}
  *   →/← {type:'ping'} / {type:'pong'}
  *
  * Page-control (toCdp) and tab-rebind logic mirror the unit-tested
- * src/bridge-commands.ts and src/bridge-session.ts.
+ * src/bridge-commands.ts and src/bridge-session.ts. Per-session binding
+ * (boundBySession) mirrors bridge-session.ts planBoundTab/clearBoundByTabId:
+ * each session (claude:<id>, codex:<id>, …) drives its OWN background tab, so
+ * concurrent agents never share or steal each other's real-browser tab.
  */
 
 'use strict';
 
 const WS_URL = 'ws://127.0.0.1:10087/'; // must match bridge-ws.ts BRIDGE_WS_PORT
 let ws = null;
-/** @type {{tabId:number, windowId:number, url:string, title:string}|null} */
-let bound = null;
+/**
+ * sessionId → the tab that session drives. One bound tab PER SESSION so two
+ * agents on Engine R never collide. Mirrors bridge-session.ts BoundStore.
+ * @type {Map<string, {tabId:number, windowId:number, url:string, title:string}>}
+ */
+const boundBySession = new Map();
+const DEFAULT_SESSION_ID = 'default';
 
 // ─── WebSocket transport + keepalive ────────────────────────
 function connect() {
@@ -58,8 +66,9 @@ async function onMessage(raw) {
   try { m = JSON.parse(raw); } catch { return; }
   if (m.type === 'tool_call') {
     const { requestId, payload } = m;
+    const sessionId = m.sessionId || DEFAULT_SESSION_ID; // older daemon → default
     try {
-      const data = await execute(payload.name, payload.args || []);
+      const data = await execute(payload.name, payload.args || [], sessionId);
       send({ type: 'tool_result', responseToRequestId: requestId, payload: { data } });
     } catch (e) {
       send({ type: 'tool_result', responseToRequestId: requestId, payload: { error: String((e && e.message) || e) } });
@@ -106,21 +115,22 @@ function resolveBoundTab(stored, tabs) {
   urlMatches.sort((a, b) => score(b) - score(a));
   return urlMatches[0].id;
 }
-async function ensureBoundTab(command) {
+async function ensureBoundTab(command, sessionId) {
   const tabs = await chrome.tabs.query({});
+  const bound = boundBySession.get(sessionId); // THIS session's tab only
+  const resolved = bound ? resolveBoundTab(bound, tabs) : null;
   let tabId;
-  if (command === 'goto' && (!bound || resolveBoundTab(bound, tabs) == null)) {
+  if (command === 'goto' && (!bound || resolved == null)) {
     // Match Kimi WebBridge: create a tab in the user's CURRENT window (NEVER a new
     // window — that pops up and interrupts). active:false → the user's view never
     // switches. Reads/nav/JS run fine on an inactive tab; trusted clicks use
     // DOM.getBoxModel coords (see trustedClick). Same profile → the live logged-in
-    // session is shared (session-leverage intact).
+    // session is shared (session-leverage intact). One such tab PER session.
     const tab = await chrome.tabs.create({ url: 'about:blank', active: false });
-    bound = { tabId: tab.id, windowId: tab.windowId, url: tab.url || '', title: tab.title || '' };
+    boundBySession.set(sessionId, { tabId: tab.id, windowId: tab.windowId, url: tab.url || '', title: tab.title || '' });
     tabId = tab.id;
   } else {
     if (!bound) throw new Error('SESSION_LOST: no bound tab — run a goto first');
-    const resolved = resolveBoundTab(bound, tabs);
     if (resolved == null) throw new Error('SESSION_LOST: bound tab is gone — run a goto to re-bind');
     bound.tabId = resolved;
     tabId = resolved;
@@ -262,7 +272,7 @@ async function trustedClick(tabId, selector) {
   return (res && res.result && res.result.value) ?? true;
 }
 
-async function execute(command, args) {
+async function execute(command, args, sessionId = DEFAULT_SESSION_ID) {
   if (command === 'reload-extension') {
     // Self-reload from disk so the agent can pick up edited extension files without
     // the user toggling the extension by hand. Ack FIRST, then reload on the next
@@ -276,11 +286,14 @@ async function execute(command, args) {
     // Diagnostic: active:false proves Engine R is non-intrusive (the user's view did
     // not switch). groupingUnsupported:true means the host browser (Arc) ignores
     // chrome.tabs.group, so the tab stays a quiet ungrouped background tab.
-    if (!bound) return JSON.stringify({ bound: false });
+    // Reports THIS session's bound tab plus a roster of every session's tab.
+    const sessions = [...boundBySession.entries()].map(([sid, b]) => ({ sessionId: sid, tabId: b.tabId }));
+    const bound = boundBySession.get(sessionId);
+    if (!bound) return JSON.stringify({ bound: false, sessionId, sessions });
     const t = await chrome.tabs.get(bound.tabId).catch(() => null);
-    return JSON.stringify({ bound: true, tabId: bound.tabId, active: t ? t.active : null, rawGroupId: t ? t.groupId : null, grouped: groupedTabId === bound.tabId, groupingUnsupported });
+    return JSON.stringify({ bound: true, sessionId, tabId: bound.tabId, active: t ? t.active : null, rawGroupId: t ? t.groupId : null, grouped: groupedTabId === bound.tabId, groupingUnsupported, sessions });
   }
-  const tabId = await ensureBoundTab(command);
+  const tabId = await ensureBoundTab(command, sessionId);
   if (command === 'click') return await trustedClick(tabId, args[0] || '');
   const cdp = toCdp(command, args);
   const res = await sendCdp(tabId, cdp.method, cdp.params);
@@ -291,7 +304,7 @@ async function execute(command, args) {
     // (b) the recorded latency is ~0ms, NOT comparable to headless's load-time
     // latency, which corrupts the engine-routing recommendation.
     const loaded = await waitForLoad(tabId, args[0] || '');
-    try { const t = await chrome.tabs.get(tabId); bound.url = t.url || args[0]; bound.title = t.title || ''; } catch {}
+    try { const t = await chrome.tabs.get(tabId); const b = boundBySession.get(sessionId); if (b) { b.url = t.url || args[0]; b.title = t.title || ''; } } catch {}
     // Mark a load timeout in the result so the daemon records timedOut (the journal's
     // timeout signal) instead of logging a hung page as a fast success.
     return loaded ? `navigated to ${args[0] || ''}` : `navigated to ${args[0] || ''} (load timeout)`;
@@ -304,7 +317,11 @@ async function execute(command, args) {
   return res;
 }
 chrome.debugger.onDetach.addListener(({ tabId }) => { attached.delete(tabId); });
-chrome.tabs.onRemoved.addListener((tabId) => { attached.delete(tabId); if (bound && bound.tabId === tabId) bound = null; });
+chrome.tabs.onRemoved.addListener((tabId) => {
+  attached.delete(tabId);
+  // Drop only the session(s) bound to the closed tab — others keep their tabs.
+  for (const [sid, b] of boundBySession) { if (b.tabId === tabId) boundBySession.delete(sid); }
+});
 
 // ─── Lifecycle: connect + alarms keepalive ──────────────────
 chrome.runtime.onStartup.addListener(connect);

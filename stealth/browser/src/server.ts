@@ -1521,9 +1521,9 @@ async function appendEngineGuidance(resp: Response, body: any, startedAt: number
  * nightCrawl never reads the password — it consents, trusted-submits, and lets
  * the browser release its own credential. 2FA is detected and handed back.
  */
-async function handleAutofillLoginRoute(body: any): Promise<Response> {
+async function handleAutofillLoginRoute(body: any, sessionId: string = DEFAULT_SESSION_ID): Promise<Response> {
   const ctx = {
-    dispatch: (command: string, args: string[]) => bridgeHub.dispatch(command, args),
+    dispatch: (command: string, args: string[]) => bridgeHub.dispatch(command, args, undefined, sessionId),
     isConnected: () => bridgeHub.isConnected(),
     isConsented: (domain: string) => {
       try { return isApproved(readConsent(defaultConsentPath()), domain); } catch { return false; }
@@ -1541,7 +1541,7 @@ async function handleAutofillLoginRoute(body: any): Promise<Response> {
   return new Response(text, { status: 200, headers: { 'Content-Type': 'text/plain' } });
 }
 
-async function routeToBridge(body: any, startedAt: number, chosenBy: 'auto' | 'explicit' = 'explicit'): Promise<Response> {
+async function routeToBridge(body: any, startedAt: number, chosenBy: 'auto' | 'explicit' = 'explicit', sessionId: string = DEFAULT_SESSION_ID): Promise<Response> {
   try {
     // snapshot's @ref tree is headless-only — never dispatch it to the bridge as
     // mislabeled HTML. Return the honest redirect so @ref clicks don't silently
@@ -1557,7 +1557,7 @@ async function routeToBridge(body: any, startedAt: number, chosenBy: 'auto' | 'e
     // entry) before the page even finishes loading. Give nav extra headroom; other
     // commands keep the default.
     const dispatchTimeout = NAV_COMMANDS.has(body.command) ? 45_000 : undefined;
-    const result = await bridgeHub.dispatch(body.command, body.args || [], dispatchTimeout);
+    const result = await bridgeHub.dispatch(body.command, body.args || [], dispatchTimeout, sessionId);
     const latencyMs = Date.now() - startedAt; // measure BEFORE the extra url query
     const text = typeof result === 'string' ? result : JSON.stringify(result);
     const command = body?.command;
@@ -1569,7 +1569,7 @@ async function routeToBridge(body: any, startedAt: number, chosenBy: 'auto' | 'e
     // and the untrusted-content source label.
     let finalUrl = '';
     if (recordable || isUntrustedRead) {
-      try { finalUrl = String((await bridgeHub.dispatch('js', ['location.href'])) ?? ''); } catch {}
+      try { finalUrl = String((await bridgeHub.dispatch('js', ['location.href'], undefined, sessionId)) ?? ''); } catch {}
     }
     const requested = (command === 'goto' && body.args?.[0]) ? body.args[0] : undefined;
     const wall = isNavCmd && isLoginWallUrl(finalUrl, requested);
@@ -1614,14 +1614,14 @@ async function routeToBridge(body: any, startedAt: number, chosenBy: 'auto' | 'e
 // verify page on Engine R: check the REAL tab's url + text, not the headless page
 // (gap #4 — the DVC was verifying the wrong browser after an Engine R task, so an
 // Engine-R deliverable could pass/fail against headless's stale state).
-async function verifyOnBridge(body: any): Promise<Response> {
+async function verifyOnBridge(body: any, sessionId: string = DEFAULT_SESSION_ID): Promise<Response> {
   const { parseVerifyArgs, verifyPage, formatVerifyPageResult } = await import('./deliverable-verify');
   const parsed = parseVerifyArgs(body.args || []);
   let url = '';
   let text = '';
   try {
-    url = String((await bridgeHub.dispatch('js', ['location.href'])) ?? '');
-    text = String((await bridgeHub.dispatch('text', [])) ?? '');
+    url = String((await bridgeHub.dispatch('js', ['location.href'], undefined, sessionId)) ?? '');
+    text = String((await bridgeHub.dispatch('text', [], undefined, sessionId)) ?? '');
   } catch (e: any) {
     return new Response(JSON.stringify({ error: `real-browser bridge: ${e?.message ?? e}` }), {
       status: 502, headers: { 'Content-Type': 'application/json' },
@@ -2074,10 +2074,14 @@ async function start() {
         // command is bridge-supported, and a bridge is connected. Otherwise
         // fall through to headless (+ the engine-guidance block).
         const startedAt = Date.now();
+        // Resolve the caller's session ONCE — both the Engine R bridge path and the
+        // headless handleCommand path scope to it (the extension binds one tab per
+        // session; headless owns one tab per session).
+        const sessionId = getSessionFromRequest(req);
         // C1: login-autofill orchestrates the bridge across several steps, so it
         // owns its own route (not a 1:1 bridge relay).
         if (body?.command === 'autofill-login') {
-          return await handleAutofillLoginRoute(body);
+          return await handleAutofillLoginRoute(body, sessionId);
         }
         // Self-reload: let the agent reload the bridge extension from disk
         // (chrome.runtime.reload) without the user toggling it by hand. Not a
@@ -2091,10 +2095,10 @@ async function start() {
           return new Response(JSON.stringify({ connected: bridgeHub.isConnected() }), { headers: { 'Content-Type': 'application/json' } });
         }
         if ((body?.command === 'reload-extension' || body?.command === 'bridge-tabinfo') && bridgeHub.isConnected()) {
-          return await routeToBridge(body, startedAt);
+          return await routeToBridge(body, startedAt, 'explicit', sessionId);
         }
         if (body?.engine === 'real' && isBridgeCommand(body?.command) && bridgeHub.isConnected()) {
-          return await routeToBridge(body, startedAt);
+          return await routeToBridge(body, startedAt, 'explicit', sessionId);
         }
         // verify page on --engine=real must check the REAL tab, not headless. (verify
         // is not a bridge command, so it isn't caught above.) File-verify needs no
@@ -2102,7 +2106,7 @@ async function start() {
         if (body?.command === 'verify' && body?.engine === 'real' && bridgeHub.isConnected()) {
           const { parseVerifyArgs } = await import('./deliverable-verify');
           if (parseVerifyArgs(body.args || []).mode === 'page') {
-            return await verifyOnBridge(body);
+            return await verifyOnBridge(body, sessionId);
           }
         }
         // Auto-routing: on `auto` (the default), let the LEARNED advice TAKE EFFECT
@@ -2117,10 +2121,9 @@ async function start() {
           if (stickyAutoEngine === 'real') {
             // chosenBy='auto': the router resolved this, not an explicit --engine — so
             // the reflection metric counts it as "followed the recommendation".
-            return await routeToBridge({ ...body, engine: 'real' }, startedAt, 'auto');
+            return await routeToBridge({ ...body, engine: 'real' }, startedAt, 'auto', sessionId);
           }
         }
-        const sessionId = getSessionFromRequest(req);
         const resp = await handleCommand(body, token, sessionId);
         return await appendEngineGuidance(resp, body, startedAt);
       }

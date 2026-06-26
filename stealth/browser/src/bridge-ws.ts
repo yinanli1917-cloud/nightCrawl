@@ -20,7 +20,7 @@
  * Protocol (mirrors Kimi's shape so the model is battle-tested):
  *   ext → daemon : {type:'hello', payload:{extensionVersion}}
  *   daemon → ext : {type:'hello_ack'}
- *   daemon → ext : {type:'tool_call', requestId, payload:{name, args}}
+ *   daemon → ext : {type:'tool_call', requestId, sessionId, payload:{name, args}}
  *   ext → daemon : {type:'tool_result', responseToRequestId, payload:{data|error}}
  *   ext → daemon : {type:'ping'} / daemon → ext : {type:'pong'}  (liveness)
  */
@@ -75,7 +75,7 @@ export function startBridgeWsServer(
         maxPayloadLength: 96 * 1024 * 1024,
         open(ws) {
           const sink: Sink = (cmd) =>
-            ws.send(JSON.stringify({ type: 'tool_call', requestId: cmd.id, payload: { name: cmd.command, args: cmd.args } }));
+            ws.send(JSON.stringify({ type: 'tool_call', requestId: cmd.id, sessionId: cmd.sessionId, payload: { name: cmd.command, args: cmd.args } }));
           ws.data.sink = sink;
           hub.attach(sink);
           ws.send(JSON.stringify({ type: 'hello_ack' }));
