@@ -34,6 +34,28 @@ export interface CloakBrowserLaunchOptions {
   timezone?: string;
 }
 
+// ─── No-window test-mode choke point ───────────────────────
+/**
+ * Refuse a HEADED launch when NIGHTCRAWL_BLOCK_HEADED=1. CloakBrowser is an
+ * anti-detect Chromium: a HEADED launch puts a visible window on the user's
+ * screen (headless is windowless but detectable). Every visible-window path
+ * (launchHeaded / handoff / autoHandover) routes through launchCloakBrowser with
+ * headless:false, so this single guard lets a verification or CI run set the flag
+ * and be certain no window can ever pop. Only an explicit headless:false trips it;
+ * headless (true/undefined) always proceeds.
+ */
+export function assertHeadedAllowed(
+  headless: boolean | undefined,
+  env: Record<string, string | undefined> = process.env,
+): void {
+  if (headless === false && env.NIGHTCRAWL_BLOCK_HEADED === '1') {
+    throw new Error(
+      'Headed browser launch is blocked (NIGHTCRAWL_BLOCK_HEADED=1) — this guard ' +
+      'keeps verification/test runs from popping a visible window. Unset it to allow handoff/headed.',
+    );
+  }
+}
+
 // ─── CDP Patch Guard ───────────────────────────────────────
 
 /**
@@ -107,6 +129,8 @@ function patchContextClose(context: BrowserContext): void {
 export async function launchCloakBrowser(
   opts: CloakBrowserLaunchOptions = {},
 ): Promise<{ browser: Browser | null; context: BrowserContext }> {
+  // No-window choke point: refuse headed launches in test/verification mode.
+  assertHeadedAllowed(opts.headless);
   let cb: typeof import('cloakbrowser');
   try {
     cb = await import('cloakbrowser');
