@@ -988,17 +988,19 @@ async function handleCommand(
   try {
     let result: string;
 
+    // Per-tab lock: commands on the SAME session's tab serialize; different
+    // sessions (different tabs) run fully concurrently and never block each other.
     if (READ_COMMANDS.has(command)) {
-      result = await handleReadCommand(command, args, view);
+      result = await view.runOnTab(() => handleReadCommand(command, args, view));
       if (PAGE_CONTENT_COMMANDS.has(command)) {
         result = wrapUntrustedContent(result, view.getCurrentUrl());
       }
     } else if (WRITE_COMMANDS.has(command)) {
-      result = await handleWriteCommand(command, args, view);
+      result = await view.runOnTab(() => handleWriteCommand(command, args, view));
       // Cookie-mutating command — snapshot soon so a crash can't lose it.
       scheduleCheckpoint();
     } else if (META_COMMANDS.has(command)) {
-      result = await handleMetaCommand(command, args, view, shutdown, isAdmin);
+      result = await view.runOnTab(() => handleMetaCommand(command, args, view, shutdown, isAdmin));
       // Start periodic snapshot interval when watch mode begins
       if (command === 'watch' && args[0] !== 'stop' && browserManager.isWatching()) {
         const watchInterval = setInterval(async () => {

@@ -22,12 +22,14 @@ export interface RefEntry {
 
 export interface TabState {
   page: Page;
-  /** Session id that owns this tab. Stage 2-3: always DEFAULT_SESSION_ID. */
+  /** Session id that owns this tab. */
   owner: string;
   activeFrame: Frame | null;
   refMap: Map<string, RefEntry>;
   /** Text baseline for snapshot diffing — NOT cleared on navigation. */
   lastSnapshot: string | null;
+  /** Promise-chain lock: commands on THIS tab serialize; other tabs run free. */
+  lock: Promise<void>;
 }
 
 // ─── Store ──────────────────────────────────────────────────────
@@ -43,7 +45,10 @@ export class TabStore {
   /** Create a tab for `page`, owned by `owner`, and make it that session's active. */
   add(page: Page, owner: string = DEFAULT_SESSION_ID): number {
     const id = this.nextId++;
-    this.tabs.set(id, { page, owner, activeFrame: null, refMap: new Map(), lastSnapshot: null });
+    this.tabs.set(id, {
+      page, owner, activeFrame: null, refMap: new Map(),
+      lastSnapshot: null, lock: Promise.resolve(),
+    });
     this.sessionActive.set(owner, id);
     return id;
   }

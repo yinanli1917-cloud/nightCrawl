@@ -423,6 +423,26 @@ export class BrowserManager implements TabView {
     return view;
   }
 
+  // ─── Per-tab command lock ───────────────────────────────────
+  /**
+   * Serialize `fn` on a single tab via a promise chain stored in TabState.lock.
+   * Same tab → ops run one after another; different tabs → fully concurrent. A
+   * missing tab (no id) bypasses the lock so server-control commands never block.
+   */
+  private lockTab<T>(tabId: number, fn: () => Promise<T>): Promise<T> {
+    const tab = this.tabs.get(tabId);
+    if (!tab) return fn();
+    const result = tab.lock.then(() => fn());
+    // Advance the chain; swallow result+error so one failure can't poison the lock.
+    tab.lock = result.then(() => undefined, () => undefined);
+    return result;
+  }
+
+  /** Run `fn` serialized on the SESSION's active tab (keyed by tab, not session). */
+  runOnTab<T>(fn: () => Promise<T>, sessionId: string = DEFAULT_SESSION_ID): Promise<T> {
+    return this.lockTab(this.tabs.activeIdFor(sessionId), fn);
+  }
+
   // ─── Page Access (per session) ─────────────────────────────
   getPage(sessionId: string = DEFAULT_SESSION_ID): Page {
     return this.tabs.activePageFor(sessionId);

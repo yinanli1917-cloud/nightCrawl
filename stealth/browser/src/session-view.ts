@@ -58,6 +58,8 @@ export interface TabView {
   /** Admin: every tab across all sessions (`tabs --all`). */
   getAllTabsWithTitles(): Promise<TabInfo[]>;
   setViewport(width: number, height: number): Promise<void>;
+  /** Run `fn` serialized on this session's active tab (concurrent across sessions). */
+  runOnTab<T>(fn: () => Promise<T>): Promise<T>;
 
   // ── Manager-level (whole shared browser — always delegate) ──
   getConnectionMode(): 'launched' | 'headed';
@@ -111,6 +113,7 @@ export class SessionView implements TabView {
   getTabListWithTitles(): Promise<TabInfo[]> { return this.bm.getTabListWithTitles(this.sessionId); }
   getAllTabsWithTitles(): Promise<TabInfo[]> { return this.bm.getAllTabsWithTitles(); }
   setViewport(width: number, height: number): Promise<void> { return this.bm.setViewport(width, height, this.sessionId); }
+  runOnTab<T>(fn: () => Promise<T>): Promise<T> { return this.bm.runOnTab(fn, this.sessionId); }
 
   // ── Manager-level passthrough ──
   getConnectionMode() { return this.bm.getConnectionMode(); }
