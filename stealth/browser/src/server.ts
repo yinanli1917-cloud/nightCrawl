@@ -23,7 +23,7 @@ import { sanitizeExtensionUrl } from './sidebar-utils';
 import { COMMAND_DESCRIPTIONS, PAGE_CONTENT_COMMANDS, wrapUntrustedContent } from './commands';
 import { handleSnapshot, SNAPSHOT_FLAGS } from './snapshot';
 import { resolveConfig, ensureStateDir, readVersionHash, readConfigValue } from './config';
-import { TokenRegistry, checkPermission, type ScopedToken } from './token-registry';
+import { TokenRegistry, checkPermission, Scope, type ScopedToken } from './token-registry';
 import { checkForUpdates, checkRebrowserCompatibility } from './update-checker';
 import { sanitizeSessionId, SESSION_HEADER, DEFAULT_SESSION_ID } from './session-id';
 import { maybeAutoUpdate } from './auto-updater';
@@ -920,8 +920,14 @@ async function handleCommand(
     });
   }
 
+  // Per-session command facade: every handler operates on THIS session's view, so
+  // its per-tab calls (getPage/snapshot/click/…) resolve the session's OWN tab and
+  // never another session's. Untagged callers → the shared "default" view.
+  const view = browserManager.forSession(sessionId);
+  const isAdmin = token.scopes.includes(Scope.Admin);
+
   // ─── Permission check (scoped tokens) ────────────────────────
-  const currentUrl = browserManager?.getCurrentUrl();
+  const currentUrl = view.getCurrentUrl();
   const permission = checkPermission(token, command, currentUrl);
   if (!permission.allowed) {
     return new Response(JSON.stringify({
@@ -949,6 +955,9 @@ async function handleCommand(
   const skipBrowser = process.env.BROWSE_HEADLESS_SKIP === '1';
   if (!skipBrowser) {
     await browserReady;
+    // Lazy-create the session's OWN tab on goto, so a new session navigates a
+    // fresh tab instead of hijacking an existing one. Single place, per the plan.
+    if (command === 'goto') await view.ensureActiveTab();
   }
 
   // Block mutation commands while watching (read-only observation mode)
@@ -961,7 +970,9 @@ async function handleCommand(
     });
   }
 
-  // Activity: emit command_start
+  // Activity + the auto-handover post-check below operate on the daemon's default
+  // tab (stage 6 makes handoff session-aware). The per-session command path uses
+  // `view`; only the whole-browser handoff/detection unit stays default-scoped.
   const startTime = Date.now();
   const commandStartUrl = browserManager.getCurrentUrl();
   emitActivity({
@@ -973,11 +984,6 @@ async function handleCommand(
     mode: browserManager.getConnectionMode(),
     session: sessionId,
   });
-
-  // Per-session command facade: every handler operates on THIS session's view.
-  // Stage 3 is a passthrough (one global active tab); stage 4 makes the per-tab
-  // methods resolve the session's OWN tab. Untagged callers → the "default" view.
-  const view = browserManager.forSession(sessionId);
 
   try {
     let result: string;
@@ -992,7 +998,7 @@ async function handleCommand(
       // Cookie-mutating command — snapshot soon so a crash can't lose it.
       scheduleCheckpoint();
     } else if (META_COMMANDS.has(command)) {
-      result = await handleMetaCommand(command, args, view, shutdown);
+      result = await handleMetaCommand(command, args, view, shutdown, isAdmin);
       // Start periodic snapshot interval when watch mode begins
       if (command === 'watch' && args[0] !== 'stop' && browserManager.isWatching()) {
         const watchInterval = setInterval(async () => {

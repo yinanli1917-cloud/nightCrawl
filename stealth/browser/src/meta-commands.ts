@@ -58,21 +58,27 @@ export async function handleMetaCommand(
   command: string,
   args: string[],
   bm: TabView,
-  shutdown: () => Promise<void> | void
+  shutdown: () => Promise<void> | void,
+  isAdmin: boolean = false,
 ): Promise<string> {
   switch (command) {
-    // ─── Tabs ──────────────────────────────────────────
+    // ─── Tabs (session-scoped; --all is Admin) ─────────
     case 'tabs': {
-      const tabs = await bm.getTabListWithTitles();
+      const all = args.includes('--all');
+      if (all && !isAdmin) {
+        throw new Error("'tabs --all' requires admin scope");
+      }
+      const tabs = all ? await bm.getAllTabsWithTitles() : await bm.getTabListWithTitles();
       return tabs.map(t =>
-        `${t.active ? '→ ' : '  '}[${t.id}] ${t.title || '(untitled)'} — ${t.url}`
+        `${t.active ? '→ ' : '  '}[${t.id}] ${t.title || '(untitled)'} — ${t.url}` +
+        (all ? `  (${t.owner})` : '')
       ).join('\n');
     }
 
     case 'tab': {
       const id = parseInt(args[0], 10);
       if (isNaN(id)) throw new Error('Usage: browse tab <id>');
-      bm.switchTab(id);
+      bm.switchTab(id); // own-only — throws if the tab belongs to another session
       return `Switched to tab ${id}`;
     }
 
@@ -84,7 +90,8 @@ export async function handleMetaCommand(
 
     case 'closetab': {
       const id = args[0] ? parseInt(args[0], 10) : undefined;
-      await bm.closeTab(id);
+      // Admin scope may close another session's tab; otherwise own-only.
+      await bm.closeTab(id, { admin: isAdmin });
       return `Closed tab${id ? ` ${id}` : ''}`;
     }
 

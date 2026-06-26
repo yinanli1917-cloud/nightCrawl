@@ -1,36 +1,45 @@
 /**
  * [INPUT]: Type-only on browser-manager.ts (BrowserManager, BrowserState) +
  *          tab-store.ts (RefEntry) + playwright page/frame/context types.
- * [OUTPUT]: Exports the TabView interface and the SessionView facade class.
+ * [OUTPUT]: Exports the TabView interface, TabInfo type, and the SessionView class.
  * [POS]: Per-session command facade. handleCommand resolves ONE SessionView per
  *        command (bm.forSession(sessionId)) and hands it to every handler, so the
  *        ~100 `bm.getPage()`-style call sites stay untouched while gaining session
- *        scope. Stage 3 (here) is a pure passthrough: every method delegates to the
- *        underlying BrowserManager's single global active tab — zero behavior change.
- *        Stage 4 rewrites only the PER-TAB methods to resolve the session's OWN tab;
- *        the MANAGER-LEVEL methods (handoff/resume/watch/recreate/UA/headers/context)
- *        delegate forever because they act on the one shared browser, not a tab.
+ *        scope. The PER-TAB methods resolve the session's OWN active tab (never
+ *        another session's); the MANAGER-LEVEL methods (handoff/resume/watch/
+ *        recreate/UA/headers/context) delegate to the one shared browser. A
+ *        SessionView is a thin sessionId-injecting wrapper — the real per-tab
+ *        logic lives once in BrowserManager, keyed by the sessionId passed in.
  */
 
 import type { Page, Frame, Locator, BrowserContext } from 'playwright';
 import type { BrowserManager, BrowserState } from './browser-manager';
 import type { RefEntry } from './tab-store';
 
+/** One row in a tab listing. `owner` is the session id that owns the tab. */
+export interface TabInfo {
+  id: number;
+  url: string;
+  title: string;
+  active: boolean;
+  owner: string;
+}
+
 // ─── TabView: the full handler-facing surface ───────────────────
-// Implemented by BOTH BrowserManager (the "default" passthrough) and SessionView.
-// Handlers depend on this interface, not the concrete BrowserManager, so a command
-// can be scoped to a session without changing any handler body.
+// Implemented by BOTH BrowserManager (the "default" session passthrough) and
+// SessionView. Handlers depend on this interface, not the concrete manager, so a
+// command is scoped to a session without changing any handler body.
 export interface TabView {
   readonly sessionId: string;
 
-  // ── Per-tab page / frame access (stage 4: session-scoped) ──
+  // ── Per-tab page / frame access (resolves THIS session's active tab) ──
   getPage(): Page;
   getCurrentUrl(): string;
   getActiveFrameOrPage(): Page | Frame;
   getFrame(): Frame | null;
   setFrame(frame: Frame | null): void;
 
-  // ── Per-tab refs / snapshot baseline (stage 4: session-scoped) ──
+  // ── Per-tab refs / snapshot baseline ──
   resolveRef(selector: string): Promise<{ locator: Locator } | { selector: string }>;
   setRefMap(refs: Map<string, RefEntry>): void;
   clearRefs(): void;
@@ -38,12 +47,16 @@ export interface TabView {
   getLastSnapshot(): string | null;
   setLastSnapshot(text: string | null): void;
 
-  // ── Tabs (stage 4: session-scoped) ──
+  // ── Tabs (scoped to THIS session) ──
   newTab(url?: string): Promise<number>;
-  closeTab(id?: number): Promise<void>;
+  /** Lazy-create this session's first tab on goto so it never hijacks another's. */
+  ensureActiveTab(): Promise<void>;
+  closeTab(id?: number, opts?: { admin?: boolean }): Promise<void>;
   switchTab(id: number): void;
   getTabCount(): number;
-  getTabListWithTitles(): Promise<Array<{ id: number; url: string; title: string; active: boolean }>>;
+  getTabListWithTitles(): Promise<TabInfo[]>;
+  /** Admin: every tab across all sessions (`tabs --all`). */
+  getAllTabsWithTitles(): Promise<TabInfo[]>;
   setViewport(width: number, height: number): Promise<void>;
 
   // ── Manager-level (whole shared browser — always delegate) ──
@@ -72,28 +85,32 @@ export interface TabView {
 export class SessionView implements TabView {
   constructor(private readonly bm: BrowserManager, readonly sessionId: string) {}
 
-  // ── Per-tab page / frame access ──
-  getPage(): Page { return this.bm.getPage(); }
-  getCurrentUrl(): string { return this.bm.getCurrentUrl(); }
-  getActiveFrameOrPage(): Page | Frame { return this.bm.getActiveFrameOrPage(); }
-  getFrame(): Frame | null { return this.bm.getFrame(); }
-  setFrame(frame: Frame | null): void { this.bm.setFrame(frame); }
+  // ── Per-tab page / frame access (inject this session's id) ──
+  getPage(): Page { return this.bm.getPage(this.sessionId); }
+  getCurrentUrl(): string { return this.bm.getCurrentUrl(this.sessionId); }
+  getActiveFrameOrPage(): Page | Frame { return this.bm.getActiveFrameOrPage(this.sessionId); }
+  getFrame(): Frame | null { return this.bm.getFrame(this.sessionId); }
+  setFrame(frame: Frame | null): void { this.bm.setFrame(frame, this.sessionId); }
 
   // ── Per-tab refs / snapshot baseline ──
-  resolveRef(selector: string) { return this.bm.resolveRef(selector); }
-  setRefMap(refs: Map<string, RefEntry>): void { this.bm.setRefMap(refs); }
-  clearRefs(): void { this.bm.clearRefs(); }
-  getRefRole(selector: string): string | null { return this.bm.getRefRole(selector); }
-  getLastSnapshot(): string | null { return this.bm.getLastSnapshot(); }
-  setLastSnapshot(text: string | null): void { this.bm.setLastSnapshot(text); }
+  resolveRef(selector: string) { return this.bm.resolveRef(selector, this.sessionId); }
+  setRefMap(refs: Map<string, RefEntry>): void { this.bm.setRefMap(refs, this.sessionId); }
+  clearRefs(): void { this.bm.clearRefs(this.sessionId); }
+  getRefRole(selector: string): string | null { return this.bm.getRefRole(selector, this.sessionId); }
+  getLastSnapshot(): string | null { return this.bm.getLastSnapshot(this.sessionId); }
+  setLastSnapshot(text: string | null): void { this.bm.setLastSnapshot(text, this.sessionId); }
 
   // ── Tabs ──
-  newTab(url?: string): Promise<number> { return this.bm.newTab(url); }
-  closeTab(id?: number): Promise<void> { return this.bm.closeTab(id); }
-  switchTab(id: number): void { this.bm.switchTab(id); }
+  newTab(url?: string): Promise<number> { return this.bm.newTab(url, this.sessionId); }
+  ensureActiveTab(): Promise<void> { return this.bm.ensureActiveTab(this.sessionId); }
+  closeTab(id?: number, opts?: { admin?: boolean }): Promise<void> {
+    return this.bm.closeTab(id, { ...opts, sessionId: this.sessionId });
+  }
+  switchTab(id: number): void { this.bm.switchTab(id, this.sessionId); }
   getTabCount(): number { return this.bm.getTabCount(); }
-  getTabListWithTitles() { return this.bm.getTabListWithTitles(); }
-  setViewport(width: number, height: number): Promise<void> { return this.bm.setViewport(width, height); }
+  getTabListWithTitles(): Promise<TabInfo[]> { return this.bm.getTabListWithTitles(this.sessionId); }
+  getAllTabsWithTitles(): Promise<TabInfo[]> { return this.bm.getAllTabsWithTitles(); }
+  setViewport(width: number, height: number): Promise<void> { return this.bm.setViewport(width, height, this.sessionId); }
 
   // ── Manager-level passthrough ──
   getConnectionMode() { return this.bm.getConnectionMode(); }

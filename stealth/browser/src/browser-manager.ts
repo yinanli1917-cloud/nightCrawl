@@ -42,7 +42,7 @@ import { loadDeviceAnchor, applyAnchor } from './fingerprint-clone';
 import { DEFAULT_USER_AGENT } from './stealth';
 import { markPinnedFromHeaders } from './fingerprint-pinned';
 import { TabStore, type RefEntry } from './tab-store';
-import { SessionView, type TabView } from './session-view';
+import { SessionView, type TabView, type TabInfo } from './session-view';
 import { DEFAULT_SESSION_ID } from './session-id';
 
 export type { RefEntry };
@@ -320,8 +320,8 @@ export class BrowserManager implements TabView {
     }
   }
 
-  // ─── Tab Management ────────────────────────────────────────
-  async newTab(url?: string): Promise<number> {
+  // ─── Tab Management (per session) ──────────────────────────
+  async newTab(url?: string, sessionId: string = DEFAULT_SESSION_ID): Promise<number> {
     if (!this.context) throw new Error('Browser not launched');
     if (url) {
       await validateNavigationUrl(url);
@@ -329,7 +329,7 @@ export class BrowserManager implements TabView {
     }
 
     const page = await this.context.newPage();
-    const id = this.tabs.add(page);
+    const id = this.tabs.add(page, sessionId);
     this.wirePageEvents(page, id);
 
     if (url) {
@@ -339,54 +339,80 @@ export class BrowserManager implements TabView {
     return id;
   }
 
-  async closeTab(id?: number): Promise<void> {
-    const tabId = id ?? this.tabs.activeId;
-    const tab = this.tabs.get(tabId);
-    if (!tab) throw new Error(`Tab ${tabId} not found`);
-
-    await tab.page.close();
-    const wasActive = tabId === this.tabs.activeId;
-    this.tabs.drop(tabId);
-
-    if (wasActive) {
-      const remaining = this.tabs.ids();
-      if (remaining.length > 0) {
-        this.tabs.setActive(remaining[remaining.length - 1]);
-      } else {
-        await this.newTab();
-      }
-    }
+  /**
+   * Lazy-create the session's first tab (called by handleCommand before `goto`),
+   * so a new session navigates its OWN tab instead of hijacking an existing one.
+   * No-op when the session already owns an active tab.
+   */
+  async ensureActiveTab(sessionId: string = DEFAULT_SESSION_ID): Promise<void> {
+    if (this.tabs.activeIdFor(sessionId) === 0) await this.newTab(undefined, sessionId);
   }
 
-  switchTab(id: number): void {
-    this.tabs.setActive(id); // throws `Tab ${id} not found` if unknown
-    const t = this.tabs.active();
+  async closeTab(
+    id?: number,
+    opts: { sessionId?: string; admin?: boolean } = {},
+  ): Promise<void> {
+    const sessionId = opts.sessionId ?? DEFAULT_SESSION_ID;
+    const tabId = id ?? this.tabs.activeIdFor(sessionId);
+    const tab = this.tabs.get(tabId);
+    if (!tab) throw new Error(`Tab ${tabId} not found`);
+    // Isolation: only the owner closes its own tab. Admin scope crosses sessions.
+    if (tab.owner !== sessionId && !opts.admin) {
+      throw new Error(`Tab ${tabId} is owned by another session`);
+    }
+
+    await tab.page.close();
+    this.tabs.drop(tabId); // no jump-to-last-tab: the owner re-gotos to get a tab
+
+    // Daemon invariant: never leave the browser with zero tabs.
+    if (this.tabs.size() === 0) await this.newTab();
+  }
+
+  switchTab(id: number, sessionId: string = DEFAULT_SESSION_ID): void {
+    // Own-only: throws `Tab ${id} not found` OR `... owned by another session`.
+    this.tabs.setActiveFor(sessionId, id);
+    const t = this.tabs.get(id);
     if (t) t.activeFrame = null;
   }
 
+  /** Total tabs across all sessions — daemon introspection (status/health). */
   getTabCount(): number {
     return this.tabs.size();
   }
 
-  async getTabListWithTitles(): Promise<Array<{ id: number; url: string; title: string; active: boolean }>> {
-    const tabs: Array<{ id: number; url: string; title: string; active: boolean }> = [];
-    for (const [id, tab] of this.tabs.entries()) {
-      tabs.push({
+  /** Tabs owned by `sessionId`. */
+  async getTabListWithTitles(sessionId: string = DEFAULT_SESSION_ID): Promise<TabInfo[]> {
+    return this.buildTabList(this.tabs.idsFor(sessionId), sessionId);
+  }
+
+  /** Admin: every tab across all sessions (used by `tabs --all`). */
+  async getAllTabsWithTitles(): Promise<TabInfo[]> {
+    return this.buildTabList(this.tabs.ids(), null);
+  }
+
+  private async buildTabList(ids: number[], sessionId: string | null): Promise<TabInfo[]> {
+    const out: TabInfo[] = [];
+    for (const id of ids) {
+      const tab = this.tabs.get(id);
+      if (!tab) continue;
+      out.push({
         id,
         url: tab.page.url(),
         title: await tab.page.title().catch(() => ''),
-        active: id === this.tabs.activeId,
+        // "active" = the active tab of the relevant session (its owner for --all).
+        active: id === this.tabs.activeIdFor(sessionId ?? tab.owner),
+        owner: tab.owner,
       });
     }
-    return tabs;
+    return out;
   }
 
   // ─── Per-session views ─────────────────────────────────────
   /**
    * The per-session command facade. Cached so a session's view is a stable
-   * instance across commands. Stage 3: every SessionView call is a passthrough
-   * to this manager's single global active tab. Stage 4 makes the per-tab
-   * methods resolve the session's OWN active tab.
+   * instance across commands. The view injects its sessionId into this manager's
+   * per-tab methods, so each session resolves its OWN active tab and never
+   * touches another session's.
    */
   forSession(sessionId: string): SessionView {
     let view = this.sessionViews.get(sessionId);
@@ -397,33 +423,33 @@ export class BrowserManager implements TabView {
     return view;
   }
 
-  // ─── Page Access ───────────────────────────────────────────
-  getPage(): Page {
-    return this.tabs.activePage();
+  // ─── Page Access (per session) ─────────────────────────────
+  getPage(sessionId: string = DEFAULT_SESSION_ID): Page {
+    return this.tabs.activePageFor(sessionId);
   }
 
-  getCurrentUrl(): string {
+  getCurrentUrl(sessionId: string = DEFAULT_SESSION_ID): string {
     try {
-      return this.getPage().url();
+      return this.getPage(sessionId).url();
     } catch {
       return 'about:blank';
     }
   }
 
-  // ─── Ref Map ──────────────────────────────────────────────
-  setRefMap(refs: Map<string, RefEntry>) {
-    const t = this.tabs.active();
+  // ─── Ref Map (per session's active tab) ───────────────────
+  setRefMap(refs: Map<string, RefEntry>, sessionId: string = DEFAULT_SESSION_ID) {
+    const t = this.tabs.activeFor(sessionId);
     if (t) t.refMap = refs;
   }
 
-  clearRefs() {
-    this.tabs.active()?.refMap.clear();
+  clearRefs(sessionId: string = DEFAULT_SESSION_ID) {
+    this.tabs.activeFor(sessionId)?.refMap.clear();
   }
 
-  async resolveRef(selector: string): Promise<{ locator: Locator } | { selector: string }> {
+  async resolveRef(selector: string, sessionId: string = DEFAULT_SESSION_ID): Promise<{ locator: Locator } | { selector: string }> {
     if (selector.startsWith('@e') || selector.startsWith('@c')) {
       const ref = selector.slice(1);
-      const entry = this.tabs.active()?.refMap.get(ref);
+      const entry = this.tabs.activeFor(sessionId)?.refMap.get(ref);
       if (!entry) {
         throw new Error(`Ref ${selector} not found. Run 'snapshot' to get fresh refs.`);
       }
@@ -439,21 +465,21 @@ export class BrowserManager implements TabView {
     return { selector };
   }
 
-  getRefRole(selector: string): string | null {
+  getRefRole(selector: string, sessionId: string = DEFAULT_SESSION_ID): string | null {
     if (selector.startsWith('@e') || selector.startsWith('@c')) {
-      const entry = this.tabs.active()?.refMap.get(selector.slice(1));
+      const entry = this.tabs.activeFor(sessionId)?.refMap.get(selector.slice(1));
       return entry?.role ?? null;
     }
     return null;
   }
 
-  getRefCount(): number {
-    return this.tabs.active()?.refMap.size ?? 0;
+  getRefCount(sessionId: string = DEFAULT_SESSION_ID): number {
+    return this.tabs.activeFor(sessionId)?.refMap.size ?? 0;
   }
 
-  // ─── Snapshot Diffing (per active tab) ────────────────────
-  setLastSnapshot(text: string | null) { const t = this.tabs.active(); if (t) t.lastSnapshot = text; }
-  getLastSnapshot(): string | null { return this.tabs.active()?.lastSnapshot ?? null; }
+  // ─── Snapshot Diffing (per session's active tab) ──────────
+  setLastSnapshot(text: string | null, sessionId: string = DEFAULT_SESSION_ID) { const t = this.tabs.activeFor(sessionId); if (t) t.lastSnapshot = text; }
+  getLastSnapshot(sessionId: string = DEFAULT_SESSION_ID): string | null { return this.tabs.activeFor(sessionId)?.lastSnapshot ?? null; }
 
   // ─── Dialog Control ───────────────────────────────────────
   setDialogAutoAccept(accept: boolean) { this.dialogAutoAccept = accept; }
@@ -462,8 +488,8 @@ export class BrowserManager implements TabView {
   getDialogPromptText(): string | null { return this.dialogPromptText; }
 
   // ─── Viewport ──────────────────────────────────────────────
-  async setViewport(width: number, height: number) {
-    await this.getPage().setViewportSize({ width, height });
+  async setViewport(width: number, height: number, sessionId: string = DEFAULT_SESSION_ID) {
+    await this.getPage(sessionId).setViewportSize({ width, height });
   }
 
   // ─── Extra Headers ─────────────────────────────────────────
@@ -497,20 +523,20 @@ export class BrowserManager implements TabView {
     this.tabs.clear();
   }
 
-  // ─── Frame context (per active tab) ────────────────
-  setFrame(frame: import('playwright').Frame | null): void {
-    const t = this.tabs.active();
+  // ─── Frame context (per session's active tab) ──────
+  setFrame(frame: import('playwright').Frame | null, sessionId: string = DEFAULT_SESSION_ID): void {
+    const t = this.tabs.activeFor(sessionId);
     if (t) t.activeFrame = frame;
   }
 
-  getFrame(): import('playwright').Frame | null {
-    return this.tabs.active()?.activeFrame ?? null;
+  getFrame(sessionId: string = DEFAULT_SESSION_ID): import('playwright').Frame | null {
+    return this.tabs.activeFor(sessionId)?.activeFrame ?? null;
   }
 
-  getActiveFrameOrPage(): import('playwright').Page | import('playwright').Frame {
-    const t = this.tabs.active();
+  getActiveFrameOrPage(sessionId: string = DEFAULT_SESSION_ID): import('playwright').Page | import('playwright').Frame {
+    const t = this.tabs.activeFor(sessionId);
     if (t?.activeFrame?.isDetached()) t.activeFrame = null;
-    return t?.activeFrame ?? this.getPage();
+    return t?.activeFrame ?? this.getPage(sessionId);
   }
 
   // ─── State Save/Restore ───────────────────────────────────
