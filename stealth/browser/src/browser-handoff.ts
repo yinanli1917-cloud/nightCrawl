@@ -19,6 +19,7 @@ import { notifyWithAction, focusAppAction } from './notify';
 import { isPinned, pinnedVendor, markPinnedObserved } from './fingerprint-pinned';
 import { parseEngineConfig } from './engine-config';
 import { launchCloakBrowser } from './cloakbrowser-engine';
+import { DEFAULT_SESSION_ID } from './session-id';
 import { checkpointSession, flushNativeProfile } from './session-store';
 
 function exitOnUnexpectedDisconnect(code: number): void {
@@ -548,11 +549,14 @@ export function getFailureHint(this: any): string | null {
  * See memory/project_canvas_regression_2026_04_14.md.
  */
 export async function detectLoginWall(
-  this: any
+  this: any,
+  sessionId: string = DEFAULT_SESSION_ID,
 ): Promise<{ detected: boolean; reason: string; domain: string; approved: boolean; turnstile?: boolean } | null> {
   if (this.isHeaded) return null;
 
-  const page = this.getPage();
+  // Detect on the CALLER's tab — a non-default session (e.g. claude:<id> from
+  // Claude Code) navigates its own tab, not the default one.
+  const page = this.getPage(sessionId);
   if (!page) return null;
   const url = page.url();
 
@@ -668,8 +672,14 @@ function withConsent(
  * 3. Save cookies -> switch back to headless
  * No manual 'resume' needed.
  */
-export async function autoHandover(this: any, targetUrl?: string): Promise<string | null> {
-  const loginUrl = this.getCurrentUrl();
+export async function autoHandover(
+  this: any,
+  targetUrl?: string,
+  sessionId: string = DEFAULT_SESSION_ID,
+): Promise<string | null> {
+  // Wall URL comes from the CALLER's tab; the headed relaunch below is
+  // whole-browser (tabs.reset → default-owned), so post-handoff stays default.
+  const loginUrl = this.getCurrentUrl(sessionId);
   // The URL the user originally wanted to reach (e.g. canvas.uw.edu).
   // loginUrl is typically a SSO redirect URL whose tokens are one-time-use
   // (SAML: execution=eXsX, OAuth: state=&code=, Shibboleth: SAMLRequest=).
@@ -797,8 +807,9 @@ export async function autoHandover(this: any, targetUrl?: string): Promise<strin
         if (page) {
           try {
             await page.goto(testUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
-            const detection = await detectLoginWall.call(this, page.url());
-            if (!detection.detected) {
+            // Post-handoff = headed browser, default-owned tab → default session.
+            const detection = await detectLoginWall.call(this);
+            if (!detection?.detected) {
               cookieLoginSucceeded = true;
               console.log(`[nightcrawl] Login wall cleared via default browser cookies. No window popped.`);
               break;

@@ -94,4 +94,54 @@ describe('TabStore', () => {
     const t2 = s.add(fakePage('b'), 'claude:xyz');
     expect(s.get(t2)!.owner).toBe('claude:xyz');
   });
+
+  // ─── Per-session active model (stage 4) ──────────────────────
+  test('each session tracks its OWN active tab, never another session’s', () => {
+    const s = new TabStore();
+    const a = s.add(fakePage('a'), 'A');
+    const b = s.add(fakePage('b'), 'B');
+    expect(s.activeIdFor('A')).toBe(a);
+    expect(s.activeIdFor('B')).toBe(b);
+    // A session with no tab has no active tab and throws on activePageFor.
+    expect(s.activeIdFor('C')).toBe(0);
+    expect(() => s.activePageFor('C')).toThrow(/No active page/);
+  });
+
+  test('setActiveFor is own-only: switching to another session’s tab throws', () => {
+    const s = new TabStore();
+    s.add(fakePage('a'), 'A');
+    const b = s.add(fakePage('b'), 'B');
+    expect(() => s.setActiveFor('A', b)).toThrow(/owned by another session/);
+    expect(() => s.setActiveFor('A', 999)).toThrow(/not found/);
+  });
+
+  test('idsFor + ownerOf scope tabs to their owner', () => {
+    const s = new TabStore();
+    const a1 = s.add(fakePage('a1'), 'A');
+    const a2 = s.add(fakePage('a2'), 'A');
+    const b1 = s.add(fakePage('b1'), 'B');
+    expect(s.idsFor('A').sort()).toEqual([a1, a2].sort());
+    expect(s.idsFor('B')).toEqual([b1]);
+    expect(s.ownerOf(a1)).toBe('A');
+    expect(s.ownerOf(b1)).toBe('B');
+  });
+
+  test('drop clears only the owner’s active pointer (no jump to another tab)', () => {
+    const s = new TabStore();
+    const a = s.add(fakePage('a'), 'A');
+    const b = s.add(fakePage('b'), 'B');
+    s.drop(a);
+    expect(s.activeIdFor('A')).toBe(0);   // A is now tab-less
+    expect(s.activeIdFor('B')).toBe(b);   // B untouched
+  });
+
+  test('reset()/clear() drop per-session active pointers (whole-browser handoff)', () => {
+    const s = new TabStore();
+    s.add(fakePage('a'), 'A');
+    s.add(fakePage('b'), 'B');
+    s.reset();
+    expect(s.activeIdFor('A')).toBe(0);
+    expect(s.activeIdFor('B')).toBe(0);
+    expect(s.size()).toBe(0);
+  });
 });

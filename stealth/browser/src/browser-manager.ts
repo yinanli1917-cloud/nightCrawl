@@ -801,8 +801,8 @@ export class BrowserManager implements TabView {
   declare launchHeaded: (authToken?: string) => Promise<void>;
   declare handoff: (message: string) => Promise<string>;
   declare resume: () => Promise<string>;
-  declare autoHandover: () => Promise<string | null>;
-  declare detectLoginWall: () => Promise<{ detected: boolean; reason: string; domain: string; approved: boolean } | null>;
+  declare autoHandover: (targetUrl?: string, sessionId?: string) => Promise<string | null>;
+  declare detectLoginWall: (sessionId?: string) => Promise<{ detected: boolean; reason: string; domain: string; approved: boolean; turnstile?: boolean } | null>;
   declare getIsHeaded: () => boolean;
   declare incrementFailures: () => void;
   declare resetFailures: () => void;

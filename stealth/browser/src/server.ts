@@ -970,16 +970,16 @@ async function handleCommand(
     });
   }
 
-  // Activity + the auto-handover post-check below operate on the daemon's default
-  // tab (stage 6 makes handoff session-aware). The per-session command path uses
-  // `view`; only the whole-browser handoff/detection unit stays default-scoped.
+  // Activity + the auto-handover post-check operate on the CALLER's session tab
+  // (its url/page), so login-wall detection works for non-default sessions like
+  // claude:<id> from Claude Code. The headed handoff ACTION is still whole-browser.
   const startTime = Date.now();
-  const commandStartUrl = browserManager.getCurrentUrl();
+  const commandStartUrl = view.getCurrentUrl();
   emitActivity({
     type: 'command_start',
     command,
     args,
-    url: browserManager.getCurrentUrl(),
+    url: view.getCurrentUrl(),
     tabs: browserManager.getTabCount(),
     mode: browserManager.getConnectionMode(),
     session: sessionId,
@@ -1049,8 +1049,8 @@ async function handleCommand(
     // Auto-handover: check for login walls after navigation commands.
     // Wait briefly for SPA login overlays to render (XHS, WeChat, etc.)
     // then check. If detected, handover runs in background after response.
-    if (shouldRunPostCommandChecks(command, commandStartUrl, browserManager.getCurrentUrl())) {
-      const currentUrl = browserManager.getCurrentUrl();
+    if (shouldRunPostCommandChecks(command, commandStartUrl, view.getCurrentUrl())) {
+      const currentUrl = view.getCurrentUrl();
 
       // ─── Auth-cache fast path ────────────────────────────────
       // Skip the 2s wait + 4 DOM evaluations for domains we already
@@ -1078,7 +1078,7 @@ async function handleCommand(
       // happened during the page.goto plus anything still in flight
       // during the 2s SPA-render wait.
       const observedHosts = new Set<string>();
-      const navPage = browserManager.getPage();
+      const navPage = view.getPage();
       const recordUrl = (u: string | undefined | null) => {
         if (!u) return;
         try {
@@ -1123,13 +1123,13 @@ async function handleCommand(
       // detached (rare, but cheap).
       recordUrl(navPage?.url());
 
-      const detection = await browserManager.detectLoginWall();
+      const detection = await browserManager.detectLoginWall(sessionId);
       if (detection?.detected) {
         // Invalidate auth cache — this domain has a login wall
         invalidate(currentUrl);
         result += `\nLOGIN_WALL_DETECTED: ${detection.reason}`;
         if (detection.approved) {
-          const page = browserManager.getPage();
+          const page = view.getPage();
           const targetUrl = command === 'goto' ? args[0] : (page?.url() ?? '');
           const wallUrl = page?.url() ?? targetUrl;
 
@@ -1168,7 +1168,7 @@ async function handleCommand(
                 // Retry the original navigation with fresh cookies.
                 await page.goto(targetUrl, { waitUntil: 'load', timeout: 30000 }).catch(() => {});
                 await new Promise(r => setTimeout(r, 1500));
-                const detection2 = await browserManager.detectLoginWall();
+                const detection2 = await browserManager.detectLoginWall(sessionId);
                 if (!detection2?.detected) {
                   result += `\nLogin wall cleared after auto-import. No window opened.`;
                   browserManager.resetFailures();
@@ -1221,7 +1221,7 @@ async function handleCommand(
                     // Navigate to target and check if the wall is gone
                     await page.goto(targetUrl, { waitUntil: 'load', timeout: 30000 }).catch(() => {});
                     await new Promise(r => setTimeout(r, 1500));
-                    const detection3 = await browserManager.detectLoginWall();
+                    const detection3 = await browserManager.detectLoginWall(sessionId);
                     if (!detection3?.detected) {
                       result += `\nLogin wall cleared after click-through import. No window opened.`;
                       browserManager.resetFailures();
@@ -1258,7 +1258,7 @@ async function handleCommand(
             } else if (!stepTwoPinned) {
               result += `\nRequesting opt-in auto-handover for ${detection.domain}.`;
             }
-            browserManager.autoHandover(targetUrl).then(async handoverResult => {
+            browserManager.autoHandover(targetUrl, sessionId).then(async handoverResult => {
               if (handoverResult) console.log(`[nightcrawl] Auto-handover complete: ${handoverResult}`);
               await persistStorage();
             }).catch(err => {
@@ -1307,7 +1307,7 @@ async function handleCommand(
           const watchStart = Date.now();
           const watchMs = 20000;
           const loginRe = /(^|\/)(login|signin|sign-in|signon|sign-on|auth|sso|session|logon|log-in)(\/|$|\?)/i;
-          const page = browserManager.getPage();
+          const page = view.getPage();
           if (!page) return;
           const origUrl = currentUrl;
           while (Date.now() - watchStart < watchMs) {
@@ -1323,7 +1323,7 @@ async function handleCommand(
               return;
             }
             invalidate(origUrl);
-            const detection = await browserManager.detectLoginWall();
+            const detection = await browserManager.detectLoginWall(sessionId);
             if (!detection?.detected) return;
             const domain = detection.domain;
             // Only mark pinned if vendor-specific cookies confirm it.
@@ -1337,7 +1337,7 @@ async function handleCommand(
             if (lateVendor) markPinnedObserved(origUrl, lateVendor);
             if (detection.approved && isAutoHandoverEnabled()) {
               console.log(`[nightcrawl] Late redirect to ${url}. Auto-handover starting for ${domain}.`);
-              browserManager.autoHandover(origUrl).then(async () => {
+              browserManager.autoHandover(origUrl, sessionId).then(async () => {
                 await persistStorage();
               }).catch(err => {
                 console.error(`[nightcrawl] Auto-handover failed: ${err?.message ?? err}`);
