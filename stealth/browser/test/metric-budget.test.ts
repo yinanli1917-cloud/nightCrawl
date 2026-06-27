@@ -9,10 +9,25 @@
  */
 
 import { describe, test, expect } from 'bun:test';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+
+// Isolate the per-type budget store into a temp stateDir (same as engine-journal).
+const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'nc-budget-'));
+process.env.BROWSE_STATE_FILE = path.join(TMP, 'state', 'browse.json');
+fs.mkdirSync(path.dirname(process.env.BROWSE_STATE_FILE), { recursive: true });
+
 import {
   BUDGETS,
   normalize,
   score,
+  refineBudget,
+  budgetsFor,
+  saveRefinedBudget,
+  isReloginViolation,
+  isHeadedPopViolation,
+  isVerifyOk,
   type MetricSpec,
   type MetricVector,
 } from '../src/metric-budget';
@@ -86,5 +101,73 @@ describe('metric-budget — score (weighted, budget-normalized)', () => {
     const withGate: MetricVector = { successRate: 1.0, completionUnderPolicy: 1 };
     const withoutGate: MetricVector = { successRate: 1.0 };
     expect(score(withGate)).toBeCloseTo(score(withoutGate), 10);
+  });
+});
+
+describe('metric-budget — refineBudget (seed, then refine from data)', () => {
+  function spec(key: string): MetricSpec {
+    return BUDGETS.find((b) => b.key === key)!;
+  }
+
+  test('a lower-better budget tightens toward a better observed p95', () => {
+    const r = refineBudget(spec('latencyP95Ms'), { p50: 3000, p95: 4000, worseStreak: 0 });
+    expect(r.budget).toBe(7200); // ema(8000, 4000, 0.2)
+  });
+
+  test('a single worse run does NOT loosen the budget (anti-loosening guard)', () => {
+    const r = refineBudget(spec('latencyP95Ms'), { p50: 9000, p95: 12000, worseStreak: 0 });
+    expect(r.budget).toBe(8000); // held
+  });
+
+  test('only sustained regression loosens, capped at seed x1.25', () => {
+    const r = refineBudget(spec('latencyP95Ms'), { p50: 40000, p95: 50000, worseStreak: 50 });
+    expect(r.budget).toBe(10000); // min(ema(8000,50000,0.05)=10100, 8000*1.25=10000)
+  });
+
+  test('a higher-better budget tightens toward a better observed p50', () => {
+    const r = refineBudget(spec('successRate'), { p50: 0.99, p95: 1.0, worseStreak: 0 });
+    expect(r.budget).toBeCloseTo(0.958, 3); // ema(0.95, 0.99, 0.2)
+  });
+
+  test('a hard gate never refines', () => {
+    const r = refineBudget(spec('completionUnderPolicy'), { p50: 0, p95: 0, worseStreak: 999 });
+    expect(r.budget).toBe(1.0);
+  });
+});
+
+describe('metric-budget — per-type budget persistence', () => {
+  test('refined budgets persist per site-type and merge onto the seeds', () => {
+    saveRefinedBudget('cloudflare|sso|static', 'latencyP95Ms', 6000);
+    const specs = budgetsFor('cloudflare|sso|static');
+    expect(specs.find((s) => s.key === 'latencyP95Ms')!.budget).toBe(6000);
+    expect(specs.find((s) => s.key === 'successRate')!.budget).toBe(0.95); // untouched axis = seed
+    // a different site-type is unaffected by another type's refinement
+    expect(budgetsFor('none|open|static').find((s) => s.key === 'latencyP95Ms')!.budget).toBe(8000);
+  });
+
+  test('an unknown site-type returns the seed budgets unchanged', () => {
+    expect(budgetsFor('datadome|login-wall|heavy-spa')).toEqual(BUDGETS);
+  });
+});
+
+describe('metric-budget — policy predicates (one vocabulary with the benchmark guards)', () => {
+  test('re-login / consent / 2FA walls are violations; a healthy dashboard is not', () => {
+    expect(isReloginViolation('LOGIN_REQUIRED: canvas.uw.edu needs sign-in')).toBe(true);
+    expect(isReloginViolation('CONSENT_REQUIRED: lib.uw.edu')).toBe(true);
+    expect(isReloginViolation('Duo two-factor authentication required')).toBe(true);
+    expect(isReloginViolation('Dashboard\nSigned in as Yinan Li\nCourses')).toBe(false);
+    expect(isReloginViolation('')).toBe(false);
+  });
+
+  test('a headed-window pop is a violation; a normal headless nav is not', () => {
+    expect(isHeadedPopViolation('[handoff] launchHeaded -> opening CloakBrowser')).toBe(true);
+    expect(isHeadedPopViolation('routing to open-handoff for sensitive page')).toBe(true);
+    expect(isHeadedPopViolation('Navigated to https://example.com (200)')).toBe(false);
+  });
+
+  test('VERIFY_OK gates a deliverable; VERIFY_FAILED and garbage do not', () => {
+    expect(isVerifyOk('VERIFY_OK\nkind: publisher-pdf\npages: 12')).toBe(true);
+    expect(isVerifyOk('VERIFY_FAILED\n  min-pages: 1 < 3')).toBe(false);
+    expect(isVerifyOk('some unrelated stdout')).toBe(false);
   });
 });
