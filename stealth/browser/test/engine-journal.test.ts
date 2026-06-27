@@ -78,12 +78,13 @@ describe('engine-journal — recommendation is LEARNED from history', () => {
     expect(r!.evidence).toContain('headless');
   });
 
-  test('similar success → tie-break on lower latency', () => {
+  test('similar success but headless blows the latency budget → recommend real', () => {
     const records = [
-      ...Array.from({ length: 3 }, () => rec({ engine: 'real', ok: true, latencyMs: 500 })),
-      ...Array.from({ length: 3 }, () => rec({ engine: 'headless', ok: true, latencyMs: 2500 })),
+      ...Array.from({ length: 3 }, () => rec({ engine: 'real', ok: true, latencyMs: 1500 })),
+      ...Array.from({ length: 3 }, () => rec({ engine: 'headless', ok: true, latencyMs: 30000 })),
     ];
     const r = recommendFromStats(aggregateByEngine(records));
+    // Latency only decides when it actually breaches budget (8s); within budget it's noise.
     expect(r!.engine).toBe('real');
   });
 
@@ -95,6 +96,49 @@ describe('engine-journal — recommendation is LEARNED from history', () => {
 
   test('cold start: no history → null (caller falls back to a prior)', () => {
     expect(recommendFromStats(aggregateByEngine([]))).toBeNull();
+  });
+});
+
+describe('engine-journal — budget scoring (multi-dimensional, not just success rate)', () => {
+  test('headless loads more often but steals focus + blows RSS; real is clean → real', () => {
+    const records = [
+      // headless: 5/5 ok, but every run popped a visible window and blew the RSS budget.
+      ...Array.from({ length: 5 }, () => rec({ engine: 'headless', ok: true, latencyMs: 700, windowPopped: true, rssMb: 1500 })),
+      // real: 4/5 ok, never popped a window, light RSS — a better twin despite a lower raw success rate.
+      ...Array.from({ length: 4 }, () => rec({ engine: 'real', ok: true, latencyMs: 700, windowPopped: false, rssMb: 200 })),
+      rec({ engine: 'real', ok: false, latencyMs: 700, windowPopped: false, rssMb: 200 }),
+    ];
+    const r = recommendFromStats(aggregateByEngine(records));
+    expect(r!.engine).toBe('real'); // UX/resource cost beats a raw success-rate edge
+  });
+
+  test('a config that completes by violating a safety gate can never win (hard gate)', () => {
+    const records = [
+      ...Array.from({ length: 5 }, () => rec({ engine: 'headless', ok: true, latencyMs: 500, policyViolated: true })),
+      ...Array.from({ length: 3 }, () => rec({ engine: 'real', ok: true, latencyMs: 3000, policyViolated: false })),
+    ];
+    const r = recommendFromStats(aggregateByEngine(records));
+    expect(r!.engine).toBe('real'); // headless disqualified despite better speed + success
+  });
+
+  test('both engines meet every budget → prefer the non-intrusive default (headless)', () => {
+    const records = [
+      ...Array.from({ length: 3 }, () => rec({ engine: 'real', ok: true, latencyMs: 500 })),
+      ...Array.from({ length: 3 }, () => rec({ engine: 'headless', ok: true, latencyMs: 2500 })),
+    ];
+    const r = recommendFromStats(aggregateByEngine(records));
+    expect(r!.engine).toBe('headless'); // 500 vs 2500 is noise under an 8s budget
+  });
+
+  test('latency uses navMs when present, ignoring the headless-only recovery phase', () => {
+    const records = [
+      // headless nav is fast (navMs) but its login-wall recovery inflates raw latencyMs.
+      ...Array.from({ length: 3 }, () => rec({ engine: 'headless', ok: true, latencyMs: 30000, navMs: 600 })),
+      ...Array.from({ length: 3 }, () => rec({ engine: 'real', ok: true, latencyMs: 5000, navMs: 5000 })),
+    ];
+    const r = recommendFromStats(aggregateByEngine(records));
+    // Scored on navMs (600 vs 5000), headless is faster and ties on success → headless.
+    expect(r!.engine).toBe('headless');
   });
 });
 

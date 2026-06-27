@@ -20,6 +20,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { resolveConfig } from './config';
 import { eTldPlusOne } from './handoff-consent';
+import { score, type MetricVector } from './metric-budget';
 
 export type Engine = 'headless' | 'real';
 
@@ -42,6 +43,17 @@ export interface EngineDecisionRecord {
   // quality. recommended = the engine resolveAutoEngine would pick at decision time.
   recommended?: Engine;
   chosenBy?: 'auto' | 'explicit'; // 'auto' = router resolved it; 'explicit' = agent forced --engine
+  // ── Multi-dimensional metric vector (Track A). Populated as the Track B signal
+  // sources land; a missing field is N/A by design (excluded from scoring), never 0.
+  navMs?: number;          // navigation-phase latency (excludes login-wall recovery)
+  recoveryMs?: number;     // login-wall recovery phase — headless-only, NOT a latency penalty
+  windowPopped?: boolean;  // a headed/visible window was shown for this command (focus-theft)
+  tabDelta?: number;       // tabs created by this command (left open => tab leak)
+  bannerEmitted?: boolean; // the engine-guidance banner printed (output noise)
+  verifyOk?: boolean;      // deliverable verification passed (VERIFY_OK)
+  policyViolated?: boolean;// a hard safety gate was tripped to complete (Completion-under-Policy fail)
+  cpuPct?: number;         // daemon CPU% over this command
+  rssMb?: number;          // daemon RSS (MB) at command end
 }
 
 export interface EngineStats {
@@ -52,6 +64,7 @@ export interface EngineStats {
   medianLatencyMs: number; // median over OK runs (fast-when-working), else over all
   timeouts: number;        // timedOut + axTimedOut occurrences
   relogins: number;
+  metrics: MetricVector;   // the budget-scorable vector — this engine vs the seed SLOs
 }
 
 export interface LearnedRecommendation {
@@ -79,6 +92,11 @@ const ENGINES: Engine[] = ['headless', 'real'];
 // A recommendation is only "learned" once an engine has at least this many
 // samples; below it we still recommend but flag the advice as thin.
 const MIN_LEARN_SAMPLES = 3;
+
+// Two engines whose budget scores fall within this band are a tie; we then prefer the
+// less invasive engine (headless) rather than switching the user's live browser to
+// shave a difference they cannot feel.
+const SCORE_EPSILON = 0.02;
 
 // Opportunistic cap so the journal can't grow unbounded.
 const MAX_JOURNAL_LINES = 5000;
@@ -170,7 +188,52 @@ function median(nums: number[]): number {
   return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
 }
 
-/** Group records by engine into success/latency/timeout stats. Pure. */
+function percentile(nums: number[], p: number): number {
+  if (nums.length === 0) return 0;
+  const s = [...nums].sort((a, b) => a - b);
+  const idx = Math.min(s.length - 1, Math.max(0, Math.ceil((p / 100) * s.length) - 1));
+  return s[idx];
+}
+
+/** Fraction of records (where the selector is defined) for which it is truthy. */
+function definedRate(
+  rs: EngineDecisionRecord[],
+  sel: (r: EngineDecisionRecord) => boolean | undefined,
+): number | undefined {
+  const defined = rs.filter((r) => sel(r) !== undefined);
+  if (defined.length === 0) return undefined;
+  return defined.filter((r) => sel(r)).length / defined.length;
+}
+
+/**
+ * Build the budget-scorable metric vector for one engine's records. Each axis is
+ * undefined when its signal has not been recorded yet (the Track B sources light it
+ * up later); a missing axis is N/A by design, never a 0. Latency scores the
+ * navigation phase (navMs), not the headless-only login-wall recovery, so the
+ * cross-engine comparison is like-for-like. Pure.
+ */
+function metricsFor(rs: EngineDecisionRecord[]): MetricVector {
+  const oks = rs.filter((r) => r.ok);
+  const lat = (oks.length ? oks : rs).map((r) => r.navMs ?? r.latencyMs);
+  const nums = (sel: (r: EngineDecisionRecord) => number | undefined) =>
+    rs.map(sel).filter((x): x is number => typeof x === 'number');
+  const cpu = nums((r) => r.cpuPct);
+  const rss = nums((r) => r.rssMb);
+  const policy = rs.filter((r) => r.policyViolated !== undefined);
+  return {
+    successRate: rs.length ? oks.length / rs.length : 0,
+    latencyP95Ms: lat.length ? percentile(lat, 95) : undefined,
+    cpuPctMean: cpu.length ? cpu.reduce((a, b) => a + b, 0) / cpu.length : undefined,
+    rssMbPeak: rss.length ? Math.max(...rss) : undefined,
+    verifyOkRate: definedRate(rs, (r) => r.verifyOk),
+    focusStolenRate: definedRate(rs, (r) => r.windowPopped),
+    tabLeakRate: definedRate(rs, (r) => (r.tabDelta === undefined ? undefined : r.tabDelta > 0)),
+    bannerNoiseRate: definedRate(rs, (r) => r.bannerEmitted),
+    completionUnderPolicy: policy.length === 0 ? undefined : policy.some((r) => r.policyViolated) ? 0 : 1,
+  };
+}
+
+/** Group records by engine into success/latency/timeout stats + a metric vector. Pure. */
 export function aggregateByEngine(records: EngineDecisionRecord[]): EngineStats[] {
   const groups = new Map<Engine, EngineDecisionRecord[]>();
   for (const r of records) {
@@ -191,42 +254,53 @@ export function aggregateByEngine(records: EngineDecisionRecord[]): EngineStats[
       medianLatencyMs: median(okLatencies.length ? okLatencies : rs.map((r) => r.latencyMs)),
       timeouts,
       relogins: rs.filter((r) => r.reloginRequired).length,
+      metrics: metricsFor(rs),
     });
   }
   return stats;
 }
 
+/** Tie-break: prefer the less invasive engine (headless) when scores are level. */
+function tieBreak(a: EngineStats, b: EngineStats): number {
+  return a.engine === 'headless' ? -1 : b.engine === 'headless' ? 1 : 0;
+}
+
 /**
- * Derive a recommendation from per-engine stats. Pure, deterministic. Ranks by
- * success rate, then lower latency, then fewer timeouts. Returns null on no
- * history (the caller falls back to a cold-start prior). Confidence is "learned"
- * once the winner has enough samples, else "thin".
+ * Derive a recommendation from per-engine stats. Pure, deterministic. Ranks by the
+ * multi-dimensional BUDGET SCORE (speed, CPU, memory, focus-theft, tab-leak,
+ * correctness, completion-under-policy), not raw success rate — a twin that loads 5%
+ * more often but steals the user's browser is a worse twin. A violated hard gate
+ * disqualifies an engine (-Infinity). A tie within SCORE_EPSILON falls to the
+ * non-intrusive default (headless). Returns null on no history (the caller falls back
+ * to a cold-start prior). Confidence is "learned" once the winner has enough samples.
  */
 export function recommendFromStats(stats: EngineStats[]): LearnedRecommendation | null {
   const candidates = stats.filter((s) => s.attempts > 0);
   if (candidates.length === 0) return null;
 
-  const ranked = [...candidates].sort((a, b) =>
-    b.successRate - a.successRate ||
-    a.medianLatencyMs - b.medianLatencyMs ||
-    a.timeouts - b.timeouts,
-  );
-  const best = ranked[0];
+  const scored = candidates.map((s) => ({ s, v: score(s.metrics) }));
+  scored.sort((a, b) => {
+    if (a.v === b.v) return tieBreak(a.s, b.s);
+    if (!Number.isFinite(a.v - b.v)) return b.v - a.v; // a disqualified (-Infinity) engine sinks
+    if (Math.abs(b.v - a.v) <= SCORE_EPSILON) return tieBreak(a.s, b.s);
+    return b.v - a.v;
+  });
+  const best = scored[0].s;
 
   const summary = (s: EngineStats) =>
     `${s.engine} ${s.oks}/${s.attempts} ok ~${(s.medianLatencyMs / 1000).toFixed(1)}s` +
     (s.timeouts ? `, ${s.timeouts} timeouts` : '');
 
-  // Exploration (gap #6): a pure argmax over only the engines that already have
-  // history can never discover that an UNTRIED engine is better. Surface the
-  // engine with zero records here so the agent can choose to compare it. Advisory
-  // only — we never silently route the live (real) browser to "experiment".
+  // Exploration (gap #6): an argmax over only the engines that already have history
+  // can never discover that an UNTRIED engine is better. Surface the engine with zero
+  // records so the agent can choose to compare it. Advisory only — we never silently
+  // route the live (real) browser to "experiment".
   const tried = new Set(candidates.map((c) => c.engine));
   const untried = ENGINES.find((e) => !tried.has(e));
 
   return {
     engine: best.engine,
-    evidence: ranked.map(summary).join(' · '),
+    evidence: scored.map(({ s }) => summary(s)).join(' · '),
     confidence: best.attempts >= MIN_LEARN_SAMPLES ? 'learned' : 'thin',
     samples: best.attempts,
     untried,
