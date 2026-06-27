@@ -26,6 +26,7 @@ import {
   filterRecent,
   adviceRegret,
   formatEngineStats,
+  splitLatency,
   journalPath,
   RECENCY_WINDOW_MS,
   type EngineDecisionRecord,
@@ -96,6 +97,26 @@ describe('engine-journal — recommendation is LEARNED from history', () => {
 
   test('cold start: no history → null (caller falls back to a prior)', () => {
     expect(recommendFromStats(aggregateByEngine([]))).toBeNull();
+  });
+});
+
+describe('engine-journal — splitLatency (fair cross-engine latency, audit fix)', () => {
+  test('with no recovery phase, navMs == total latency', () => {
+    expect(splitLatency({ startedAt: 1000, endedAt: 4000 })).toEqual({ latencyMs: 3000, navMs: 3000, recoveryMs: 0 });
+  });
+
+  test('the login-wall recovery phase is subtracted from navMs', () => {
+    // total 30s, of which 25s was login-wall recovery headless ran (Engine R never does).
+    const s = splitLatency({ startedAt: 0, endedAt: 30000, recoveryStartedAt: 5000, recoveryEndedAt: 30000 });
+    expect(s.latencyMs).toBe(30000);
+    expect(s.recoveryMs).toBe(25000);
+    expect(s.navMs).toBe(5000); // the fair number the loop scores on
+  });
+
+  test('clamps to zero on clock skew (recovery longer than total, or negative)', () => {
+    expect(splitLatency({ startedAt: 100, endedAt: 50 }).latencyMs).toBe(0);
+    const s = splitLatency({ startedAt: 0, endedAt: 1000, recoveryStartedAt: 0, recoveryEndedAt: 5000 });
+    expect(s.navMs).toBe(0);
   });
 });
 

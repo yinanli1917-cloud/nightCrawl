@@ -188,6 +188,29 @@ function median(nums: number[]): number {
   return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
 }
 
+export interface LatencyMarks {
+  startedAt: number;
+  endedAt: number;
+  recoveryStartedAt?: number; // when login-wall recovery began (headless only)
+  recoveryEndedAt?: number;
+}
+
+/**
+ * Split a command's wall time into the navigation phase (navMs) and the login-wall
+ * recovery phase (recoveryMs). Headless `goto` runs a recovery pipeline Engine R
+ * never does, so the loop scores latency on navMs to keep the cross-engine comparison
+ * fair (the audit-bias fix). navMs falls back to the full latency when no recovery
+ * ran. All values clamp to >= 0 against clock skew. Pure.
+ */
+export function splitLatency(marks: LatencyMarks): { latencyMs: number; navMs: number; recoveryMs: number } {
+  const latencyMs = Math.max(0, marks.endedAt - marks.startedAt);
+  const recoveryMs =
+    marks.recoveryStartedAt != null && marks.recoveryEndedAt != null
+      ? Math.max(0, marks.recoveryEndedAt - marks.recoveryStartedAt)
+      : 0;
+  return { latencyMs, navMs: Math.max(0, latencyMs - recoveryMs), recoveryMs };
+}
+
 function percentile(nums: number[], p: number): number {
   if (nums.length === 0) return 0;
   const s = [...nums].sort((a, b) => a - b);
