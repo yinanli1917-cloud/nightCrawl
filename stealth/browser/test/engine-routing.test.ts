@@ -12,9 +12,13 @@ import {
   gatherSignals,
   buildNavGuidance,
   resolveAutoEngine,
+  resolveAction,
   NAV_COMMANDS,
   type SignalDeps,
+  type ActionDeps,
 } from '../src/engine-routing';
+import type { ResolveResult } from '../src/self-tune';
+import type { SiteProfile } from '../src/site-profile';
 
 function deps(over: Partial<SignalDeps> = {}): SignalDeps {
   return {
@@ -151,5 +155,54 @@ describe('resolveAutoEngine — the advice TAKES EFFECT on auto', () => {
 
   test('blank url stays headless', () => {
     expect(resolveAutoEngine('about:blank', deps()).engine).toBe('headless');
+  });
+});
+
+describe('resolveAction — conservative-auto boundary + knobs', () => {
+  const OPEN: SiteProfile = { vendor: 'none', authKind: 'open', dynamism: 'static' };
+  function res(over: Partial<ResolveResult> = {}): ResolveResult {
+    return { recommendation: null, source: 'cold-start', profile: OPEN, winner: null, ...over };
+  }
+  const learnedReal = (source: ResolveResult['source']): ResolveResult =>
+    res({ recommendation: { engine: 'real', evidence: 'real 5/5 ok', confidence: 'learned', samples: 5 }, source });
+  function actionDeps(over: Partial<ActionDeps> = {}): ActionDeps {
+    return { isHostile: () => false, resolve: () => res(), ...over };
+  }
+
+  test('a DOMAIN-learned real recommendation auto-switches the engine to real', () => {
+    const a = resolveAction('https://canvas.uw.edu/', false, actionDeps({ resolve: () => learnedReal('domain') }));
+    expect(a.engine).toBe('real');
+    expect(a.policyViolated).toBe(false);
+  });
+
+  test('a SITE-TYPE real recommendation does NOT auto-switch (stays headless, advises)', () => {
+    const a = resolveAction('https://never-seen.com/', false, actionDeps({ resolve: () => learnedReal('site-type') }));
+    expect(a.engine).toBe('headless'); // generalized evidence informs, never flips the live browser
+    expect(a.source).toBe('site-type');
+  });
+
+  test('a hostile domain forces headless and flags the overridden real recommendation', () => {
+    const a = resolveAction('https://xiaohongshu.com/', false, actionDeps({
+      isHostile: () => true,
+      resolve: () => learnedReal('domain'),
+    }));
+    expect(a.engine).toBe('headless');
+    expect(a.policyViolated).toBe(true); // a real recommendation on a hostile domain is unsafe
+  });
+
+  test('a file-upload task forces headless even with a domain-learned real recommendation', () => {
+    const a = resolveAction('https://example.com/', true, actionDeps({ resolve: () => learnedReal('domain') }));
+    expect(a.engine).toBe('headless');
+  });
+
+  test('cold start stays headless', () => {
+    expect(resolveAction('https://fresh.com/', false, actionDeps()).engine).toBe('headless');
+  });
+
+  test('always returns clamped tuning knobs alongside the engine', () => {
+    const a = resolveAction('https://example.com/', false, actionDeps());
+    expect(typeof a.tune.timeoutBudgetMs).toBe('number');
+    expect(a.tune.timeoutBudgetMs).toBeGreaterThanOrEqual(10000);
+    expect(a.tune.viewport.width).toBeGreaterThan(0);
   });
 });

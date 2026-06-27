@@ -19,6 +19,7 @@ import { isPinned, pinnedVendor } from './fingerprint-pinned';
 import { hasRealBrowserSession } from './has-real-session';
 import { rememberedEngine } from './domain-strategy';
 import { recommendForDomain, type LearnedRecommendation } from './engine-journal';
+import { resolve, selfTune, type ResolveResult, type ResolveSource, type TuneAdvice } from './self-tune';
 
 /** Navigation verbs whose responses carry the engine-guidance block. */
 export const NAV_COMMANDS = new Set(['goto', 'back', 'forward', 'reload']);
@@ -136,4 +137,54 @@ export function resolveAutoEngine(
     return { engine: 'real', reason: `learned real wins (${learned.evidence})` };
   }
   return { engine: 'headless', reason: 'default (advisory only until learned)' };
+}
+
+// ─── resolveAction: engine + knobs in one conservative pass ─────────────────────
+
+export interface ActionDeps {
+  isHostile: (url: string) => boolean;
+  resolve: (url: string) => ResolveResult; // the multi-level (domain -> site-type -> cold-start) resolve
+}
+
+const DEFAULT_ACTION_DEPS: ActionDeps = { isHostile, resolve };
+
+export interface RoutedAction {
+  engine: Engine;
+  tune: TuneAdvice;
+  source: ResolveSource; // which resolve level produced the recommendation
+  reason: string;
+  policyViolated: boolean; // a hard safety rule had to override an unsafe recommendation
+}
+
+/**
+ * Resolve BOTH the engine and the tuning knobs for a command in one conservative
+ * pass. Hard invariants win first (hostile -> headless; file-upload -> headless).
+ * The engine auto-switches to `real` ONLY on an L1 DOMAIN-learned result — site-TYPE
+ * evidence may recommend real (and is shown in the guidance) but must NOT flip the
+ * user's live browser, so a "site changed type" event can never auto-switch a live
+ * session. The knobs (timeout/viewport/idle) come back clamped and may auto-apply
+ * because they cannot pop a window or change the engine. Pure given `deps`.
+ */
+export function resolveAction(
+  url: string,
+  fileUploadTask = false,
+  deps: ActionDeps = DEFAULT_ACTION_DEPS,
+): RoutedAction {
+  const res = deps.resolve(url);
+  const tune = selfTune(res);
+  const wantsReal = res.recommendation?.engine === 'real';
+  const headless = (reason: string, policyViolated = false): RoutedAction => ({
+    engine: 'headless', tune, source: res.source, reason, policyViolated,
+  });
+
+  if (!url || url === 'about:blank') return headless('no url');
+  // A `real` recommendation on a hostile domain would leak the live session — force
+  // headless and flag it so the journal/scorer learns to never pick real here.
+  if (deps.isHostile(url)) return headless('hostile domain (safety)', wantsReal);
+  if (fileUploadTask) return headless('file upload (capability)');
+
+  if (wantsReal && res.recommendation!.confidence === 'learned' && res.source === 'domain') {
+    return { engine: 'real', tune, source: res.source, reason: `learned real wins (${res.recommendation!.evidence})`, policyViolated: false };
+  }
+  return headless('default (advisory until domain-learned)');
 }
