@@ -188,6 +188,23 @@ describe('engine-journal — budget scoring (multi-dimensional, not just success
     expect(r!.engine).toBe('headless'); // 500 vs 2500 is noise under an 8s budget
   });
 
+  test('evidence surfaces the multi-dimensional budget score per engine (verification surface)', () => {
+    const r = recommendFromStats(aggregateByEngine(
+      Array.from({ length: 3 }, () => rec({ engine: 'real', ok: true, latencyMs: 700 })),
+    ));
+    expect(r!.evidence).toContain('[score');
+  });
+
+  test('a policy-disqualified engine reads as disqualified, not a misleading number', () => {
+    const records = [
+      ...Array.from({ length: 3 }, () => rec({ engine: 'headless', ok: true, policyViolated: true })),
+      ...Array.from({ length: 3 }, () => rec({ engine: 'real', ok: true })),
+    ];
+    const r = recommendFromStats(aggregateByEngine(records));
+    expect(r!.evidence).toContain('disqualified');
+    expect(r!.engine).toBe('real');
+  });
+
   test('latency uses navMs when present, ignoring the headless-only recovery phase', () => {
     const records = [
       // headless nav is fast (navMs) but its login-wall recovery inflates raw latencyMs.

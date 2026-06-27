@@ -345,9 +345,12 @@ export function recommendFromStats(stats: EngineStats[]): LearnedRecommendation 
   });
   const best = scored[0].s;
 
-  const summary = (s: EngineStats) =>
-    `${s.engine} ${s.oks}/${s.attempts} ok ~${(s.medianLatencyMs / 1000).toFixed(1)}s` +
-    (s.timeouts ? `, ${s.timeouts} timeouts` : '');
+  const summary = (s: EngineStats) => {
+    const sc = score(s.metrics);
+    const scoreStr = Number.isFinite(sc) ? `[score ${sc.toFixed(2)}]` : '[disqualified: policy]';
+    return `${s.engine} ${s.oks}/${s.attempts} ok ~${(s.medianLatencyMs / 1000).toFixed(1)}s` +
+      (s.timeouts ? `, ${s.timeouts} timeouts` : '') + ` ${scoreStr}`;
+  };
 
   // Exploration (gap #6): an argmax over only the engines that already have history
   // can never discover that an UNTRIED engine is better. Surface the engine with zero
