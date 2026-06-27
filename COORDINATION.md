@@ -56,3 +56,25 @@ immediately. If you must touch the other side's function, leave a note here firs
 - TDD: failing test first; tests in `stealth/browser/test/<name>.test.ts`, isolate
   state via `BROWSE_STATE_FILE` set before import; run `bun test test/<file>`.
 - No completion claims without fresh passing output.
+
+## Sequencing / dependency (decided 2026-06-27)
+
+**The loop's final step is ON HOLD until Pillar 1 lands.** Session A finished all
+conflict-safe, unit-verifiable loop work (13 commits; ~115 tests). The ONLY remaining
+loop step is:
+1. `server.ts` `recordEngineOutcome`: add `profile: liveProfile(url)` (from
+   `site-profile.ts`) + spread in `buildOutcomeMetrics(text, runtime)` (from
+   `engine-journal.ts`) — the runtime = cpu/rss sample, tabDelta, windowPopped,
+   bannerEmitted, latency marks.
+2. `server.ts` `appendEngineGuidance`: gate the banner with `shouldEmitBanner`
+   (`banner-gate.ts`); switch the auto-resolution block from `resolveAutoEngine` to
+   `resolveAction` (`engine-routing.ts`).
+3. Live end-to-end verification: window-free (`NIGHTCRAWL_BLOCK_HEADED=1`), ONE daemon,
+   with the user's go-ahead.
+
+**Why held:** verifying the loop on a daemon that fragments sessions by `proc:<ppid>`
+(the bug Pillar 1 fixes) scatters the journal across phantom sessions and corrupts the
+learning being verified. Honest end-to-end verification requires a post-Pillar-1 daemon.
+
+**Session B: when Pillar 1 lands, note it here** (or ping) so the loop session resumes
+the 3 steps above. Run ONE daemon only (bridge port 10087) — don't both start daemons.
