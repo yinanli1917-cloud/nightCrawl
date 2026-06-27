@@ -27,6 +27,7 @@ import {
   adviceRegret,
   formatEngineStats,
   splitLatency,
+  buildOutcomeMetrics,
   journalPath,
   RECENCY_WINDOW_MS,
   type EngineDecisionRecord,
@@ -117,6 +118,42 @@ describe('engine-journal — splitLatency (fair cross-engine latency, audit fix)
     expect(splitLatency({ startedAt: 100, endedAt: 50 }).latencyMs).toBe(0);
     const s = splitLatency({ startedAt: 0, endedAt: 1000, recoveryStartedAt: 0, recoveryEndedAt: 5000 });
     expect(s.navMs).toBe(0);
+  });
+});
+
+describe('engine-journal — buildOutcomeMetrics (the Track A->B bridge core)', () => {
+  test('derives verifyOk from the response text via the unified predicate', () => {
+    expect(buildOutcomeMetrics('VERIFY_OK\npages: 12').verifyOk).toBe(true);
+    expect(buildOutcomeMetrics('VERIFY_FAILED\n min-pages').verifyOk).toBe(false);
+    expect(buildOutcomeMetrics('Navigated to https://example.com (200)').verifyOk).toBeUndefined();
+  });
+
+  test('a headed-window pop (in text OR measured at runtime) marks a policy violation', () => {
+    expect(buildOutcomeMetrics('[handoff] launchHeaded -> ...').policyViolated).toBe(true);
+    expect(buildOutcomeMetrics('clean text', { windowPopped: true }).policyViolated).toBe(true);
+    expect(buildOutcomeMetrics('clean text').policyViolated).toBeUndefined();
+  });
+
+  test('splits latency into navMs / recoveryMs when marks are provided', () => {
+    const m = buildOutcomeMetrics('ok', { marks: { startedAt: 0, endedAt: 30000, recoveryStartedAt: 5000, recoveryEndedAt: 30000 } });
+    expect(m.navMs).toBe(5000);
+    expect(m.recoveryMs).toBe(25000);
+  });
+
+  test('passes through the measured runtime signals untouched', () => {
+    const m = buildOutcomeMetrics('ok', { tabDelta: 2, bannerEmitted: true, cpuPct: 45, rssMb: 512, windowPopped: false });
+    expect(m.tabDelta).toBe(2);
+    expect(m.bannerEmitted).toBe(true);
+    expect(m.cpuPct).toBe(45);
+    expect(m.rssMb).toBe(512);
+    expect(m.windowPopped).toBe(false);
+  });
+
+  test('no runtime signals → only text-derived fields, the rest undefined (N/A by design)', () => {
+    const m = buildOutcomeMetrics('plain page text');
+    expect(m.cpuPct).toBeUndefined();
+    expect(m.tabDelta).toBeUndefined();
+    expect(m.navMs).toBeUndefined();
   });
 });
 

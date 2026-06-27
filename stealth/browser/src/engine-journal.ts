@@ -20,7 +20,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { resolveConfig } from './config';
 import { eTldPlusOne } from './handoff-consent';
-import { score, type MetricVector } from './metric-budget';
+import { score, isVerifyOk, isHeadedPopViolation, type MetricVector } from './metric-budget';
 
 export type Engine = 'headless' | 'real';
 
@@ -209,6 +209,41 @@ export function splitLatency(marks: LatencyMarks): { latencyMs: number; navMs: n
       ? Math.max(0, marks.recoveryEndedAt - marks.recoveryStartedAt)
       : 0;
   return { latencyMs, navMs: Math.max(0, latencyMs - recoveryMs), recoveryMs };
+}
+
+/** Runtime signals the server measures around a command and hands to the bridge. */
+export interface OutcomeRuntime {
+  marks?: LatencyMarks;   // for the navMs/recoveryMs split
+  windowPopped?: boolean; // a headed/visible window was shown (focus-theft)
+  tabDelta?: number;      // tabs created by this command
+  bannerEmitted?: boolean;// the engine-guidance banner printed
+  cpuPct?: number;        // daemon CPU% over this command
+  rssMb?: number;         // daemon RSS (MB) at command end
+}
+
+/**
+ * Track A->B bridge core: derive the metric-vector fields for a journal record from
+ * the response text + the measured runtime signals. verifyOk and policyViolated come
+ * from the unified policy predicates (the same vocabulary the benchmark uses), latency
+ * is split into nav vs recovery, and the measured signals pass through. A signal that
+ * was not measured stays undefined (N/A by design, never 0). Pure — the server adds
+ * `profile` (liveProfile) at the call-site and merges this in.
+ */
+export function buildOutcomeMetrics(text: string, rt: OutcomeRuntime = {}): Partial<EngineDecisionRecord> {
+  const lat = rt.marks ? splitLatency(rt.marks) : undefined;
+  const verifyOk = isVerifyOk(text) ? true : text.includes('VERIFY_FAILED') ? false : undefined;
+  const policyViolated = rt.windowPopped || isHeadedPopViolation(text) ? true : undefined;
+  return {
+    navMs: lat?.navMs,
+    recoveryMs: lat?.recoveryMs,
+    verifyOk,
+    policyViolated,
+    windowPopped: rt.windowPopped,
+    tabDelta: rt.tabDelta,
+    bannerEmitted: rt.bannerEmitted,
+    cpuPct: rt.cpuPct,
+    rssMb: rt.rssMb,
+  };
 }
 
 function percentile(nums: number[], p: number): number {
