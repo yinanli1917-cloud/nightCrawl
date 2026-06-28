@@ -15,10 +15,12 @@ import { resolveConfig, ensureStateDir, readVersionHash } from './config';
 import { findInstalledBrowsers } from './cookie-import-browser';
 import { notifyWithAction } from './notify';
 import { resolveSessionId, SESSION_HEADER } from './session-id';
+import { renderLauncher, chooseInstallDir } from './launcher';
+import { classifyStartup, READY_TIMEOUT_MS, type StartupSnapshot } from './daemon-readiness';
+import * as os from 'os';
 
 const config = resolveConfig();
 const IS_WINDOWS = process.platform === 'win32';
-const MAX_START_WAIT = IS_WINDOWS ? 15000 : (process.env.CI ? 30000 : 8000); // Node+Chromium takes longer on Windows
 
 export function resolveServerScript(
   env: Record<string, string | undefined> = process.env,
@@ -366,29 +368,37 @@ async function startServer(extraEnv?: Record<string, string>): Promise<ServerSta
     });
   }
 
-  // Wait for server to become healthy.
-  // Use HTTP health check (not isProcessAlive) — it's fast (~instant ECONNREFUSED)
-  // and works reliably on all platforms including Windows.
+  // Wait for the server to become healthy. A cold CloakBrowser boot can take well
+  // over 8s, so we wait up to READY_TIMEOUT_MS — but classifyStartup fails FAST the
+  // moment the daemon dies or logs an error, so a real failure never waits the whole
+  // budget (the "Server failed to start within 8s" churn from the Cursor-course run).
   const start = Date.now();
-  while (Date.now() - start < MAX_START_WAIT) {
+  let lastError = '';
+  while (Date.now() - start < READY_TIMEOUT_MS) {
     const state = readState();
-    if (state && await isServerHealthy(state)) {
-      return state;
-    }
+    const errLog = startupErrorLog();
+    if (errLog) lastError = errLog;
+    const snap: StartupSnapshot = {
+      healthy: state ? await isServerHealthy(state) : false,
+      errorLogged: !!errLog,
+    };
+    const status = classifyStartup(snap);
+    if (status === 'ready') return state!;
+    if (status === 'failed') break;
     await Bun.sleep(100);
   }
 
-  // Server didn't start in time — check startup error log
-  const errorLogPath = path.join(config.stateDir, 'browse-startup-error.log');
+  if (lastError) throw new Error(`Server failed to start:\n${lastError}`);
+  throw new Error(`Server failed to start within ${Math.round((Date.now() - start) / 1000)}s`);
+}
+
+/** Contents of the daemon's startup-error log, or '' if none. */
+function startupErrorLog(): string {
   try {
-    const errorLog = fs.readFileSync(errorLogPath, 'utf-8').trim();
-    if (errorLog) {
-      throw new Error(`Server failed to start:\n${errorLog}`);
-    }
-  } catch (e: any) {
-    if (e.code !== 'ENOENT') throw e;
+    return fs.readFileSync(path.join(config.stateDir, 'browse-startup-error.log'), 'utf-8').trim();
+  } catch {
+    return '';
   }
-  throw new Error(`Server failed to start within ${MAX_START_WAIT / 1000}s`);
 }
 
 /**
@@ -460,12 +470,19 @@ async function ensureServer(): Promise<ServerState> {
   // Acquire lock to prevent concurrent restart races (TOCTOU)
   const releaseLock = acquireServerLock();
   if (!releaseLock) {
-    // Another process is starting the server — wait for it
+    // Another process is starting the server — wait for it. Same patient budget as a
+    // cold boot, but bail early if that starter died without ever becoming healthy.
     console.error('[browse] Another instance is starting the server, waiting...');
     const start = Date.now();
-    while (Date.now() - start < MAX_START_WAIT) {
+    while (Date.now() - start < READY_TIMEOUT_MS) {
       const freshState = readState();
-      if (freshState && await isServerHealthy(freshState)) return freshState;
+      const snap: StartupSnapshot = {
+        healthy: freshState ? await isServerHealthy(freshState) : false,
+        errorLogged: !!startupErrorLog(),
+      };
+      const status = classifyStartup(snap);
+      if (status === 'ready') return freshState!;
+      if (status === 'failed') break;
       await Bun.sleep(200);
     }
     throw new Error('Timed out waiting for another instance to start the server');
@@ -633,6 +650,7 @@ Tabs:           tabs | tab <id> | newtab [url] | closetab [id]
 Server:         status | cookie <n>=<v> | header <n>:<v>
                 useragent <str> | stop | restart
                 sync (status|now)
+Setup:          install (drop a browse launcher on PATH — no per-call env setup)
 Dialogs:        dialog-accept [text] | dialog-dismiss
 
 Refs:           After 'snapshot', use @e1, @e2... as selectors:
@@ -657,6 +675,42 @@ Refs:           After 'snapshot', use @e1, @e2... as selectors:
     if (a === '--force') { cliForce = true; return false; }
     return true;
   });
+
+  // ─── Install launcher (client-only, pre-server) ─────────────
+  // Drops a `browse`/`nightcrawl` launcher on PATH so a stateless shell can call
+  // commands with NO per-call `export PATH/NC` + `nc()` block (A5). `nc` is NOT
+  // installed — it would shadow netcat; suggest an alias instead.
+  if (command === 'install') {
+    const home = os.homedir();
+    const cliPath = path.join(import.meta.dir, 'cli.ts');
+    const pathEntries = (process.env.PATH || '').split(path.delimiter).filter(Boolean);
+    const candidates = [path.join(home, '.local', 'bin'), path.join(home, '.bun', 'bin')];
+    const fallback = path.join(home, '.nightcrawl', 'bin');
+    const isWritable = (d: string): boolean => {
+      try {
+        if (fs.existsSync(d)) { fs.accessSync(d, fs.constants.W_OK); return true; }
+        fs.accessSync(path.dirname(d), fs.constants.W_OK); // can we create it?
+        return true;
+      } catch { return false; }
+    };
+    const choice = chooseInstallDir(pathEntries, candidates, fallback, isWritable);
+    fs.mkdirSync(choice.dir, { recursive: true });
+    const script = renderLauncher(process.execPath, cliPath);
+    for (const name of ['browse', 'nightcrawl']) {
+      const dest = path.join(choice.dir, name);
+      fs.writeFileSync(dest, script, { mode: 0o755 });
+      fs.chmodSync(dest, 0o755);
+    }
+    console.log(`Installed launcher: browse, nightcrawl → ${choice.dir}`);
+    if (choice.onPath) {
+      console.log('Ready: run `browse goto <url>` from any shell — no setup needed.');
+    } else {
+      console.log(`\n${choice.dir} is not on your PATH. Add it once:`);
+      console.log(`  export PATH="${choice.dir}:$PATH"`);
+    }
+    console.log('(tip: `alias nc=browse` for the short name — `nc` is not installed to avoid shadowing netcat.)');
+    process.exit(0);
+  }
 
   // ─── Headed Connect (pre-server command) ────────────────────
   // connect must be handled BEFORE ensureServer() because it needs
