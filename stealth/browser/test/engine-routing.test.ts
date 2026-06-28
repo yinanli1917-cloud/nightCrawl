@@ -67,6 +67,22 @@ describe('engine-routing glue', () => {
     expect(buildNavGuidance('', 'headless', deps())).toBeNull();
   });
 
+  // ── Pillar 3: a SCORM/xAPI course-player URL surfaces the completion recipe.
+  test('buildNavGuidance appends the xAPI-course recipe for a course-player URL', () => {
+    const text = buildNavGuidance(
+      'https://x.com/wp-content/uploads/uncanny-snc/11/index_lms.html?client=Storyline',
+      'headless',
+      deps(),
+    );
+    expect(text!).toContain('recipe:');
+    expect(text!).toContain('--engine=real');
+  });
+
+  test('buildNavGuidance omits the recipe for an ordinary page', () => {
+    const text = buildNavGuidance('https://example.com/article', 'headless', deps());
+    expect(text!).not.toContain('recipe:');
+  });
+
   // ── A5: routing learns from the journal, but safety/strong rules still win.
   test('a learned recommendation supersedes the weak cold-start prior', () => {
     const text = buildNavGuidance('https://spa.example/x', 'headless', deps({

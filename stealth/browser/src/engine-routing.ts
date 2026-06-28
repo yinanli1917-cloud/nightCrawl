@@ -11,6 +11,10 @@
  * Phase 2 wires the SOFT tier (guidance injected on every navigation response —
  * the "enforced reminder" the agent can't skip). The medium (--force) and the
  * real-engine execution path activate in Phase 3 when Engine R exists.
+ *
+ * buildNavGuidance also surfaces an advisory completion RECIPE (Pillar 3) via
+ * recipe-registry when the URL/content/profile match a known task type (e.g. a
+ * SCORM/xAPI course → "use the LMS driver, not DOM clicks"). Advisory only.
  */
 
 import { advise, formatGuidance, type Advice, type AdvisorSignals, type Engine } from './strategy-advisor';
@@ -20,6 +24,8 @@ import { hasRealBrowserSession } from './has-real-session';
 import { rememberedEngine } from './domain-strategy';
 import { recommendForDomain, type LearnedRecommendation } from './engine-journal';
 import { resolve, selfTune, type ResolveResult, type ResolveSource, type TuneAdvice } from './self-tune';
+import { liveProfile } from './site-profile';
+import { matchRecipe, formatRecipe } from './recipe-registry';
 
 /** Navigation verbs whose responses carry the engine-guidance block. */
 export const NAV_COMMANDS = new Set(['goto', 'back', 'forward', 'reload']);
@@ -77,6 +83,7 @@ export function buildNavGuidance(
   url: string,
   chosenEngine: Engine,
   deps: SignalDeps = DEFAULT_DEPS,
+  content?: string,
 ): string | null {
   if (!url || url === 'about:blank') return null;
   const signals = gatherSignals(url, deps);
@@ -102,17 +109,27 @@ export function buildNavGuidance(
         strength: 'weak',
         reason: reason + untriedNote,
       };
-      return formatGuidance(chosenEngine, advice, signals, {
+      return appendRecipe(formatGuidance(chosenEngine, advice, signals, {
         evidence: learned.evidence,
         label: learned.confidence,
-      });
+      }), url, content);
     }
     // Weak prior with nothing learned yet — label it honestly so the agent knows
     // the recommendation will sharpen as outcomes accrue.
-    return formatGuidance(chosenEngine, base, signals, { evidence: '', label: 'prior — no history yet' });
+    return appendRecipe(formatGuidance(chosenEngine, base, signals, { evidence: '', label: 'prior — no history yet' }), url, content);
   }
 
-  return formatGuidance(chosenEngine, base, signals);
+  return appendRecipe(formatGuidance(chosenEngine, base, signals), url, content);
+}
+
+/**
+ * Append the advisory completion recipe (Pillar 3) when the URL/content/profile match a
+ * known task type (e.g. a SCORM/xAPI course). Reuses the same liveProfile the router
+ * already derives. No match → the guidance is returned unchanged.
+ */
+function appendRecipe(guidance: string, url: string, content?: string): string {
+  const recipe = matchRecipe({ profile: liveProfile(url), url, content });
+  return recipe ? `${guidance}\n\n${formatRecipe(recipe)}` : guidance;
 }
 
 /**

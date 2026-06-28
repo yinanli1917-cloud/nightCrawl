@@ -1490,7 +1490,7 @@ async function appendEngineGuidance(resp: Response, body: any, startedAt: number
 
     const url = browserManager.getCurrentUrl();
     const chosen: Engine = body?.engine === 'real' ? 'real' : 'headless';
-    const guidance = buildNavGuidance(url, chosen);
+    const guidance = buildNavGuidance(url, chosen, undefined, text);
 
     let extra = guidance ? `\n\n${guidance}` : '';
     // --engine=real only routes when the command is bridge-supported AND a bridge
@@ -1592,7 +1592,7 @@ async function routeToBridge(body: any, startedAt: number, chosenBy: 'auto' | 'e
     // Engine R now also carries the routing-guidance block (was headless-only), so an
     // agent on the real browser sees the recommendation + override hint.
     let guidance = '';
-    if (isNavCmd) { try { guidance = buildNavGuidance(requested || finalUrl, 'real') || ''; } catch {} }
+    if (isNavCmd) { try { guidance = buildNavGuidance(requested || finalUrl, 'real', undefined, text) || ''; } catch {} }
 
     // Untrusted reads (text/html/snapshot) carry third-party page content — wrap them in
     // the SAME trust-boundary markers headless uses, so instructions injected into a
