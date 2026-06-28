@@ -99,3 +99,19 @@ All Track B fixes shipped (TDD, 166 pass across the touched suites):
 
 Note: the loop's `profile`-on-`EngineDecisionRecord` write is still pending (it activates
 self-tune L2 pooling) — that is the loop session's step 1, intentionally NOT done here.
+
+## UPDATE 2026-06-28 — Session A owns the SKILL-LIBRARY layer (Phase 1)
+
+Session A is building the outcome-first skill/shortcut library — the LEARNED tier that
+layers ON TOP of Session B's `recipe-registry.ts` (the curated tier), exactly like
+`engine-journal` layers on `strategy-advisor`. **Session B: do NOT build a parallel
+learned/discovery layer on recipe-registry — it's subsumed here.** All new flat files,
+zero conflict with Track B:
+- `integrity-gate.ts` (the legitimacy boundary — fact-asserting writes confirm), `goal.ts`,
+  `skill-journal.ts`, `network-capture-deep.ts`, `skill-discovery.ts`, `skill-router.ts`
+  (reuses `recipe-registry.matchRecipe` as its L4 tier), `skill-loop.ts`, `skill-store-ops.ts`.
+- Plan: `~/.claude/plans/let-s-continue-with-the-vivid-hummingbird.md`.
+Thin wiring into Session B files (`read-commands.ts` gate intercept, `browser-manager.ts`
+one `attachDeepCapture` line, `commands.ts`/`meta-commands.ts` `skills` cmd, `server.ts`
+`--goal` + a NEW `appendSkillGuidance`) is DEFERRED to a final coordinated pass —
+`git pull --rebase` first. Phase 2 (the opt-in commons) is designed, not yet built.
