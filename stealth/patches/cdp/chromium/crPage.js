@@ -358,7 +358,11 @@ class FrameSession {
       this._windowId = windowId;
     }
     let videoOptions;
-    if (!this._page.isStorageStatePage && this._isMainFrame() && hasUIWindow)
+    // PW 1.59.1 moved video recording out of the Screencast class (launchVideoRecorder
+    // is now a standalone fn in videoRecorder.js). Guard so a missing method no-ops
+    // (nightcrawl never records video) instead of crashing the whole browser launch.
+    if (!this._page.isStorageStatePage && this._isMainFrame() && hasUIWindow
+        && typeof this._crPage._page.screencast.launchVideoRecorder === 'function')
       videoOptions = this._crPage._page.screencast.launchVideoRecorder();
     let lifecycleEventsEnabled;
     if (!this._isMainFrame())
@@ -443,7 +447,7 @@ class FrameSession {
           true
           /* runImmediately */
         ));
-      if (videoOptions)
+      if (videoOptions && typeof this._crPage._page.screencast.startVideoRecording === 'function')
         promises.push(this._crPage._page.screencast.startVideoRecording(videoOptions));
     }
     promises.push(this._client.send("Runtime.runIfWaitingForDebugger"));

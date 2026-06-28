@@ -1,6 +1,11 @@
 rebrowser-patches: 1.0.19
-playwright-core: 1.58.2
+playwright-core: 1.58.2 (forward-compatible with 1.59.1)
 adapted: 2026-04-07
+compat-fix: 2026-06-28
 notes: Patches adapted from rebrowser-patches v1.0.19 (targets PW 1.52.0) to Playwright 1.58.2.
   Key adaptations: delegate._sessions (not _delegate), optional chaining for null safety,
   screencast.stopFrameThrottler safety check, ManualPromise-based Worker class.
+  2026-06-28: PW 1.59.1 moved video recording out of the Screencast class. crPage.js now
+  guards screencast.launchVideoRecorder/startVideoRecording with typeof checks so the patch
+  runs on both 1.58.2 and 1.59.1 (nightcrawl records no video). Without this the browser
+  launch FATAL-crashed under 1.59.1.
