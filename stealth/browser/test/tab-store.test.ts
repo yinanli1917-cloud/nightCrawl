@@ -144,4 +144,35 @@ describe('TabStore', () => {
     expect(s.activeIdFor('B')).toBe(0);
     expect(s.size()).toBe(0);
   });
+
+  // ─── Lazy re-bind: a follow-up command recovers the existing tab (A2) ────────
+  // The Cursor-course session hit "No active page" 28x: goto worked, the next
+  // command found the active pointer gone (tab replaced on nav, or a fresh client
+  // call) and threw. Re-bind recovers the session's own tab instead of erroring.
+  test('activePageFor re-binds to the session’s most-recent owned tab when the pointer is lost', () => {
+    const s = new TabStore();
+    const a1 = s.add(fakePage('a1'), 'A');
+    const a2 = s.add(fakePage('a2'), 'A');
+    s.drop(a2);                                       // A's active pointer (a2) is cleared
+    expect((s.activePageFor('A') as any).__tag).toBe('a1'); // recovered the remaining owned tab
+    expect(s.activeIdFor('A')).toBe(a1);             // and persisted the re-bind
+  });
+
+  test('default re-binds to the most-recent tab overall (back-compat)', () => {
+    const s = new TabStore();
+    s.add(fakePage('x'), 'A');
+    const y = s.add(fakePage('y'), 'B');
+    expect((s.activePageFor('default') as any).__tag).toBe('y');
+  });
+
+  test('activePageFor still throws when the store is empty', () => {
+    const s = new TabStore();
+    expect(() => s.activePageFor('default')).toThrow(/No active page/);
+  });
+
+  test('a tagged session with zero owned tabs throws (never steals another session’s tab)', () => {
+    const s = new TabStore();
+    s.add(fakePage('b'), 'B');                        // only B owns a tab
+    expect(() => s.activePageFor('A')).toThrow(/No active page/); // A owns none, A≠default
+  });
 });

@@ -7,6 +7,9 @@
  *        is tracked PER SESSION (sessionActive map), not globally: each session
  *        points at its OWN tab, so concurrent sessions never steal each other's
  *        view. The "default" session is the back-compat key for untagged callers.
+ *        activePageFor LAZILY RE-BINDS a session that lost its active pointer to its
+ *        own most-recent tab (default may take the newest overall), so a follow-up
+ *        command recovers the page instead of erroring "No active page".
  */
 
 import type { Page, Frame, Locator } from 'playwright';
@@ -115,10 +118,33 @@ export class TabStore {
     return this.tabs.get(this.activeIdFor(sessionId));
   }
 
-  /** `sessionId`'s active page, or throw — NEVER falls back to another session. */
+  /**
+   * Re-bind a session that lost its active pointer (tab replaced on nav, dropped,
+   * or a fresh client call). Recovers the session's OWN most-recent tab first; the
+   * back-compat `default` key may fall back to the newest tab overall. A tagged
+   * session that owns nothing returns 0 (no cross-session steal). Returns a tab id
+   * or 0 when nothing can be recovered.
+   */
+  private rebindActive(sessionId: string): number {
+    const owned = this.idsFor(sessionId);
+    if (owned.length) return Math.max(...owned);
+    if (sessionId === DEFAULT_SESSION_ID && this.tabs.size) return Math.max(...this.tabs.keys());
+    return 0;
+  }
+
+  /**
+   * `sessionId`'s active page. If the active pointer was lost, lazily re-bind to the
+   * session's own most-recent tab (or, for `default`, the newest tab overall) and
+   * persist it — so a follow-up command recovers the page instead of erroring. Only
+   * an EMPTY store (or a tagged session that owns nothing) throws. Never steals
+   * another live session's tab.
+   */
   activePageFor(sessionId: string): Page {
-    const t = this.activeFor(sessionId);
+    let id = this.activeIdFor(sessionId);
+    if (id === 0) id = this.rebindActive(sessionId);
+    const t = this.tabs.get(id);
     if (!t) throw new Error('No active page. Use "browse goto <url>" first.');
+    this.sessionActive.set(sessionId, id);
     return t.page;
   }
 

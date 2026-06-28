@@ -65,16 +65,16 @@ describe('resolveSessionId', () => {
     expect(id).toBe('claude:cc');
   });
 
-  test('falls back to proc:<ppid> for a plain shell', () => {
-    expect(resolveSessionId({}, { ppid: 12345 })).toBe('proc:12345');
+  test('untagged plain-shell callers share the one default workspace', () => {
+    // Was proc:<ppid>, which fragmented every fresh-shell CLI call into its own
+    // empty workspace ("No active page" x28 in the Cursor-course session). Untagged
+    // callers now share `default` so a follow-up command finds the prior tab.
+    expect(resolveSessionId({})).toBe(DEFAULT_SESSION_ID);
+    expect(resolveSessionId({ FOO: 'bar' })).toBe(DEFAULT_SESSION_ID);
   });
 
-  test('falls back to default when no env and no ppid', () => {
-    expect(resolveSessionId({}, { ppid: 0 })).toBe(DEFAULT_SESSION_ID);
-  });
-
-  test('blank env values are ignored (whitespace-only)', () => {
-    expect(resolveSessionId({ CLAUDE_CODE_SESSION_ID: '   ' }, { ppid: 7 })).toBe('proc:7');
+  test('blank env values fall back to default (whitespace-only ignored)', () => {
+    expect(resolveSessionId({ CLAUDE_CODE_SESSION_ID: '   ' })).toBe(DEFAULT_SESSION_ID);
   });
 
   test('deterministic for the same input', () => {

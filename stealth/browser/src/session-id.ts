@@ -59,11 +59,15 @@ export function sanitizeSessionId(raw: string | null | undefined): string {
 
 /**
  * Resolve this process's session id from the environment.
- * Precedence: SESSION_SOURCES in order → proc:<ppid> (plain shell) → default.
+ * Precedence: SESSION_SOURCES in order → default (the one shared workspace).
+ *
+ * Untagged callers ALL map to `default` on purpose. A prior design keyed them to
+ * proc:<ppid>, but agent harnesses (Cursor) run each CLI command in a FRESH shell,
+ * so every command got a new ppid → a new empty workspace → "No active page". A
+ * tagged agent (env-var session) still gets its own isolated workspace.
  */
 export function resolveSessionId(
   env: Record<string, string | undefined> = process.env,
-  opts: { ppid?: number } = {},
 ): string {
   for (const src of SESSION_SOURCES) {
     const val = env[src.env];
@@ -72,8 +76,5 @@ export function resolveSessionId(
       return sanitizeSessionId(id);
     }
   }
-  // Weak fallback: tie to the parent process so repeated calls from one shell
-  // share a session. ppid can be 0/undefined in some sandboxes → default.
-  const ppid = opts.ppid ?? (typeof process.ppid === 'number' ? process.ppid : 0);
-  return ppid ? `proc:${ppid}` : DEFAULT_SESSION_ID;
+  return DEFAULT_SESSION_ID;
 }
