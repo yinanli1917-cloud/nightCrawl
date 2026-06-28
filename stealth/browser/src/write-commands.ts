@@ -3,9 +3,13 @@
  *
  * goto, back, forward, reload, click, fill, select, hover, type,
  * press, scroll, wait, viewport, cookie, header, useragent, cleanup
+ *
+ * Ref-based commands resolve through resolveRefWithRefresh, which self-heals a stale
+ * @ref by re-snapshotting once and retrying (refs invalidate on navigation).
  */
 
 import type { TabView } from './session-view';
+import { handleSnapshot } from './snapshot';
 import { findInstalledBrowsers, importCookies, listSupportedBrowserNames } from './cookie-import-browser';
 import { replaceCookiesFor } from './handoff-cookie-import';
 import { validateNavigationUrl } from './url-validation';
@@ -16,6 +20,33 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { TEMP_DIR, isPathWithin } from './platform';
 
+/** A @ref miss caused by a stale snapshot — refs invalidate on navigation. */
+export function isStaleRefError(selector: string, err: unknown): boolean {
+  if (!selector.startsWith('@e') && !selector.startsWith('@c')) return false;
+  const msg = err instanceof Error ? err.message : String(err);
+  return /not found|stale/i.test(msg);
+}
+
+/**
+ * Resolve a ref, self-healing a stale @ref: on a not-found/stale error, refresh the
+ * snapshot ONCE and retry, so a follow-up command recovers instead of forcing the
+ * agent to run `snapshot` by hand (the Cursor-course @e9/@e10/@e11 recurrences). One
+ * retry only — a still-missing ref re-throws. Pure given the injected callbacks.
+ */
+export async function resolveRefWithRefresh<T>(
+  resolve: (sel: string) => Promise<T>,
+  refresh: () => Promise<void>,
+  selector: string,
+): Promise<T> {
+  try {
+    return await resolve(selector);
+  } catch (err) {
+    if (!isStaleRefError(selector, err)) throw err;
+    await refresh();
+    return await resolve(selector);
+  }
+}
+
 export async function handleWriteCommand(
   command: string,
   args: string[],
@@ -25,6 +56,13 @@ export async function handleWriteCommand(
   // Frame-aware target for locator-based operations (click, fill, etc.)
   const target = bm.getActiveFrameOrPage();
   const inFrame = bm.getFrame() !== null;
+  // Self-healing ref resolution: a stale @ref re-snapshots once and retries (A3).
+  const resolveRefFresh = (sel: string) =>
+    resolveRefWithRefresh(
+      (s) => bm.resolveRef(s),
+      async () => { await handleSnapshot(['-i'], bm); },
+      sel,
+    );
 
   switch (command) {
     case 'goto': {
@@ -62,7 +100,7 @@ export async function handleWriteCommand(
       // Auto-route: if ref points to a real <option> inside a <select>, use selectOption
       const role = bm.getRefRole(selector);
       if (role === 'option') {
-        const resolved = await bm.resolveRef(selector);
+        const resolved = await resolveRefFresh(selector);
         if ('locator' in resolved) {
           const optionInfo = await resolved.locator.evaluate(el => {
             if (el.tagName !== 'OPTION') return null; // custom [role=option], not real <option>
@@ -79,7 +117,7 @@ export async function handleWriteCommand(
         }
       }
 
-      const resolved = await bm.resolveRef(selector);
+      const resolved = await resolveRefFresh(selector);
       try {
         if ('locator' in resolved) {
           await resolved.locator.click({ timeout: 5000 });
@@ -109,7 +147,7 @@ export async function handleWriteCommand(
       const [selector, ...valueParts] = args;
       const value = valueParts.join(' ');
       if (!selector || !value) throw new Error('Usage: browse fill <selector> <value>');
-      const resolved = await bm.resolveRef(selector);
+      const resolved = await resolveRefFresh(selector);
       if ('locator' in resolved) {
         await resolved.locator.fill(value, { timeout: 5000 });
       } else {
@@ -124,7 +162,7 @@ export async function handleWriteCommand(
       const [selector, ...valueParts] = args;
       const value = valueParts.join(' ');
       if (!selector || !value) throw new Error('Usage: browse select <selector> <value>');
-      const resolved = await bm.resolveRef(selector);
+      const resolved = await resolveRefFresh(selector);
       if ('locator' in resolved) {
         await resolved.locator.selectOption(value, { timeout: 5000 });
       } else {
@@ -138,7 +176,7 @@ export async function handleWriteCommand(
     case 'hover': {
       const selector = args[0];
       if (!selector) throw new Error('Usage: browse hover <selector>');
-      const resolved = await bm.resolveRef(selector);
+      const resolved = await resolveRefFresh(selector);
       if ('locator' in resolved) {
         await resolved.locator.hover({ timeout: 5000 });
       } else {
@@ -164,7 +202,7 @@ export async function handleWriteCommand(
     case 'scroll': {
       const selector = args[0];
       if (selector) {
-        const resolved = await bm.resolveRef(selector);
+        const resolved = await resolveRefFresh(selector);
         if ('locator' in resolved) {
           await resolved.locator.scrollIntoViewIfNeeded({ timeout: 5000 });
         } else {
@@ -193,7 +231,7 @@ export async function handleWriteCommand(
         return 'DOM content loaded';
       }
       const timeout = args[1] ? parseInt(args[1], 10) : 15000;
-      const resolved = await bm.resolveRef(selector);
+      const resolved = await resolveRefFresh(selector);
       if ('locator' in resolved) {
         await resolved.locator.waitFor({ state: 'visible', timeout });
       } else {
@@ -258,7 +296,7 @@ export async function handleWriteCommand(
         if (!fs.existsSync(fp)) throw new Error(`File not found: ${fp}`);
       }
 
-      const resolved = await bm.resolveRef(selector);
+      const resolved = await resolveRefFresh(selector);
       if ('locator' in resolved) {
         await resolved.locator.setInputFiles(filePaths);
       } else {

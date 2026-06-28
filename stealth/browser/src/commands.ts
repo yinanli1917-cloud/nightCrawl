@@ -12,7 +12,7 @@
 
 export const READ_COMMANDS = new Set([
   'text', 'html', 'links', 'forms', 'accessibility',
-  'js', 'eval', 'css', 'attrs',
+  'js', 'eval', 'css', 'attrs', 'wait-for',
   'console', 'network', 'cookies', 'storage', 'perf',
   'dialog', 'is',
 ]);
@@ -85,6 +85,7 @@ export const COMMAND_DESCRIPTIONS: Record<string, { category: string; descriptio
   // Inspection
   'js':      { category: 'Inspection', description: 'Run JavaScript expression and return result as string', usage: 'js <expr>' },
   'eval':    { category: 'Inspection', description: 'Run JavaScript from file and return result as string (path must be under /tmp or cwd)', usage: 'eval <file>' },
+  'wait-for':{ category: 'Inspection', description: 'Poll a JS predicate in-page until it is truthy or times out — use instead of sleep. Returns when satisfied; throws on timeout', usage: 'wait-for <js-predicate> [timeoutMs]' },
   'css':     { category: 'Inspection', description: 'Computed CSS value', usage: 'css <sel> <prop>' },
   'attrs':   { category: 'Inspection', description: 'Element attributes as JSON', usage: 'attrs <sel|@ref>' },
   'is':      { category: 'Inspection', description: 'State check (visible/hidden/enabled/disabled/checked/editable/focused)', usage: 'is <prop> <sel>' },

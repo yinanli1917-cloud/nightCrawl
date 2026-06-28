@@ -1,8 +1,11 @@
 /**
  * Read commands — extract data from pages without side effects
  *
- * text, html, links, forms, accessibility, js, eval, css, attrs,
+ * text, html, links, forms, accessibility, js, eval, wait-for, css, attrs,
  * console, network, cookies, storage, perf
+ *
+ * js/eval run inside an async IIFE that always returns its value (promises resolve)
+ * under a hard timeout; wait-for polls a JS predicate in-page (replaces sleep).
  */
 
 import type { TabView } from './session-view';
@@ -13,13 +16,7 @@ import * as path from 'path';
 import { TEMP_DIR, isPathWithin } from './platform';
 import { stripHiddenElements } from './content-security';
 
-/** Detect await keyword, ignoring comments. Accepted risk: await in string literals triggers wrapping (harmless). */
-function hasAwait(code: string): boolean {
-  const stripped = code.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
-  return /\bawait\b/.test(stripped);
-}
-
-/** Detect whether code needs a block wrapper {…} vs expression wrapper (…) inside an async IIFE. */
+/** Detect whether code needs a block wrapper {…} vs an expression wrapper (…) inside an async IIFE. */
 function needsBlockWrapper(code: string): boolean {
   const trimmed = code.trim();
   if (trimmed.split('\n').length > 1) return true;
@@ -28,17 +25,22 @@ function needsBlockWrapper(code: string): boolean {
   return false;
 }
 
-/** Wrap code for page.evaluate(), using async IIFE with block or expression body as needed. */
-function wrapForEvaluate(code: string): string {
-  if (!hasAwait(code)) return code;
-  const trimmed = code.trim();
-  if (/^await\b/.test(trimmed)) {
-    return `(async()=>(${trimmed}))()`;
-  }
-  return needsBlockWrapper(trimmed)
-    ? `(async()=>{\n${code}\n})()`
-    : `(async()=>(${trimmed}))()`;
+/**
+ * Wrap code for page.evaluate() in an async IIFE that ALWAYS returns its value, so a
+ * promise (even one with no `await` keyword, e.g. `fetch(u).then(...)`) is awaited and
+ * its resolved value comes back — parity with Engine R's awaitPromise. A single
+ * expression gets `return (...)` injected; a multi-statement block keeps its own
+ * `return`. Replaces the old await-token sniff that left `.then()` chains unwrapped
+ * (the Cursor-course "nc js returned empty" bug). Exported for tests.
+ */
+export function wrapForEvaluate(code: string): string {
+  const body = needsBlockWrapper(code) ? code : `return (${code.trim()})`;
+  return `(async () => { ${body} })()`;
 }
+
+// Cap a single in-page evaluate so a runaway fetch/promise fails fast instead of
+// blocking past the bridge/command timeout (the Cursor-course 66s hang).
+const JS_EVAL_TIMEOUT_MS = 30_000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout>;
@@ -182,7 +184,7 @@ export async function handleReadCommand(
       const expr = args[0];
       if (!expr) throw new Error('Usage: browse js <expression>');
       const wrapped = wrapForEvaluate(expr);
-      const result = await target.evaluate(wrapped);
+      const result = await withTimeout(target.evaluate(wrapped), JS_EVAL_TIMEOUT_MS, 'js');
       return typeof result === 'object' ? JSON.stringify(result, null, 2) : String(result ?? '');
     }
 
@@ -193,8 +195,18 @@ export async function handleReadCommand(
       if (!fs.existsSync(filePath)) throw new Error(`File not found: ${filePath}`);
       const code = fs.readFileSync(filePath, 'utf-8');
       const wrapped = wrapForEvaluate(code);
-      const result = await target.evaluate(wrapped);
+      const result = await withTimeout(target.evaluate(wrapped), JS_EVAL_TIMEOUT_MS, 'eval');
       return typeof result === 'object' ? JSON.stringify(result, null, 2) : String(result ?? '');
+    }
+
+    case 'wait-for': {
+      const predicate = args[0];
+      if (!predicate) throw new Error('Usage: browse wait-for <js-predicate> [timeoutMs]');
+      const timeout = args[1] ? parseInt(args[1], 10) : 15000;
+      // Native in-page polling (rAF/mutation), not a sleep loop — replaces the
+      // Cursor-course `sleep 180/480` blocking waits with a real settle-wait.
+      await target.waitForFunction(predicate, undefined, { timeout, polling: 'raf' });
+      return `Predicate became truthy: ${predicate.slice(0, 120)}`;
     }
 
     case 'css': {
