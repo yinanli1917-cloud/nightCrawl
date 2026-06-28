@@ -78,3 +78,24 @@ learning being verified. Honest end-to-end verification requires a post-Pillar-1
 
 **Session B: when Pillar 1 lands, note it here** (or ping) so the loop session resumes
 the 3 steps above. Run ONE daemon only (bridge port 10087) — don't both start daemons.
+
+## UPDATE 2026-06-27 — Track B landed (Pillar 1 unblocks the loop)
+
+Driven empirically from the real Cursor-course session (`a8f6c19f`, 93 terminal cmds):
+the failure taxonomy was 28x "No active page", 23x re-export boilerplate, ~30 cmds of
+SCORM DOM brute-force, async-js empties, daemon "failed to start in 8s", and stale @refs.
+All Track B fixes shipped (TDD, 166 pass across the touched suites):
+
+- **A1 session continuity** — `session-id.ts` drops `proc:<ppid>`; untagged callers share
+  one `default` workspace. **Pillar 1 is LANDED** — the loop's 3 held steps can resume.
+- **A2 lazy re-bind** — `tab-store.ts` `activePageFor` recovers the session's own tab
+  instead of "No active page".
+- **A3 stale-ref auto-refresh** — `write-commands.ts` re-snapshots once on a stale @ref.
+- **A4 daemon readiness** — `daemon-readiness.ts` + `cli.ts`: wait up to 45s for a cold
+  boot, fail fast on a dead process / error log (no more "failed within 8s").
+- **A5 launcher** — `launcher.ts` + `cli.ts install`: drop a `browse` launcher on PATH.
+- **B1 robust async js + wait-for** — `read-commands.ts` (+ `commands.ts`).
+- **B2 recipe surfacing** — `recipe-registry.ts` wired into `engine-routing.buildNavGuidance`.
+
+Note: the loop's `profile`-on-`EngineDecisionRecord` write is still pending (it activates
+self-tune L2 pooling) — that is the loop session's step 1, intentionally NOT done here.

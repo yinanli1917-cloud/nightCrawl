@@ -81,6 +81,36 @@ No existing tool combines: **local CLI + real browser cookies + stealth + persis
     - **Handoff/detection** — login-wall detection (`detectLoginWall(sessionId)`) + the post-command auto-handover run on the CALLER's tab (fixes a non-default `claude:` session missing its wall); the headed handoff ACTION + restore/recreate stay whole-browser and re-own tabs as `default`.
     - **Engine R** (`bridge-hub.ts`, `bridge-ws.ts`, extension `background.js`) — `BridgeCommand` + the `tool_call` carry `sessionId`; the extension keeps `boundBySession` (one Arc background tab per session; `planBoundTab`/`clearBoundByTabId` in `bridge-session.ts` are the testable mirror). One socket multiplexes all sessions by `requestId`. **A background.js change needs a one-time Arc extension reload.**
 
+### Stateless-caller resilience (Track B — from the texascourtclasses Cursor-course post-mortem)
+
+Driven by the real failure taxonomy of an external agent (Cursor) that runs each CLI
+command in a FRESH shell: 28x "No active page", 23x re-export boilerplate, ~30 cmds of
+SCORM DOM brute-force, async-js empties, "Server failed to start within 8s", stale @refs.
+The fix makes nightcrawl safe for STATELESS, UNINFORMED callers — self-healing execution
++ self-teaching capability — instead of assuming a stateful, knowledgeable driver.
+
+- **Session continuity** (`session-id.ts`) — untagged callers ALL map to one shared
+  `default` workspace (the `proc:<ppid>` fragmentation is gone). A fresh-shell follow-up
+  command finds the prior tab. Tagged agents (env-var sessions) stay isolated.
+- **Lazy tab re-bind** (`tab-store.ts`) — `activePageFor` recovers the session's own
+  most-recent tab (default may take the newest overall) when the active pointer is lost,
+  instead of throwing "No active page". Only an empty store throws.
+- **Stale-ref auto-refresh** (`write-commands.ts`) — a click/fill/etc. on a stale `@ref`
+  re-snapshots ONCE and retries (`resolveRefWithRefresh`), then errors if still gone.
+- **Robust async `js` + `wait-for`** (`read-commands.ts`, `commands.ts`) — `js`/`eval`
+  always wrap in an async IIFE that RETURNS the value (so `fetch().then()` resolves) under
+  a 30s cap; `wait-for <js-predicate> [timeoutMs]` polls in-page (replaces `sleep`).
+- **Recipe surfacing** (`recipe-registry.ts` -> `engine-routing.buildNavGuidance`) — a
+  data-driven, advisory registry classifies a task/site (e.g. SCORM/xAPI course) and
+  surfaces the right move ("use `--engine=real`; completion is an xAPI statement to the
+  LRS, not DOM clicks"). Never auto-executes.
+- **Daemon readiness** (`daemon-readiness.ts` -> `cli.ts`) — startup/lock-wait loops wait
+  up to 45s for a cold CloakBrowser boot but fail FAST on a dead process / startup-error
+  log (`classifyStartup`), ending the "failed to start within 8s" churn.
+- **Zero-setup launcher** (`launcher.ts` -> `browse install`) — drops a `browse`/
+  `nightcrawl` launcher on PATH so a fresh shell needs no `export PATH/NC` block. `nc` is
+  NOT installed (it would shadow netcat); `alias nc=browse` if wanted.
+
 ### Engine Configuration
 - CloakBrowser stealth Chromium is the only engine. `BROWSE_ENGINE` is no longer parsed.
 - `BROWSE_FINGERPRINT_SEED=12345` — explicit fingerprint seed (10000-99999); otherwise persisted in `~/.nightcrawl/state/engine-seed.json`
