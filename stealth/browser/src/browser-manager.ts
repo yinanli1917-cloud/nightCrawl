@@ -31,6 +31,7 @@ export async function getChromium() {
   return _chromium;
 }
 import { addConsoleEntry, addNetworkEntry, addDialogEntry, networkBuffer, type DialogEntry } from './buffers';
+import { attachDeepCapture } from './network-capture-deep';
 import { validateNavigationUrl } from './url-validation';
 import { assertSafeNavigation, filterHostileCookies } from './hostile-domains';
 import { replaceCookiesFor } from './handoff-cookie-import';
@@ -710,6 +711,10 @@ export class BrowserManager implements TabView {
 
   // ─── Console/Network/Dialog/Ref Wiring ────────────────────
   wirePageEvents(page: Page, tabId: number) {
+    // Skill-library discovery substrate: capture xhr/fetch bodies (redacted, in-memory)
+    // so a verified success can be correlated to the backend call that produced it.
+    attachDeepCapture(page);
+
     page.on('framenavigated', (frame) => {
       if (frame === page.mainFrame()) {
         // Per-tab: navigating THIS tab clears only ITS refs/frame, never
