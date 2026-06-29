@@ -309,13 +309,39 @@ export async function handleMetaCommand(
         formatVerifyFileResult,
         formatVerifyPageResult,
       } = await import('./deliverable-verify');
-      const parsed = parseVerifyArgs(args);
+      // Flywheel: a verified success is the moment the skill library LEARNS — correlate
+      // the recent deep-capture to the success and record the method that worked.
+      // Best-effort, never affects the verify result. The integrity gate applies when the
+      // learned shortcut is later surfaced/run, never here.
+      const learnFromVerify = async (formatted: string): Promise<void> => {
+        try {
+          const { closeLoop } = await import('./skill-loop');
+          const { liveProfile } = await import('./site-profile');
+          const { eTldPlusOne } = await import('./handoff-consent');
+          const { parseGoal, inferGoal } = await import('./goal');
+          const { deepNetBuffer } = await import('./network-capture-deep');
+          const url = (() => { try { return bm.getCurrentUrl(); } catch { return ''; } })();
+          if (!url || url === 'about:blank') return;
+          const goalArg = args.find((a) => a.startsWith('--goal='))?.split('=')[1];
+          const goal = goalArg ? parseGoal(goalArg) : inferGoal('verify', url);
+          closeLoop({
+            goalType: goal, url, domain: eTldPlusOne(url), profile: liveProfile(url),
+            verifyText: formatted, metrics: { verifyOkRate: formatted.includes('VERIFY_OK') ? 1 : 0 },
+            entries: deepNetBuffer.toArray(), now: Date.now(),
+          });
+        } catch {}
+      };
+
+      // --goal is for the flywheel, not the verifier — strip it before parsing.
+      const parsed = parseVerifyArgs(args.filter((a) => !a.startsWith('--goal=')));
       if (parsed.mode === 'file' && parsed.file) {
         const result = verifyFile(parsed.file);
         if (!result.passed) {
           throw new Error(formatVerifyFileResult(result));
         }
-        return formatVerifyFileResult(result);
+        const out = formatVerifyFileResult(result);
+        await learnFromVerify(out);
+        return out;
       }
       if (parsed.mode === 'page' && parsed.page) {
         const page = bm.getPage();
@@ -325,7 +351,9 @@ export async function handleMetaCommand(
         if (!result.passed) {
           throw new Error(formatVerifyPageResult(result));
         }
-        return formatVerifyPageResult(result);
+        const out = formatVerifyPageResult(result);
+        await learnFromVerify(out);
+        return out;
       }
       throw new Error('verify: missing file or page options');
     }
