@@ -14,6 +14,7 @@ import {
   classifyShapeIntegrity,
   isEfficiencyWrite,
   requireConfirmation,
+  gateJsCode,
   type ActionDescriptor,
 } from '../src/integrity-gate';
 
@@ -73,6 +74,25 @@ describe('integrity-gate — shape classification (for discovered skills)', () =
   test('a shape whose urlPattern/goal is course-completion is integrity-sensitive', () => {
     expect(classifyShapeIntegrity({ verb: 'POST', urlPattern: '/ucTinCan/statements' }, 'complete-course')).toBe(true);
     expect(classifyShapeIntegrity({ verb: 'GET', urlPattern: '/api/search' }, 'extract-data')).toBe(false);
+  });
+});
+
+describe('integrity-gate — gateJsCode (the runtime js intercept)', () => {
+  test('a hand-written xAPI completed fetch → confirm (the court-class forgery, blocked)', () => {
+    const code = `await fetch("/ucTinCan/statements",{method:"POST",body:'{"verb":"completed"}'})`;
+    expect(gateJsCode(code).kind).toBe('confirm-required');
+  });
+  test('a POST to a /complete endpoint → confirm (fail-safe assertion-like)', () => {
+    expect(gateJsCode(`fetch("https://x.com/api/courses/40122/complete",{method:"POST"})`).kind).toBe('confirm-required');
+  });
+  test('a benign read fetch passes', () => {
+    expect(gateJsCode(`await fetch("/api/search?q=hi").then(r=>r.json())`).kind).toBe('pass');
+  });
+  test('non-network JS (DOM) passes — only network calls are gated here', () => {
+    expect(gateJsCode(`document.querySelector('.next').click()`).kind).toBe('pass');
+  });
+  test('an XMLHttpRequest open to a payment endpoint → confirm', () => {
+    expect(gateJsCode(`var x=new XMLHttpRequest();x.open("POST","/v1/charge")`).kind).toBe('confirm-required');
   });
 });
 

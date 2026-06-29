@@ -15,6 +15,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { TEMP_DIR, isPathWithin } from './platform';
 import { stripHiddenElements } from './content-security';
+import { gateJsCode } from './integrity-gate';
 
 /** Detect whether code needs a block wrapper {…} vs an expression wrapper (…) inside an async IIFE. */
 function needsBlockWrapper(code: string): boolean {
@@ -183,6 +184,10 @@ export async function handleReadCommand(
     case 'js': {
       const expr = args[0];
       if (!expr) throw new Error('Usage: browse js <expression>');
+      const gate = gateJsCode(expr);
+      if (gate.kind === 'confirm-required') {
+        return `CONFIRM_REQUIRED: ${gate.reason}. This js asserts a fact to a third party — get explicit user confirmation first; nightcrawl will not run it unconfirmed.`;
+      }
       const wrapped = wrapForEvaluate(expr);
       const result = await withTimeout(target.evaluate(wrapped), JS_EVAL_TIMEOUT_MS, 'js');
       return typeof result === 'object' ? JSON.stringify(result, null, 2) : String(result ?? '');
@@ -194,6 +199,10 @@ export async function handleReadCommand(
       validateReadPath(filePath);
       if (!fs.existsSync(filePath)) throw new Error(`File not found: ${filePath}`);
       const code = fs.readFileSync(filePath, 'utf-8');
+      const gate = gateJsCode(code);
+      if (gate.kind === 'confirm-required') {
+        return `CONFIRM_REQUIRED: ${gate.reason}. This script asserts a fact to a third party — get explicit user confirmation first; nightcrawl will not run it unconfirmed.`;
+      }
       const wrapped = wrapForEvaluate(code);
       const result = await withTimeout(target.evaluate(wrapped), JS_EVAL_TIMEOUT_MS, 'eval');
       return typeof result === 'object' ? JSON.stringify(result, null, 2) : String(result ?? '');

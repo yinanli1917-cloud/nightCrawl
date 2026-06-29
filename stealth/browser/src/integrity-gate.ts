@@ -92,6 +92,32 @@ export function classifyShapeIntegrity(
   return SIGNALS.some((s) => s.re.test(hay));
 }
 
+/**
+ * Gate a raw `js`/`eval` code string before it runs in the page. Extracts a fetch /
+ * XMLHttpRequest target (the only thing that can assert a fact to a third party) and
+ * classifies it. Non-network code, and benign reads, pass. A clear fact-assertion (the
+ * court-class forged an xAPI `completed` POST by hand) is confirm-required — this is the
+ * runtime backstop for an agent that hand-writes the call instead of using a surfaced,
+ * already-gated skill. Best-effort parse: if no network call is found, it passes (the
+ * surfacing-level gate is the primary boundary). Pure.
+ */
+export function gateJsCode(code: string): IntegrityVerdict {
+  const fetchUrl = code.match(/fetch\s*\(\s*[`'"]([^`'"]+)[`'"]/);
+  const xhrOpen = code.match(/\.open\s*\(\s*[`'"]([A-Za-z]+)[`'"]\s*,\s*[`'"]([^`'"]+)[`'"]/);
+  let url: string | undefined;
+  let verb: string | undefined;
+  if (fetchUrl) {
+    url = fetchUrl[1];
+    verb = code.match(/method\s*:\s*[`'"]([A-Za-z]+)[`'"]/)?.[1];
+  } else if (xhrOpen) {
+    verb = xhrOpen[1];
+    url = xhrOpen[2];
+  }
+  if (!url) return { kind: 'pass' }; // no network call → nothing to assert here
+  const body = code.match(/body\s*:\s*[`'"]([\s\S]*?)[`'"]/)?.[1];
+  return classifyAction({ url, verb, body });
+}
+
 // ─── Confirmation (never auto-approves) ────────────────────
 
 export interface ConfirmDeps {
