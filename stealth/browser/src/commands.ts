@@ -29,7 +29,7 @@ export const META_COMMANDS = new Set([
   'tabs', 'tab', 'newtab', 'closetab',
   'status', 'stop', 'restart',
   'screenshot', 'pdf', 'responsive',
-  'chain', 'diff',
+  'chain', 'diff', 'skills',
   'url', 'snapshot',
   'handoff', 'resume',
   'grant-handoff', 'revoke-handoff', 'list-handoff',
@@ -136,6 +136,7 @@ export const COMMAND_DESCRIPTIONS: Record<string, { category: string; descriptio
   // Meta
   'snapshot':{ category: 'Snapshot', description: 'Accessibility tree with @e refs for element selection. Flags: -i interactive only, -c compact, -d N depth limit, -s sel scope, -D diff vs previous, -a annotated screenshot, -o path output, -C cursor-interactive @c refs', usage: 'snapshot [flags]' },
   'chain':   { category: 'Meta', description: 'Run commands from JSON stdin. Format: [["cmd","arg1",...],...]' },
+  'skills':  { category: 'Meta', description: 'Advisory: the best learned method/shortcut for a goal on this site (you run it; sensitive actions are gated). Manage your local skills with --list/--export/--forget=<domain>.', usage: 'skills [--goal=<type>|--list|--export|--forget=<domain>]' },
   // Handoff
   'handoff': { category: 'Server', description: 'Open visible Chrome at current page for user takeover', usage: 'handoff [message]' },
   'resume':  { category: 'Server', description: 'Re-snapshot after user takeover, return control to AI', usage: 'resume' },

@@ -278,6 +278,29 @@ export async function handleMetaCommand(
       return formatEngineStats(readDecisions(), Date.now(), args[0]);
     }
 
+    case 'skills': {
+      // Advisory skill surfacing + the user-ownership surface (inspect/export/forget).
+      // Read-only and advisory — nightcrawl never auto-runs a surfaced method.
+      const { listSkills, exportSkills, forgetSkills } = await import('./skill-store-ops');
+      if (args.includes('--list')) {
+        return JSON.stringify(
+          listSkills().map((s) => ({ goal: s.goalType, site: s.siteType, domain: s.domain, method: s.method, ok: s.ok })),
+          null, 2,
+        );
+      }
+      if (args.includes('--export')) return exportSkills();
+      const forget = args.find((a) => a.startsWith('--forget='));
+      if (forget) return `forgot ${forgetSkills({ domain: forget.split('=')[1] })} skill(s) for ${forget.split('=')[1]}`;
+
+      const { resolveSkill, surfaceSkill } = await import('./skill-router');
+      const { parseGoal, inferGoal } = await import('./goal');
+      const url = (() => { try { return bm.getCurrentUrl(); } catch { return ''; } })();
+      const goalArg = args.find((a) => a.startsWith('--goal='))?.split('=')[1] ?? args.find((a) => !a.startsWith('--'));
+      const goal = goalArg ? parseGoal(goalArg) : inferGoal('goto', url);
+      const block = surfaceSkill(resolveSkill(goal, url), goal);
+      return block || `no learned skill or recipe for goal=${goal} on ${url || '(no page)'} — cold start.`;
+    }
+
     case 'verify': {
       const {
         parseVerifyArgs,
