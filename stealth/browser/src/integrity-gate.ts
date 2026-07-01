@@ -36,6 +36,10 @@ const SIGNALS: { name: string; re: RegExp }[] = [
     name: 'xapi-completion',
     re: /\/xapi\b|\/statements\b|\/tincan\b|uctincan|\/scorm\b|cmi[._]core|scormdriver|adlnet\.gov\/expapi\/verbs\/(completed|passed|failed)|TCAPI_SetCompleted|SetReachedEnd/i,
   },
+  // A body that literally asserts completion (e.g. {"completed":true}) is a
+  // fact-assertion regardless of verb or a camouflaging efficiency URL, since
+  // this runs before the efficiency exemption in classifyAction.
+  { name: 'completion-claim', re: /"(completed|completion|passed)"\s*:\s*true\b/i },
   { name: 'exam-grade', re: /\/quiz\b|\/exam\b|\/grade\b|\/assessment\b|\/submit-attempt\b|wpproquiz/i },
   { name: 'attendance', re: /\/attendance\b|\/check-?in\b|\/roster\b/i },
   {
@@ -114,7 +118,9 @@ export function gateJsCode(code: string): IntegrityVerdict {
     url = xhrOpen[2];
   }
   if (!url) return { kind: 'pass' }; // no network call → nothing to assert here
-  const body = code.match(/body\s*:\s*[`'"]([\s\S]*?)[`'"]/)?.[1];
+  // Capture up to the MATCHING closing quote (backreference), so a JSON body
+  // wrapped in single quotes isn't truncated at its first inner double-quote.
+  const body = code.match(/body\s*:\s*(['"`])([\s\S]*?)\1/)?.[2];
   return classifyAction({ url, verb, body });
 }
 
