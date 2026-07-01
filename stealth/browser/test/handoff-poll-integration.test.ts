@@ -63,7 +63,6 @@ describe('autoHandover polling — multi-redirect chain', () => {
     //    in production, but with shorter stability so the test runs in seconds.
     const opts = {
       ...defaultPollOptions(startUrl),
-      loginWallSeen: true,
       maxWaitMs: 30_000,
       stabilityMs: 2000, // shortened from 5s for faster test
     };

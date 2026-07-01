@@ -907,38 +907,15 @@ export async function autoHandover(
 
   await new Promise(resolve => setTimeout(resolve, graceMs));
 
-  // Wait for the login wall to appear in headed mode before checking if it disappeared.
-  // Without this, a slow-loading headed page would look "not blocked" and trigger
-  // false-positive auto-resume.
-  let loginWallSeen = false;
-  const confirmWaitMs = 10000;
-  const confirmStart = Date.now();
-  while (Date.now() - confirmStart < confirmWaitMs) {
-    const page = this.getPage();
-    if (page) {
-      const hasWall = await page.evaluate(() => {
-        const qr = document.querySelector('[class*="qrcode"], [class*="qr-"], canvas[class*="qr"]');
-        const text = document.body?.innerText?.slice(0, 2000) || '';
-        const hasLoginText = /请登录|请先登录|登录后|扫码登录/i.test(text);
-        const hasLoginForm = document.querySelectorAll('input[type="password"], input[type="tel"]').length > 0;
-        return !!(qr || hasLoginText || hasLoginForm);
-      }).catch(() => false);
-      if (hasWall) { loginWallSeen = true; break; }
-    }
-    await new Promise(resolve => setTimeout(resolve, 1000));
-  }
-  if (!loginWallSeen) {
-    console.log('[nightcrawl] Login wall not found in headed mode — page may have changed. Skipping auto-resume polling.');
-  }
-
-  // Polling with URL-stability gate. The earlier ad-hoc loop concluded
-  // "login complete" the moment URL changed off /login pattern + no wall.
-  // That fired DURING multi-step IDP chains (Duo, FIDO, SAML callbacks)
-  // before the SP set its session cookie -> snapshot captured incomplete
-  // cookies -> next nav re-bounced. See handoff-poll.ts for the fix.
+  // Poll with a URL-stability gate. The earlier ad-hoc loop concluded
+  // "login complete" the moment the URL changed off the /login pattern with
+  // no wall. That fired DURING multi-step IDP chains (Duo, FIDO, SAML
+  // callbacks) before the SP set its session cookie -> the snapshot caught
+  // incomplete cookies -> the next nav re-bounced. We check the REAL wall on
+  // every tick (a slow-painting password form still blocks resume) and only
+  // resume once the URL has settled. See handoff-poll.ts for the timing rules.
   const pollOpts = {
     ...defaultPollOptions(loginUrl),
-    loginWallSeen,
     maxWaitMs,
   };
   const pollState = initialPollState(loginUrl);
@@ -952,15 +929,14 @@ export async function autoHandover(
     if (!page) continue;
 
     const currentUrl = await page.evaluate(() => location.href).catch(() => loginUrl);
-    const hasWall = loginWallSeen
-      ? await page.evaluate(() => {
-          const qr = document.querySelector('[class*="qrcode"], [class*="qr-"], canvas[class*="qr"]');
-          const text = document.body?.innerText?.slice(0, 2000) || '';
-          const hasLoginText = /请登录|请先登录|登录后|扫码登录/i.test(text);
-          const hasLoginForm = document.querySelectorAll('input[type="password"], input[type="tel"]').length > 0;
-          return !!(qr || hasLoginText || hasLoginForm);
-        }).catch(() => true)
-      : false;
+    // Assume a wall on error (keep waiting) rather than risk a false resume.
+    const hasWall = await page.evaluate(() => {
+      const qr = document.querySelector('[class*="qrcode"], [class*="qr-"], canvas[class*="qr"]');
+      const text = document.body?.innerText?.slice(0, 2000) || '';
+      const hasLoginText = /请登录|请先登录|登录后|扫码登录/i.test(text);
+      const hasLoginForm = document.querySelectorAll('input[type="password"], input[type="tel"]').length > 0;
+      return !!(qr || hasLoginText || hasLoginForm);
+    }).catch(() => true);
 
     const decision = decidePoll(
       { url: currentUrl, hasWall, elapsedMs: Date.now() - startTime },

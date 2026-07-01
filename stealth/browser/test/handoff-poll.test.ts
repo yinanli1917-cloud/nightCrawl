@@ -29,10 +29,9 @@ const LOGIN_URL = 'https://idp.u.washington.edu/idp/profile/SAML2/Redirect/SSO?e
 const DUO_URL = 'https://api-57f2a007.duosecurity.com/frame/frameless/v4/auth?sid=abc';
 const CANVAS_URL = 'https://canvas.uw.edu/?login_success=1';
 
-function opts(loginWallSeen = true, overrides: Partial<PollOptions> = {}): PollOptions {
+function opts(overrides: Partial<PollOptions> = {}): PollOptions {
   return {
     ...defaultPollOptions(LOGIN_URL),
-    loginWallSeen,
     ...overrides,
   };
 }
@@ -121,7 +120,7 @@ describe('decidePoll — multi-step IDP (the Canvas/Duo regression)', () => {
 describe('decidePoll — wall-still-present check', () => {
   test('does NOT resume if wall was seen and is still showing', () => {
     const state = initialPollState(LOGIN_URL);
-    const o = opts(true);
+    const o = opts();
 
     // URL changed off login, BUT wall (password input) is still on the new page
     decidePoll({ url: 'https://idp.u.washington.edu/idp/Authn/UserPassword', hasWall: true, elapsedMs: 1000 }, o, state);
@@ -134,7 +133,7 @@ describe('decidePoll — wall-still-present check', () => {
 
   test('still requires URL pattern check even if wall is gone', () => {
     const state = initialPollState(LOGIN_URL);
-    const o = opts(true);
+    const o = opts();
 
     // URL is still a /login pattern (e.g., /login/saml), wall gone temporarily
     const d = decidePoll(
@@ -148,7 +147,7 @@ describe('decidePoll — wall-still-present check', () => {
 describe('decidePoll — wall-never-seen path', () => {
   test('still requires URL stability when no wall was ever seen', () => {
     const state = initialPollState(LOGIN_URL);
-    const o = opts(false); // wall never confirmed
+    const o = opts(); // wall never confirmed
 
     decidePoll({ url: CANVAS_URL, hasWall: false, elapsedMs: 1000 }, o, state);
     const d = decidePoll({ url: CANVAS_URL, hasWall: false, elapsedMs: 2000 }, o, state);
@@ -159,10 +158,30 @@ describe('decidePoll — wall-never-seen path', () => {
   });
 });
 
+describe('decidePoll — slow-painting wall (false-resume regression, 2026-06-30)', () => {
+  // Bug: on a slow SAML/Duo chain the pre-poll confirm loop misses the wall, so
+  // the caller reports loginWallSeen=false. The password form then paints AFTER
+  // that window while the user is still logging in. A wall that is visible RIGHT
+  // NOW must always block resume — otherwise decidePoll returns 'resume' and the
+  // headed browser closes mid-login (the reported false handover).
+  test('does NOT resume while a wall is visible now, even when it was never pre-confirmed', () => {
+    const state = initialPollState(LOGIN_URL);
+    const o = opts(); // confirm loop never saw the wall (slow paint)
+    const SP = 'https://idp.u.washington.edu/idp/Authn/UserPassword'; // non-login-pattern URL
+
+    // URL settled on the SP page; wall still painting (hasWall=false)
+    decidePoll({ url: SP, hasWall: false, elapsedMs: 0 }, o, state);
+
+    // 6s later: URL unchanged (> stabilityMs), wall NOW painted, user typing password
+    const d = decidePoll({ url: SP, hasWall: true, elapsedMs: 6000 }, o, state);
+    expect(d.action).toBe('continue');
+  });
+});
+
 describe('decidePoll — timeout', () => {
   test('returns timeout when elapsed exceeds maxWaitMs regardless of state', () => {
     const state = initialPollState(LOGIN_URL);
-    const o = opts(true, { maxWaitMs: 60_000 });
+    const o = opts({ maxWaitMs: 60_000 });
 
     const d = decidePoll({ url: LOGIN_URL, hasWall: true, elapsedMs: 60_001 }, o, state);
     expect(d.action).toBe('timeout');
@@ -173,7 +192,7 @@ describe('decidePoll — login URL pattern matching', () => {
   test('matches /sso, /login, /signin, /auth, /captcha, /verify (case-insensitive)', () => {
     for (const path of ['/login', '/SignIn', '/auth/x', '/captcha', '/verify-mfa', '/SSO']) {
       const state = initialPollState(LOGIN_URL);
-      const o = opts(true);
+      const o = opts();
       // even with stable URL, login pattern keeps us in continue
       decidePoll({ url: `https://x.com${path}`, hasWall: false, elapsedMs: 1000 }, o, state);
       const d = decidePoll({ url: `https://x.com${path}`, hasWall: false, elapsedMs: 8000 }, o, state);
@@ -183,7 +202,7 @@ describe('decidePoll — login URL pattern matching', () => {
 
   test('does not false-positive on URLs containing the substring without delimiter', () => {
     const state = initialPollState(LOGIN_URL);
-    const o = opts(true);
+    const o = opts();
     // "session" contains "sso" as substring — must NOT match (regex requires word boundary)
     decidePoll({ url: 'https://canvas.uw.edu/courses/session/123', hasWall: false, elapsedMs: 1000 }, o, state);
     const d = decidePoll({ url: 'https://canvas.uw.edu/courses/session/123', hasWall: false, elapsedMs: 7000 }, o, state);
@@ -203,6 +222,5 @@ describe('decidePoll — initial state', () => {
     expect(o.loginUrl).toBe(LOGIN_URL);
     expect(o.maxWaitMs).toBeGreaterThan(0);
     expect(o.stabilityMs).toBeGreaterThan(0);
-    expect(o.loginWallSeen).toBe(false);
   });
 });

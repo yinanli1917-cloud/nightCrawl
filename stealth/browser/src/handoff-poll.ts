@@ -13,8 +13,11 @@
  *
  * Fix: require URL stability across the full redirect chain. Only
  * resume when the URL has been unchanged for stabilityMs AND is not on
- * a login pattern AND the wall (if ever seen) is gone. Pure function
- * so the timing rules are unit-testable without a browser.
+ * a login pattern AND no wall is visible right now. A currently-visible
+ * wall (password form / QR / auth text) always means the human is still
+ * working, so it blocks resume even if the pre-poll confirm loop missed
+ * it on a slow-painting page. Pure function so the timing rules are
+ * unit-testable without a browser.
  */
 
 // ─── Types ──────────────────────────────────────────────────
@@ -32,7 +35,6 @@ export interface PollState {
 
 export interface PollOptions {
   loginUrl: string;        // URL where polling began (the original wall)
-  loginWallSeen: boolean;  // did we ever confirm a wall on the page?
   maxWaitMs: number;       // total time budget; default 5min
   stabilityMs: number;     // URL must be unchanged for this long; default 5s
   loginUrlPattern: RegExp; // pattern that flags a URL as still being a login page
@@ -56,7 +58,6 @@ export function initialPollState(loginUrl: string): PollState {
 export function defaultPollOptions(loginUrl: string): PollOptions {
   return {
     loginUrl,
-    loginWallSeen: false,
     maxWaitMs: 5 * 60 * 1000, // 5 minutes
     stabilityMs: 5 * 1000,    // 5 seconds of unchanged URL
     loginUrlPattern: DEFAULT_LOGIN_URL_PATTERN,
@@ -93,8 +94,9 @@ export function decidePoll(
     return { action: 'continue', reason: `URL still matches login pattern: ${ctx.url}` };
   }
 
-  // Wall still visible (only meaningful if we ever saw one)? Keep waiting.
-  if (options.loginWallSeen && ctx.hasWall) {
+  // Wall visible right now? The human is still working — never resume,
+  // regardless of whether the pre-poll confirm loop happened to catch it.
+  if (ctx.hasWall) {
     return { action: 'continue', reason: 'Login wall still present on page' };
   }
 
