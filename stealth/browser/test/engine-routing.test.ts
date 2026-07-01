@@ -83,6 +83,22 @@ describe('engine-routing glue', () => {
     expect(text!).not.toContain('recipe:');
   });
 
+  test('BROWSE_DISABLE_RECIPES=1 omits the recipe even for a course-player URL', () => {
+    const prev = process.env.BROWSE_DISABLE_RECIPES;
+    process.env.BROWSE_DISABLE_RECIPES = '1';
+    try {
+      const text = buildNavGuidance(
+        'https://x.com/wp-content/uploads/uncanny-snc/11/index_lms.html?client=Storyline',
+        'headless',
+        deps(),
+      );
+      expect(text ?? '').not.toContain('recipe:');
+    } finally {
+      if (prev === undefined) delete process.env.BROWSE_DISABLE_RECIPES;
+      else process.env.BROWSE_DISABLE_RECIPES = prev;
+    }
+  });
+
   // ── A5: routing learns from the journal, but safety/strong rules still win.
   test('a learned recommendation supersedes the weak cold-start prior', () => {
     const text = buildNavGuidance('https://spa.example/x', 'headless', deps({

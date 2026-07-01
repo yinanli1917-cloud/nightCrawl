@@ -48,6 +48,14 @@ describe('skill-loop — closeLoop (the flywheel)', () => {
     expect(r!.ok).toBe(false);
     expect(readSkills().length).toBe(1);
   });
+  test('BROWSE_DISABLE_FLYWHEEL=1 makes closeLoop a no-op (records nothing)', () => {
+    const r = closeLoop(
+      input({ verifyText: 'VERIFY_OK', entries: [net({})] }),
+      { ...process.env, BROWSE_DISABLE_FLYWHEEL: '1' },
+    );
+    expect(r).toBeNull();
+    expect(readSkills().length).toBe(0);
+  });
 });
 
 describe('skill-store-ops — the user owns the library', () => {

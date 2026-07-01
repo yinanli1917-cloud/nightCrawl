@@ -52,6 +52,8 @@ export function closeLoop(
   input: SkillOutcomeInput,
   env: Record<string, string | undefined> = process.env,
 ): SkillRecord | null {
+  // Ablation switch: a benchmark's flywheel-OFF baseline must not self-train.
+  if (env.BROWSE_DISABLE_FLYWHEEL === '1') return null;
   if (isVerifyOk(input.verifyText)) {
     const disc = discoverSkill(
       { entries: input.entries, verifiedAt: input.now, goalType: input.goalType, profile: input.profile, domain: input.domain },

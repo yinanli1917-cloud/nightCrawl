@@ -116,6 +116,8 @@ The fix makes nightcrawl safe for STATELESS, UNINFORMED callers — self-healing
 - `BROWSE_FINGERPRINT_SEED=12345` — explicit fingerprint seed (10000-99999); otherwise persisted in `~/.nightcrawl/state/engine-seed.json`
 - `BROWSE_HUMANIZE=0|1` — behavioral humanization (Bezier mouse, typing jitter, non-linear scroll)
 - `NIGHTCRAWL_BLOCK_HEADED=1` — **no-window test/verification mode.** CloakBrowser is anti-detect Chromium: a HEADED launch shows a visible window (headless is windowless). `launchCloakBrowser` (the single chokepoint for launchHeaded/handoff/autoHandover) refuses any `headless:false` launch when set, so a verification or CI run can never pop a window. Set it (and skip the headed-requiring suites: `handoff`, `default-browser-handoff`, `stealth-extensions`) for window-free verification. Headless launches always proceed.
+- `BROWSE_DISABLE_FLYWHEEL=1` — benchmark ablation switch. `closeLoop` no-ops (records no skill), so a generalization suite can measure a clean flywheel-OFF baseline against the same held-out tasks.
+- `BROWSE_DISABLE_RECIPES=1` — benchmark ablation switch. `appendRecipe` surfaces no curated recipe, isolating the flywheel's contribution from the hand-authored recipe registry.
 
 ### Roadmap (v0.3+)
 - TLS/JA3 fingerprint masking

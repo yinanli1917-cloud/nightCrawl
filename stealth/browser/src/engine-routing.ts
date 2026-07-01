@@ -128,6 +128,8 @@ export function buildNavGuidance(
  * already derives. No match → the guidance is returned unchanged.
  */
 function appendRecipe(guidance: string, url: string, content?: string): string {
+  // Ablation switch: a benchmark's recipe-OFF baseline surfaces no curated recipe.
+  if (process.env.BROWSE_DISABLE_RECIPES === '1') return guidance;
   const recipe = matchRecipe({ profile: liveProfile(url), url, content });
   return recipe ? `${guidance}\n\n${formatRecipe(recipe)}` : guidance;
 }
