@@ -21,15 +21,19 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { eTldPlusOne } from './handoff-consent';
+import { resolveConfig } from './config';
+
+type Env = Record<string, string | undefined>;
 
 // ─── Config ───────────────────────────────────────────────
 
-const STATE_FILE = path.join(
-  process.env.HOME || '/tmp',
-  '.nightcrawl',
-  'state',
-  'fingerprint-pinned.json',
-);
+// Resolve the store path at call time so BROWSE_STATE_FILE isolates it,
+// exactly like engine-journal's journalPath. A module-level constant baked
+// the path to $HOME once at import, so the pinned-vendor cache leaked across
+// otherwise-isolated stateDirs.
+function pinnedStatePath(env: Env = process.env): string {
+  return path.join(resolveConfig(env).stateDir, 'fingerprint-pinned.json');
+}
 
 // Entries older than this are re-verified on next visit. Vendors can change;
 // a domain might migrate off CF. 30 days keeps the cache fresh without
@@ -112,19 +116,20 @@ function emptyStore(): PinnedStore {
   return { version: 1, entries: {} };
 }
 
-function loadStore(): PinnedStore {
+function loadStore(env: Env = process.env): PinnedStore {
   try {
-    const raw = fs.readFileSync(STATE_FILE, 'utf-8');
+    const raw = fs.readFileSync(pinnedStatePath(env), 'utf-8');
     const parsed = JSON.parse(raw);
     if (parsed?.version === 1 && parsed.entries) return parsed;
   } catch {}
   return emptyStore();
 }
 
-function saveStore(store: PinnedStore): void {
+function saveStore(store: PinnedStore, env: Env = process.env): void {
   try {
-    fs.mkdirSync(path.dirname(STATE_FILE), { recursive: true });
-    fs.writeFileSync(STATE_FILE, JSON.stringify(store, null, 2));
+    const dest = pinnedStatePath(env);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.writeFileSync(dest, JSON.stringify(store, null, 2));
   } catch {}
 }
 
@@ -135,10 +140,10 @@ function saveStore(store: PinnedStore): void {
  * Returns false on malformed URLs (fail-open — don't falsely block
  * Arc-import on domains we can't parse).
  */
-export function isPinned(url: string): boolean {
+export function isPinned(url: string, env: Env = process.env): boolean {
   try {
     const domain = eTldPlusOne(url);
-    const store = loadStore();
+    const store = loadStore(env);
     const entry = store.entries[domain];
     if (!entry) return false;
     if (Date.now() - entry.lastSeen > ENTRY_TTL_MS) return false;
@@ -151,10 +156,10 @@ export function isPinned(url: string): boolean {
 /**
  * Get the pinning vendor for a URL, or null if not pinned.
  */
-export function pinnedVendor(url: string): PinVendor | null {
+export function pinnedVendor(url: string, env: Env = process.env): PinVendor | null {
   try {
     const domain = eTldPlusOne(url);
-    const store = loadStore();
+    const store = loadStore(env);
     const entry = store.entries[domain];
     if (!entry) return null;
     if (Date.now() - entry.lastSeen > ENTRY_TTL_MS) return null;
@@ -173,13 +178,14 @@ export function pinnedVendor(url: string): PinVendor | null {
 export function markPinnedFromHeaders(
   url: string,
   headers: Record<string, string>,
+  env: Env = process.env,
 ): void {
   try {
     const vendor = sniffVendor(headers);
     if (!vendor) return;
     const domain = eTldPlusOne(url);
     if (!domain) return;
-    const store = loadStore();
+    const store = loadStore(env);
     const now = Date.now();
     const existing = store.entries[domain];
     store.entries[domain] = {
@@ -188,7 +194,7 @@ export function markPinnedFromHeaders(
       firstSeen: existing?.firstSeen ?? now,
       lastSeen: now,
     };
-    saveStore(store);
+    saveStore(store, env);
   } catch {}
 }
 
@@ -203,11 +209,11 @@ export function markPinnedFromHeaders(
  * so Akamai/Imperva observations can be tagged correctly when detected
  * by context (URL patterns, etc.).
  */
-export function markPinnedObserved(url: string, vendor: PinVendor): void {
+export function markPinnedObserved(url: string, vendor: PinVendor, env: Env = process.env): void {
   try {
     const domain = eTldPlusOne(url);
     if (!domain) return;
-    const store = loadStore();
+    const store = loadStore(env);
     const now = Date.now();
     const existing = store.entries[domain];
     store.entries[domain] = {
@@ -216,16 +222,16 @@ export function markPinnedObserved(url: string, vendor: PinVendor): void {
       firstSeen: existing?.firstSeen ?? now,
       lastSeen: now,
     };
-    saveStore(store);
+    saveStore(store, env);
   } catch {}
 }
 
 /**
  * Drop expired entries. Called opportunistically; no scheduled job needed.
  */
-export function prunePinned(): void {
+export function prunePinned(env: Env = process.env): void {
   try {
-    const store = loadStore();
+    const store = loadStore(env);
     const now = Date.now();
     let changed = false;
     for (const [domain, entry] of Object.entries(store.entries)) {
@@ -234,7 +240,7 @@ export function prunePinned(): void {
         changed = true;
       }
     }
-    if (changed) saveStore(store);
+    if (changed) saveStore(store, env);
   } catch {}
 }
 
