@@ -94,6 +94,16 @@ export function pruneHandoverEvents(env: Env = process.env, max: number = MAX_HA
   } catch {}
 }
 
+// ─── Cause mapping (pure) ──────────────────────────────────
+
+/** Map a detectLoginWall `reason` string to its decision-point cause label. */
+export function causeFromDetectionReason(reason: string): HandoverCause {
+  if (/login url/i.test(reason)) return 'url_regex';
+  if (/login form/i.test(reason)) return 'password_copy_form';
+  if (/qr/i.test(reason)) return 'qr';
+  return 'auth_barrier_text';
+}
+
 // ─── Summary (pure) ────────────────────────────────────────
 
 /** Count events by decision. Pure — the seed of the benchmark's handover scoring. */

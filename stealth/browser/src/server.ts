@@ -38,6 +38,7 @@ import { startReinforcementLoop } from './stealth-reinforcement';
 import { notifyWithAction, focusAppAction } from './notify';
 import { detectSensitivePage, CATEGORY_NOTIFICATIONS } from './sensitive-page';
 import { markPinnedObserved, isPinned, sniffVendor } from './fingerprint-pinned';
+import { recordHandoverEvent, causeFromDetectionReason } from './handover-events';
 import { isAuthenticated, markAuthenticated, invalidate } from './auth-cache';
 import {
   tryAutoImportForWall,
@@ -1128,6 +1129,15 @@ async function handleCommand(
         // Invalidate auth cache — this domain has a login wall
         invalidate(currentUrl);
         result += `\nLOGIN_WALL_DETECTED: ${detection.reason}`;
+        // Durable, cause-labeled record so the benchmark can classify this
+        // hand-back honestly instead of scraping the response text.
+        const wallCause = causeFromDetectionReason(detection.reason);
+        const wallPageUrl = view.getPage()?.url() ?? currentUrl;
+        const recordHandover = (decision: 'HANDOVER' | 'CONSENT_REQUIRED') =>
+          recordHandoverEvent({
+            ts: Date.now(), sessionId, domain: detection.domain, url: wallPageUrl,
+            engine: 'headless', decision, cause: wallCause, wallSeen: true,
+          });
         if (detection.approved) {
           const page = view.getPage();
           const targetUrl = command === 'goto' ? args[0] : (page?.url() ?? '');
@@ -1258,6 +1268,7 @@ async function handleCommand(
             } else if (!stepTwoPinned) {
               result += `\nRequesting opt-in auto-handover for ${detection.domain}.`;
             }
+            recordHandover('HANDOVER');
             browserManager.autoHandover(targetUrl, sessionId).then(async handoverResult => {
               if (handoverResult) console.log(`[nightcrawl] Auto-handover complete: ${handoverResult}`);
               await persistStorage();
@@ -1265,11 +1276,13 @@ async function handleCommand(
               console.error(`[nightcrawl] Auto-handover failed: ${err.message}`);
             });
           } else {
+            recordHandover('HANDOVER');
             result += `\nLOGIN_REQUIRED: ${detection.domain} — log in via Arc/Chrome, run 'nc sync now', then retry. Headed handover is disabled (set BROWSE_AUTO_HANDOVER=1 to opt in).`;
           }
         } else {
           // Unknown domain: never pop a window. Surface a CONSENT_REQUIRED
           // signal so the agent can ask the user before taking action.
+          recordHandover('CONSENT_REQUIRED');
           result += `\nCONSENT_REQUIRED: ${detection.domain}`;
           result += `\nNo window opened. Ask the user "Approve auto-handoff for ${detection.domain}?" — if yes, run 'grant-handoff ${detection.domain}'.`;
           const consentDomain = detection.domain;

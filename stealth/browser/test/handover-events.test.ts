@@ -16,6 +16,7 @@ import {
   pruneHandoverEvents,
   handoverEventsPath,
   countByDecision,
+  causeFromDetectionReason,
   type HandoverEvent,
 } from '../src/handover-events';
 
@@ -65,6 +66,13 @@ describe('handover-events — durable cause-labeled log', () => {
     recordHandoverEvent(ev({ domain: 'a.com' }), env);
     recordHandoverEvent(ev({ domain: 'b.com' }), env);
     expect(readHandoverEvents('a.com', env).length).toBe(1);
+  });
+
+  test('causeFromDetectionReason maps each detectLoginWall reason', () => {
+    expect(causeFromDetectionReason('Login URL detected: https://x/login')).toBe('url_regex');
+    expect(causeFromDetectionReason('Login form detected at https://x')).toBe('password_copy_form');
+    expect(causeFromDetectionReason('QR code login detected at https://x')).toBe('qr');
+    expect(causeFromDetectionReason('Auth barrier text detected at https://x')).toBe('auth_barrier_text');
   });
 
   test('countByDecision tallies each decision kind', () => {

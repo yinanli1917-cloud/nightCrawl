@@ -14,6 +14,7 @@ import { DEFAULT_USER_AGENT, findChromiumExecutable, applyStealthPatches } from 
 import { isHostile, HostileDomainError } from './hostile-domains';
 import { eTldPlusOne, readConsent, isApproved, defaultConsentPath } from './handoff-consent';
 import { decidePoll, initialPollState, defaultPollOptions } from './handoff-poll';
+import { recordHandoverEvent } from './handover-events';
 import { tryAutoImportForWall, collectLoginHostsFromPage } from './handoff-cookie-import';
 import { notifyWithAction, focusAppAction } from './notify';
 import { isPinned, pinnedVendor, markPinnedObserved } from './fingerprint-pinned';
@@ -921,6 +922,8 @@ export async function autoHandover(
   const pollState = initialPollState(loginUrl);
   let pollAction: 'continue' | 'resume' | 'timeout' = 'continue';
   let pollReason = '';
+  let lastHasWall = false;
+  let lastCurrentUrl = loginUrl;
 
   while (pollAction === 'continue' && Date.now() - startTime < maxWaitMs) {
     await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
@@ -937,6 +940,8 @@ export async function autoHandover(
       const hasLoginForm = document.querySelectorAll('input[type="password"], input[type="tel"]').length > 0;
       return !!(qr || hasLoginText || hasLoginForm);
     }).catch(() => true);
+    lastHasWall = hasWall;
+    lastCurrentUrl = currentUrl;
 
     const decision = decidePoll(
       { url: currentUrl, hasWall, elapsedMs: Date.now() - startTime },
@@ -948,6 +953,12 @@ export async function autoHandover(
   }
 
   if (pollAction === 'resume') {
+    // A wall visible at resume (loginWallSeenAtResume=true) is the false-handover
+    // fingerprint; post-fix it must be false. Recorded either way for the benchmark.
+    recordHandoverEvent({
+      ts: Date.now(), sessionId, domain: eTldPlusOne(loginUrl), url: lastCurrentUrl,
+      engine: 'headless', decision: 'RESUME', cause: 'poll_resume', loginWallSeenAtResume: lastHasWall,
+    });
     console.log(`[nightcrawl] Login complete (${pollReason}). Returning to headless...`);
   } else {
     console.log(`[nightcrawl] Login timeout (${maxWaitMs / 1000}s). Returning to headless with current state.`);
