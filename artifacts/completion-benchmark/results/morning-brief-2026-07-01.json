@@ -1,0 +1,53 @@
+{
+  "generatedBy": "nightcrawl digital-twin, real environment, 2026-07-01",
+  "legA_canvas": {
+    "status": "PASS",
+    "howReached": "Engine R (real Arc). autofill-login submitted the user's own saved UW password; Duo remembered, no push; Canvas Dashboard loaded as the user.",
+    "course": "COMMLD 525 A (Canvas course 1887834)",
+    "note": "COMMLD 512 A is archived; COMMLD 515 is not in this term's active enrollment.",
+    "thisWeek": "NONE — the term ended 2026-06-15, so no assignments are due this week (today is 2026-07-01). Correct, truthful answer.",
+    "assignmentsWithDueDates": [
+      {"name": "Week 1 Class Activity", "due": "2026-04-03T06:00:00Z"},
+      {"name": "Week 1 Reflection", "due": "2026-04-04T01:00:00Z"},
+      {"name": "Week 2 Reflection", "due": "2026-04-10T01:00:00Z"},
+      {"name": "Week 2 Class Activity", "due": "2026-04-10T06:00:00Z"},
+      {"name": "Week 3 Reflection: Think Simple, Chapters 3 & 6", "due": "2026-04-17T01:00:00Z"},
+      {"name": "Week 3 Class Activity", "due": "2026-04-17T06:00:00Z"},
+      {"name": "Week 4 Reflection: An Emotional Connection Matters More than Customer Satisfaction (HBR)", "due": "2026-04-24T01:00:00Z"},
+      {"name": "Week 4 Class Activity", "due": "2026-04-24T06:00:00Z"},
+      {"name": "Week 5 Reflection: Why Selling Personal Data is a Bad Idea", "due": "2026-05-01T01:00:00Z"},
+      {"name": "Week 5 Class Activity", "due": "2026-05-01T06:00:00Z"},
+      {"name": "Week 6 Reflection: Reimagining Marketing Communications Via Storytelling", "due": "2026-05-08T01:00:00Z"},
+      {"name": "Week 6 Class Activity", "due": "2026-05-08T06:00:00Z"},
+      {"name": "Week 7 Reflection: Branding in the Age of Social Media", "due": "2026-05-15T01:00:00Z"},
+      {"name": "Week 7 Class Activity", "due": "2026-05-15T06:00:00Z"},
+      {"name": "Week 8 Class Activity", "due": "2026-05-22T06:00:00Z"},
+      {"name": "Week 9 Class Activity", "due": "2026-05-29T06:00:00Z"},
+      {"name": "Final Reflection", "due": "2026-06-15T01:00:00Z"},
+      {"name": "Group Project: Final Brand Submission", "due": "2026-06-15T01:00:00Z"},
+      {"name": "Peer Review of Final Reflections", "due": "2026-06-15T01:00:00Z"}
+    ]
+  },
+  "legC_theInformation": {
+    "status": "PASS",
+    "howReached": "headless CloakBrowser through Cloudflare, no login, no false handover",
+    "headlines": [
+      "Nvidia Says It Will Take a Cut of Some Customers' Cloud Revenues",
+      "How Elon Musk Is Building the Terafab Team Inside Tesla",
+      "New KKR Venture Hunts for Deals to Clear Data Center Logjam",
+      "Uber Shakes Up Data Labelling Business",
+      "8VC Raises $1.5 Billion Fund",
+      "Bending Spoons Stock Opens Up 11%",
+      "Meta Said to Plan AI Cloud Business Push",
+      "Microsoft Plans Thousands of Layoffs in Sales, Engineering, Xbox"
+    ]
+  },
+  "legB_uwLibrary": {
+    "status": "BLOCKED_TECHNICAL",
+    "reason": "Not a login wall. Resetting the daemon to recover the CLI state dropped the Engine R bridge to Arc (bridge-status: connected=false), so the authenticated library session became unreachable. The Arc session itself is still logged in. Retry needs the Arc extension to reconnect to a running daemon.",
+    "findings": [
+      "Track-B robustness: a daemon restart orphans the authenticated Engine R bridge; it should auto-reconnect or the CLI should surface BRIDGE_DISCONNECTED clearly instead of a misleading 'Navigated 200' then 'No active page'.",
+      "CLI usability: the `eval` command treats long/special inline code as a file path (ENAMETOOLONG / 'File not found'); `text` and short reads are reliable."
+    ]
+  }
+}
