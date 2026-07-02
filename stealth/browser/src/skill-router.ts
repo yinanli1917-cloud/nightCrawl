@@ -45,6 +45,10 @@ export interface SkillResolveDeps {
 
 const MIN_TYPE_DOMAINS = 3;
 const MIN_TYPE_SAMPLES = 8;
+// A pooled site-type method must actually WORK to be surfaced as a confident learned
+// shortcut. Sample counts alone let a method that succeeds ~40% of the time masquerade
+// as trustworthy; a below-floor method falls through to a curated recipe or cold-start.
+const MIN_TYPE_SUCCESS_RATE = 0.6;
 
 function fromRec(rec: SkillRecommendation | null) {
   return { shape: rec?.record.shape ?? null, integritySensitive: rec?.record.integritySensitive ?? false };
@@ -80,7 +84,8 @@ export function resolveSkillFrom(
   const distinct = new Set(typeRecs.map((r) => r.domain)).size;
   if (distinct >= MIN_TYPE_DOMAINS && typeRecs.length >= MIN_TYPE_SAMPLES) {
     const typeRec = recommendSkill(aggregateSkills(typeRecs));
-    if (typeRec) {
+    const { attempts, oks } = typeRec?.record ?? { attempts: 0, oks: 0 };
+    if (typeRec && attempts > 0 && oks / attempts >= MIN_TYPE_SUCCESS_RATE) {
       const promoted = { ...typeRec, confidence: 'learned' as const };
       return { recommendation: promoted, curated: recipe, source: 'site-type', profile, ...fromRec(promoted) };
     }

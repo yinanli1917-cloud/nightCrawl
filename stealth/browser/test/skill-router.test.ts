@@ -44,6 +44,20 @@ describe('skill-router — tiered resolve', () => {
     expect(r.source).toBe('site-type');
   });
 
+  test('L2 does NOT promote a FLAKY site-type method (low pooled success rate)', () => {
+    // 3 domains, 9 samples, but the pooled method only succeeds 3/9 (~33%) — a flaky
+    // trick, not a trustworthy shortcut. It must not surface as a confident learned skill.
+    const flaky = (domain: string, ok: boolean) =>
+      rec({ domain, ok, metrics: { verifyOkRate: ok ? 1 : 0, latencyP95Ms: 600 } });
+    const records = [
+      flaky('a.com', true), flaky('a.com', false), flaky('a.com', false),
+      flaky('b.com', true), flaky('b.com', false), flaky('b.com', false),
+      flaky('c.com', true), flaky('c.com', false), flaky('c.com', false),
+    ];
+    const r = resolveSkillFrom('extract-data', 'https://never-seen.com', undefined, deps({ records }));
+    expect(r.source).toBe('cold-start'); // flaky pooled method is NOT promoted
+  });
+
   test('L4: no learned skill, but a curated recipe matches → source curated', () => {
     const r = resolveSkillFrom('complete-course', 'https://x.com/index_lms.html', undefined,
       deps({ matchRecipe: () => FAKE_RECIPE }));
