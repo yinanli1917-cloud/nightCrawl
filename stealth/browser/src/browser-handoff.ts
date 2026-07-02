@@ -534,6 +534,18 @@ export function getFailureHint(this: any): string | null {
 
 // ─── Login Wall Detection ───────────────────────────────────
 /**
+ * Is this URL a login/auth page by its PATH? A path segment (or query value) that IS a
+ * login keyword — not one that merely CONTAINS it, so `/login-help` is not a wall. Pure
+ * and exported so it is unit-testable against a URL corpus.
+ */
+export function isLoginUrl(url: string): boolean {
+  // Terminator is a real segment/query/fragment boundary (/ ? # .) or end — NOT any
+  // non-alphanumeric. That excludes `-`, so `/login-help` no longer matches while
+  // `/login`, `/login/`, `/login?x`, `/login.html` still do.
+  return /[/=](login|signin|sign-in|auth|captcha|verify|sso)([/?#.]|$)/i.test(url);
+}
+
+/**
  * Detect login walls, captchas, and auth barriers.
  * Returns detection result or null if no login wall found.
  *
@@ -574,7 +586,7 @@ export async function detectLoginWall(
     return /let us know you are human|verify you are human|cf-turnstile/i.test(text);
   }).catch(() => false);
 
-  if (/[/=](login|signin|sign-in|auth|captcha|verify|sso)([^a-z0-9]|$)/i.test(url)) {
+  if (isLoginUrl(url)) {
     return withConsent(url, { detected: true, reason: `Login URL detected: ${url}`, turnstile: hasTurnstile || undefined });
   }
 
