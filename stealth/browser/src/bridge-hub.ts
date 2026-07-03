@@ -43,6 +43,20 @@ export class BridgeHub {
     return this.send !== null;
   }
 
+  /**
+   * Resolve once a bridge is connected, or after `ms` if not. Lets an explicit
+   * --engine=real ride out a daemon-restart reconnect gap (the extension retries on a
+   * ~3s backoff) instead of silently falling back to headless and stranding a live
+   * logged-in session.
+   */
+  async waitForConnected(ms: number): Promise<boolean> {
+    const deadline = Date.now() + ms;
+    while (!this.isConnected() && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 150));
+    }
+    return this.isConnected();
+  }
+
   /** Connect a transport sink (the SSE writer that pushes commands to the host). */
   attach(send: (cmd: BridgeCommand) => void): void {
     this.send = send;

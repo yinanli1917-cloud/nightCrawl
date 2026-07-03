@@ -2110,6 +2110,12 @@ async function start() {
         if ((body?.command === 'reload-extension' || body?.command === 'bridge-tabinfo') && bridgeHub.isConnected()) {
           return await routeToBridge(body, startedAt, 'explicit', sessionId);
         }
+        // Explicit --engine=real wants the REAL browser. If the bridge is briefly down
+        // (mid-reconnect after a daemon restart), wait for it rather than silently
+        // dropping to headless and stranding a live logged-in session.
+        if (body?.engine === 'real' && isBridgeCommand(body?.command) && !bridgeHub.isConnected()) {
+          await bridgeHub.waitForConnected(5000);
+        }
         if (body?.engine === 'real' && isBridgeCommand(body?.command) && bridgeHub.isConnected()) {
           return await routeToBridge(body, startedAt, 'explicit', sessionId);
         }
