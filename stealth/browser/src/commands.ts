@@ -84,7 +84,7 @@ export const COMMAND_DESCRIPTIONS: Record<string, { category: string; descriptio
   'accessibility': { category: 'Reading', description: 'Full ARIA tree' },
   // Inspection
   'js':      { category: 'Inspection', description: 'Run JavaScript expression and return result as string', usage: 'js <expr>' },
-  'eval':    { category: 'Inspection', description: 'Run JavaScript from file and return result as string (path must be under /tmp or cwd)', usage: 'eval <file>' },
+  'eval':    { category: 'Inspection', description: 'Run JavaScript from a file, or inline if the arg is not a file path (same as js). File paths must be under /tmp or cwd.', usage: 'eval <js-file-or-expr>' },
   'wait-for':{ category: 'Inspection', description: 'Poll a JS predicate in-page until it is truthy or times out — use instead of sleep. Returns when satisfied; throws on timeout', usage: 'wait-for <js-predicate> [timeoutMs]' },
   'css':     { category: 'Inspection', description: 'Computed CSS value', usage: 'css <sel> <prop>' },
   'attrs':   { category: 'Inspection', description: 'Element attributes as JSON', usage: 'attrs <sel|@ref>' },

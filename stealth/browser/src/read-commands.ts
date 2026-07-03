@@ -39,6 +39,23 @@ export function wrapForEvaluate(code: string): string {
   return `(async () => { ${body} })()`;
 }
 
+/**
+ * Resolve `eval`'s argument to code. If the arg is a short, existing file path, run its
+ * contents; otherwise treat the arg AS inline code (same as `js`, and same as `eval` on
+ * the real-browser engine). This makes `eval` forgiving and engine-consistent so the
+ * IDENTICAL command never flips between working on one engine and "File not found" on the
+ * other after a silent engine switch. `fs.existsSync` never throws (a too-long string just
+ * reads as not-a-file), and the length guard avoids probing huge inline blobs. Exported
+ * for tests.
+ */
+export function resolveEvalCode(arg: string): { code: string; fromFile: boolean } {
+  let fromFile = false;
+  try { fromFile = arg.length < 1024 && fs.existsSync(arg); } catch { fromFile = false; }
+  return fromFile
+    ? { code: fs.readFileSync(arg, 'utf-8'), fromFile: true }
+    : { code: arg, fromFile: false };
+}
+
 // Cap a single in-page evaluate so a runaway fetch/promise fails fast instead of
 // blocking past the bridge/command timeout (the Cursor-course 66s hang).
 const JS_EVAL_TIMEOUT_MS = 30_000;
@@ -194,14 +211,14 @@ export async function handleReadCommand(
     }
 
     case 'eval': {
-      const filePath = args[0];
-      if (!filePath) throw new Error('Usage: browse eval <js-file>');
-      validateReadPath(filePath);
-      if (!fs.existsSync(filePath)) throw new Error(`File not found: ${filePath}`);
-      const code = fs.readFileSync(filePath, 'utf-8');
+      const arg = args[0];
+      if (!arg) throw new Error('Usage: browse eval <js-file-or-expression>');
+      // Forgiving + engine-consistent: a real file's contents, else the arg as inline code.
+      const { code, fromFile } = resolveEvalCode(arg);
+      if (fromFile) validateReadPath(arg); // path-safety only applies to real files
       const gate = gateJsCode(code);
       if (gate.kind === 'confirm-required') {
-        return `CONFIRM_REQUIRED: ${gate.reason}. This script asserts a fact to a third party — get explicit user confirmation first; nightcrawl will not run it unconfirmed.`;
+        return `CONFIRM_REQUIRED: ${gate.reason}. This code asserts a fact to a third party — get explicit user confirmation first; nightcrawl will not run it unconfirmed.`;
       }
       const wrapped = wrapForEvaluate(code);
       const result = await withTimeout(target.evaluate(wrapped), JS_EVAL_TIMEOUT_MS, 'eval');
