@@ -1,0 +1,2 @@
+{"file": "stealth/browser/test/tab-store.test.ts", "reason": "Per-tab state isolation unit tests (stage 2 foundation)"}
+{"file": "stealth/browser/test/snapshot.test.ts", "reason": "Existing tab/ref tests must stay green through facade refactor"}
