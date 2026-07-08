@@ -2,9 +2,10 @@
  * Shared config for browse CLI + server.
  *
  * Resolution:
- *   1. BROWSE_STATE_FILE env → derive stateDir from parent
- *   2. git rev-parse --show-toplevel → projectDir/.nightcrawl/
- *   3. process.cwd() fallback (non-git environments)
+ *   1. BROWSE_STATE_FILE env → derive stateDir from parent (used by the CLI when
+ *      it spawns the server, and by tests for isolation)
+ *   2. otherwise → the GLOBAL ~/.nightcrawl/ (a single daemon per machine,
+ *      independent of cwd / git root — see resolveConfig for why)
  *
  * The CLI computes the config and passes BROWSE_STATE_FILE to the
  * spawned server. The server derives all paths from that env var.
@@ -44,9 +45,9 @@ export function getGitRoot(): string | null {
 /**
  * Resolve all browse config paths.
  *
- * If BROWSE_STATE_FILE is set (e.g. by CLI when spawning server, or by
- * tests for isolation), all paths are derived from it. Otherwise, the
- * project root is detected via git or cwd.
+ * If BROWSE_STATE_FILE is set (e.g. by CLI when spawning server, or by tests for
+ * isolation), all paths are derived from it. Otherwise everything resolves to the
+ * GLOBAL ~/.nightcrawl/ — a single daemon per machine, independent of cwd.
  */
 export function resolveConfig(
   env: Record<string, string | undefined> = process.env,
@@ -60,19 +61,19 @@ export function resolveConfig(
     stateDir = path.dirname(stateFile);
     projectDir = path.dirname(stateDir); // parent of .nightcrawl/
   } else {
-    const gitRoot = getGitRoot();
-    if (gitRoot) {
-      projectDir = gitRoot;
-      stateDir = path.join(gitRoot, '.nightcrawl');
-    } else {
-      // No git repo found (e.g. server launched from /tmp or a scratch dir).
-      // Fall back to the global ~/.nightcrawl/ so the daemon is always
-      // discoverable by the CLI regardless of the launch directory.
-      // Without this, cwd/.nightcrawl/ gets a different socket hash than the
-      // project-local stateDir → CLI spawns a duplicate daemon.
-      projectDir = process.cwd();
-      stateDir = path.join(env.HOME || process.env.HOME || '/tmp', '.nightcrawl');
-    }
+    // ── Single global daemon ──────────────────────────────────────────────
+    // The state dir / socket / lock live under ~/.nightcrawl/ REGARDLESS of the
+    // caller's git root or cwd. Scoping them per git-root was the root cause of
+    // duplicate daemons: a call from project A and a call from project B hashed
+    // different socket paths → two independent daemons → they fought over the ONE
+    // shared Chromium profile (~/.nightcrawl/chromium-profile) and bridge port
+    // 10087 → SingletonLock crash → 45s "Server failed to start" + goto timeouts.
+    // A single global state dir means every project adopts the ONE daemon instead
+    // of spawning a second. Tab isolation is keyed by the X-Nightcrawl-Session
+    // header (session-id.ts), NOT by stateDir, so concurrent cross-project
+    // sessions still each get their own tab in the one shared browser.
+    stateDir = path.join(env.HOME || process.env.HOME || '/tmp', '.nightcrawl');
+    projectDir = path.dirname(stateDir);
     stateFile = path.join(stateDir, 'browse.json');
   }
 
@@ -118,6 +119,12 @@ export function ensureStateDir(config: BrowseConfig): void {
     }
     throw err;
   }
+
+  // The global state dir (~/.nightcrawl) is not inside a project repo, so there
+  // is nothing to gitignore — only maintain .gitignore for project-local
+  // (BROWSE_STATE_FILE-scoped) state dirs.
+  const homeDir = process.env.HOME || '/tmp';
+  if (config.stateDir === path.join(homeDir, '.nightcrawl')) return;
 
   // Ensure .nightcrawl/ is in the project's .gitignore
   const gitignorePath = path.join(config.projectDir, '.gitignore');

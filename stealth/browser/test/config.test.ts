@@ -14,13 +14,30 @@ describe('config', () => {
   });
 
   describe('resolveConfig', () => {
-    test('uses git root by default', () => {
-      const config = resolveConfig({});
+    // ─── Global-singleton daemon ────────────────────────────
+    // When BROWSE_STATE_FILE is unset, the state dir + socket must be GLOBAL
+    // (~/.nightcrawl), never scoped to the caller's git root. Git-root scoping
+    // was the root cause of duplicate daemons: a call from project A and a call
+    // from project B computed different sockets → two daemons → they fought over
+    // the shared Chromium profile → 45s startup timeouts. One global state dir
+    // means every project adopts the ONE daemon instead of spawning a second.
+    test('uses a global stateDir (~/.nightcrawl), not the caller git root', () => {
+      const home = '/tmp/nc-fake-home-A';
+      const config = resolveConfig({ HOME: home });
+      expect(config.stateDir).toBe(path.join(home, '.nightcrawl'));
+      expect(config.stateFile).toBe(path.join(home, '.nightcrawl', 'browse.json'));
+      // Must NOT be scoped to the real git root (the old proliferation bug).
       const gitRoot = getGitRoot();
       expect(gitRoot).not.toBeNull();
-      expect(config.projectDir).toBe(gitRoot);
-      expect(config.stateDir).toBe(path.join(gitRoot!, '.nightcrawl'));
-      expect(config.stateFile).toBe(path.join(gitRoot!, '.nightcrawl', 'browse.json'));
+      expect(config.stateDir).not.toBe(path.join(gitRoot!, '.nightcrawl'));
+    });
+
+    test('socket path derives from the global stateDir (cwd-independent)', () => {
+      const home = '/tmp/nc-fake-home-B';
+      const config = resolveConfig({ HOME: home });
+      const { createHash } = require('crypto');
+      const hash = createHash('md5').update(path.join(home, '.nightcrawl')).digest('hex').slice(0, 8);
+      expect(config.socketPath).toBe(`/tmp/nightcrawl-${hash}.sock`);
     });
 
     test('derives paths from BROWSE_STATE_FILE when set', () => {
@@ -32,7 +49,7 @@ describe('config', () => {
     });
 
     test('log paths are in stateDir', () => {
-      const config = resolveConfig({});
+      const config = resolveConfig({ HOME: '/tmp/nc-fake-home-C' });
       expect(config.consoleLog).toBe(path.join(config.stateDir, 'browse-console.log'));
       expect(config.networkLog).toBe(path.join(config.stateDir, 'browse-network.log'));
       expect(config.dialogLog).toBe(path.join(config.stateDir, 'browse-dialog.log'));
