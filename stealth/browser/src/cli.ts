@@ -14,6 +14,7 @@ import * as path from 'path';
 import { resolveConfig, ensureStateDir, readVersionHash } from './config';
 import { findInstalledBrowsers } from './cookie-import-browser';
 import { notifyWithAction } from './notify';
+import { recordFailure } from './failure-collector';
 import { resolveSessionId, SESSION_HEADER } from './session-id';
 import { renderLauncher, chooseInstallDir } from './launcher';
 import { classifyStartup, READY_TIMEOUT_MS, type StartupSnapshot } from './daemon-readiness';
@@ -21,6 +22,31 @@ import * as os from 'os';
 
 const config = resolveConfig();
 const IS_WINDOWS = process.platform === 'win32';
+
+// ─── Failure capture (no silent failures) ──────────────────────
+// The CLI's failure paths (500 body, timeout, global catch) mostly exit(1)
+// directly and don't reach one place, so we record through a once-guard: a
+// conn-loss that throws into the global catch must not double-count. The
+// dispatched command/args are stashed so the global catch (outside main()'s
+// scope) still has context. See failure-collector.ts.
+let cliFailureRecorded = false;
+let dispatchContext: { command?: string; args?: string[] } = {};
+
+function recordCliFailureOnce(message: string, exitContext: string): void {
+  if (cliFailureRecorded) return;
+  cliFailureRecorded = true;
+  try {
+    recordFailure({
+      layer: 'cli',
+      message,
+      exitContext,
+      command: dispatchContext.command,
+      args: dispatchContext.args,
+      url: dispatchContext.command === 'goto' ? dispatchContext.args?.[0] : undefined,
+      config,
+    });
+  } catch {}
+}
 
 export function resolveServerScript(
   env: Record<string, string | undefined> = process.env,
@@ -555,18 +581,22 @@ async function sendCommand(state: ServerState, command: string, args: string[], 
       if (!text.endsWith('\n')) process.stdout.write('\n');
     } else {
       // Try to parse as JSON error
+      let errText = text;
       try {
         const err = JSON.parse(text);
-        console.error(err.error || text);
+        errText = err.error || text;
+        console.error(errText);
         if (err.hint) console.error(err.hint);
       } catch {
         console.error(text);
       }
+      recordCliFailureOnce(errText, '500');
       process.exit(1);
     }
   } catch (err: any) {
     if (err.name === 'AbortError') {
       console.error('[browse] Command timed out after 30s');
+      recordCliFailureOnce('Command timed out after 30s', 'timeout');
       process.exit(1);
     }
     // Connection error — server may have crashed
@@ -675,6 +705,9 @@ Refs:           After 'snapshot', use @e1, @e2... as selectors:
     if (a === '--force') { cliForce = true; return false; }
     return true;
   });
+
+  // Stash for the global catch (outside this scope) so a failure record has context.
+  dispatchContext = { command, args: commandArgs };
 
   // ─── Install launcher (client-only, pre-server) ─────────────
   // Drops a `browse`/`nightcrawl` launcher on PATH so a stateless shell can call
@@ -952,6 +985,7 @@ Refs:           After 'snapshot', use @e1, @e2... as selectors:
 if (import.meta.main) {
   main().catch((err) => {
     console.error(`[browse] ${err.message}`);
+    recordCliFailureOnce(err?.message || String(err), 'global');
     process.exit(1);
   });
 }

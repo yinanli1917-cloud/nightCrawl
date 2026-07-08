@@ -59,6 +59,7 @@ import { checkpointSession, restoreSession, sessionFilePath } from './session-st
 import { NAV_COMMANDS, buildNavGuidance, resolveAutoEngine } from './engine-routing';
 import { recordWin } from './domain-strategy';
 import { recordDecision } from './engine-journal';
+import { recordFailure } from './failure-collector';
 import { eTldPlusOne, isApproved, readConsent, defaultConsentPath } from './handoff-consent';
 import { handleAutofillLogin } from './autofill-login';
 import type { Engine } from './strategy-advisor';
@@ -1719,12 +1720,16 @@ function emergencyCleanup() {
 process.on('uncaughtException', (err) => {
   console.error('[browse] FATAL uncaught exception:', err.message);
   if (err?.stack) console.error(err.stack);
+  // Capture BEFORE cleanup — the daemon's stdout/stderr go to /dev/null, so this
+  // is the ONLY record of a daemon crash, and lsof must still see the socket/port.
+  try { recordFailure({ layer: 'daemon', message: `FATAL uncaught: ${err.message}`, stack: err?.stack, hintCategory: 'daemon-fatal', exitContext: 'uncaught', config }); } catch {}
   emergencyCleanup();
   process.exit(1);
 });
 process.on('unhandledRejection', (err: any) => {
   console.error('[browse] FATAL unhandled rejection:', err?.message || err);
   if (err?.stack) console.error(err.stack);
+  try { recordFailure({ layer: 'daemon', message: `FATAL unhandled: ${err?.message || err}`, stack: err?.stack, hintCategory: 'daemon-fatal', exitContext: 'unhandled', config }); } catch {}
   emergencyCleanup();
   process.exit(1);
 });
@@ -2485,6 +2490,10 @@ async function start() {
 
 start().catch((err) => {
   console.error(`[browse] Failed to start: ${err.message}`);
+  // A boot/bind failure (e.g. "Is port 10087 in use?", CloakBrowser missing) is
+  // where the motivating daemon bug surfaces on the daemon side. Capture before
+  // writing the error log / exiting. Specific text (port/env) wins; else startup.
+  try { recordFailure({ layer: 'daemon', message: `Failed to start: ${err.message}`, stack: err?.stack, hintCategory: 'startup-failure', exitContext: 'startup', config }); } catch {}
   // Write error to disk for the CLI to read — on Windows, the CLI can't capture
   // stderr because the server is launched with detached: true, stdio: 'ignore'.
   try {

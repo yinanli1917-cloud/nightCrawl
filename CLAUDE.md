@@ -80,6 +80,11 @@ No existing tool combines: **local CLI + real browser cookies + stealth + persis
     - **Per-tab lock** (`runOnTab`) — commands on the SAME tab serialize; different tabs/sessions run fully concurrently.
     - **Handoff/detection** — login-wall detection (`detectLoginWall(sessionId)`) + the post-command auto-handover run on the CALLER's tab (fixes a non-default `claude:` session missing its wall); the headed handoff ACTION + restore/recreate stay whole-browser and re-own tabs as `default`.
     - **Engine R** (`bridge-hub.ts`, `bridge-ws.ts`, extension `background.js`) — `BridgeCommand` + the `tool_call` carry `sessionId`; the extension keeps `boundBySession` (one Arc background tab per session; `planBoundTab`/`clearBoundByTabId` in `bridge-session.ts` are the testable mirror). One socket multiplexes all sessions by `requestId`. **A background.js change needs a one-time Arc extension reload.**
+21. **Automatic failure capture (no silent failures)** — `failure-collector.ts` turns any NightCrawl failure, from ANY project on the machine, into a durable record + an evidence bundle + (for real tool bugs only) a deduped Codex investigation task in THIS project, so failures are reproduced and fixed instead of lost. Mirrors `engine-journal.ts` idioms (never throws, 0o600 append, 5000-line prune, malformed-tolerant).
+    - **Data-driven classification** — a `SIGNALS` table `[{category, pattern, family, actionable}]` (NOT per-failure if/else). Families: `daemon-unavailable` (coarse signature so a whole spree = ONE task, across the CLI + daemon layers), `env` (host-tool-scoped), `site` (login walls / their errors — recorded for stats, `actionable:false`, NEVER a task), `unknown` (still actionable so a novel mode surfaces).
+    - **Global sink** — `failures.jsonl`, dedup markers, and bundles live under `~/.nightcrawl/` (independent of git/cwd, so a failure in fictionWorks lands where nightCrawl can find it), NOT in `resolveConfig().stateDir`. Bundle = `record.json` + `daemon-processes.txt` (`ps`/`lsof :10087`/socket list — the duplicate-daemon evidence that vanishes otherwise) + log tails.
+    - **Atomic dedup** — a `'wx'` exclusive-create marker per signature (mirrors `acquireServerLock`) is race-safe under a concurrent spree: exactly one process files the task, losers bump a count. 6h TTL resets it.
+    - **Task + notify** — a novel actionable signature spawns a detached (nohup, survives `process.exit`) `codex_harness.py task create --slug autofail-<signature>` (never `--global`) + a macOS notification. Wired at CLI chokepoints (`cli.ts` 500/timeout/global-catch, once-guarded) and the daemon's FATAL handlers + `start().catch` (the only capture path for a detached daemon whose stdout is `/dev/null`). Gates: `NIGHTCRAWL_NO_FAILURE_CAPTURE=1` (full off), in-repo dev records+bundles but skips task creation (self-spam).
 
 ### Stateless-caller resilience (Track B — from the texascourtclasses Cursor-course post-mortem)
 
@@ -112,12 +117,15 @@ The fix makes nightcrawl safe for STATELESS, UNINFORMED callers — self-healing
   NOT installed (it would shadow netcat); `alias nc=browse` if wanted.
 
 ### Engine Configuration
+- **One global daemon per machine.** When `BROWSE_STATE_FILE` is unset, `resolveConfig` (`config.ts`) resolves the state dir / socket / lock to the global `~/.nightcrawl/` regardless of the caller's git root or cwd. Scoping them per git-root was the root cause of duplicate daemons (a call from project A and project B hashed different sockets → two daemons → they fought over the one shared Chromium profile + bridge port → SingletonLock crash → 45s startup + goto timeouts). Every project now adopts the ONE daemon; tab isolation stays keyed by the `X-Nightcrawl-Session` header, not stateDir. `BROWSE_STATE_FILE` still overrides (tests, benchmarks).
 - CloakBrowser stealth Chromium is the only engine. `BROWSE_ENGINE` is no longer parsed.
 - `BROWSE_FINGERPRINT_SEED=12345` — explicit fingerprint seed (10000-99999); otherwise persisted in `~/.nightcrawl/state/engine-seed.json`
 - `BROWSE_HUMANIZE=0|1` — behavioral humanization (Bezier mouse, typing jitter, non-linear scroll)
 - `NIGHTCRAWL_BLOCK_HEADED=1` — **no-window test/verification mode.** CloakBrowser is anti-detect Chromium: a HEADED launch shows a visible window (headless is windowless). `launchCloakBrowser` (the single chokepoint for launchHeaded/handoff/autoHandover) refuses any `headless:false` launch when set, so a verification or CI run can never pop a window. Set it (and skip the headed-requiring suites: `handoff`, `default-browser-handoff`, `stealth-extensions`) for window-free verification. Headless launches always proceed.
 - `BROWSE_DISABLE_FLYWHEEL=1` — benchmark ablation switch. `closeLoop` no-ops (records no skill), so a generalization suite can measure a clean flywheel-OFF baseline against the same held-out tasks.
 - `BROWSE_DISABLE_RECIPES=1` — benchmark ablation switch. `appendRecipe` surfaces no curated recipe, isolating the flywheel's contribution from the hand-authored recipe registry.
+- `NIGHTCRAWL_NO_FAILURE_CAPTURE=1` — full off switch for automatic failure capture (`failure-collector.ts`); records nothing, files no task.
+- `NIGHTCRAWL_FAILURE_DIR=<dir>` — override the failure sink (default `~/.nightcrawl/`); used by tests for isolation.
 
 ### Roadmap (v0.3+)
 - TLS/JA3 fingerprint masking
