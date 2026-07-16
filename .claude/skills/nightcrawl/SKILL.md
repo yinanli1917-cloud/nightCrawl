@@ -2,7 +2,7 @@
 name: nightcrawl
 description: >
   The user's digital twin browser — a persistent headless Chromium that inherits their
-  real Arc/Chrome cookies and stealth-browses the web as them. Use nightcrawl whenever
+  real Arc/Chrome cookies and browses the web as them. Use nightcrawl whenever
   the user wants to interact with a website as themselves: "go to", "open this site",
   "navigate to", "read this page", "search on [site]", "log in to", "download from",
   "scrape", "crawl", "what does this page say", "fill out this form", "check if this
@@ -395,23 +395,27 @@ nc snapshot -D
 - Don't re-verify trivial UI micro-steps (every click). **Do** verify user-facing deliverables
   (files, login state, search results, form confirmations) before saying the task is done.
 
-## Stealth Escalation
+## Escalation — when a page won't cooperate
 
-When a site blocks you, don't report defeat — escalate through layers.
+These are the user's own logged-in accounts, not targets. When a page doesn't respond to
+the obvious action, work through the technical layers below before concluding it can't be
+done. Prefer using what the account already grants; reach for a lower layer only when a
+page genuinely won't respond.
 
-### Engines
+### Engine and knobs
 
-- `BROWSE_ENGINE=playwright` (default) — stock Chromium with CDP Runtime.Enable patches,
-  UA fix, webdriver bypass. Passes basic automation checks.
-- `BROWSE_ENGINE=cloakbrowser` — CloakBrowser stealth Chromium with 48 C++ patches
-  (canvas, WebGL, audio, fonts, GPU, WebRTC). Use for Tier-4/5 hostile sites where the
-  default gets flagged.
-- `BROWSE_FINGERPRINT_SEED=12345` — deterministic fingerprint across all surfaces.
-- `BROWSE_HUMANIZE=1` — Bezier mouse, typing jitter, non-linear scroll (CloakBrowser only).
+There is one browser engine: CloakBrowser stealth Chromium (48 C++ fingerprint patches —
+canvas, WebGL, audio, fonts, GPU, WebRTC), always on. There is no engine to switch —
+`BROWSE_ENGINE` is not read anymore. What you can tune:
 
-Switch engines via env var before invoking `nc`:
+- `BROWSE_FINGERPRINT_SEED=12345` — pin a deterministic fingerprint across all surfaces
+  (otherwise a persisted seed is reused, so sites see one consistent identity over time).
+- `BROWSE_HUMANIZE=1` — Bezier mouse, typing jitter, non-linear scroll (for the strictest sites).
+- `--engine=real` after a command — run through the user's real Arc browser (Engine R),
+  which shares the live logged-in session. See "Autofill & logging in as you".
+
 ```bash
-BROWSE_ENGINE=cloakbrowser nc goto https://hostile-site.example.com
+BROWSE_HUMANIZE=1 nc goto https://strict-site.example.com
 ```
 
 ### Escalation Ladder
@@ -431,7 +435,9 @@ reporting that something can't be done.
 5. **Direct HTTP bypass** — skip the browser. Use `curl` with cookies/tokens from
    `nc cookies`. If you can see the request in `network`, you can replay it without
    the page.
-6. **Switch engine** — try `BROWSE_ENGINE=cloakbrowser` if default Playwright is detected.
+6. **Turn up stealth or go live** — enable `BROWSE_HUMANIZE=1` and/or pin
+   `BROWSE_FINGERPRINT_SEED`; or run the step through the real Arc browser with
+   `--engine=real`, which shares the user's live session.
 
 ### What "blocked" usually means
 
@@ -443,7 +449,7 @@ Most blocks are client-side theatrics — the server doesn't enforce them:
 - **"Login required"** → cookies may have expired. Ask the user whether to open a
   Chrome window for a one-time login (handoff → login → resume), or try another route.
   Never handoff silently.
-- **"Bot detected"** → escalate: different timing, fingerprint seed, CloakBrowser engine.
+- **"Bot detected"** → escalate: different timing, pin a fingerprint seed, `BROWSE_HUMANIZE=1`.
 
 ### When you're truly stuck
 
@@ -459,9 +465,10 @@ NEXT ATTEMPT: [what you'd try next — "intercept the encodeCourseProgress call
 
 ### The mindset
 
-The web is open protocols. Every page is HTML you can read, every API call is HTTP you
-can replay, every client-side check is JS you can override. When the UI says no, go to
-the API. When the API says no, go to the protocol. There's always a layer underneath.
+The web is open protocols. Every page is HTML you can read, and every API call the page
+makes is HTTP you can replay. When the visible UI doesn't expose an action the user's
+account can already do, the same action is usually reachable one layer down — the page's
+own API or network calls. Prefer that over giving up early.
 
 ## Important
 

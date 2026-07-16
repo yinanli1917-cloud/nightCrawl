@@ -22,13 +22,13 @@ No existing tool combines: **local CLI + real browser cookies + stealth + persis
 | Einstein AI | Shut down, cease-and-desist, no privacy (cloud-based) |
 | CloakBrowser | No agent framework, no cookie import, no session management (integration target for v0.2) |
 | Camoufox | Firefox-based, no network interception |
-| gstack browse | QA tool for your own sites, not the hostile web |
+| gstack browse | QA tool for your own sites, not the authenticated or bot-protected web |
 
 ## Tech Stack
 
 - TypeScript / Bun
 - Playwright (patched — stealth as owned code, not dependency patches)
-- Chromium (with CloakBrowser C++ fingerprint spoofing roadmap for v0.2)
+- CloakBrowser stealth Chromium — the only engine (48 C++ fingerprint patches: canvas, WebGL, audio, fonts, GPU, WebRTC)
 
 ## Directory Structure
 
@@ -50,7 +50,7 @@ No existing tool combines: **local CLI + real browser cookies + stealth + persis
 1. **UA fix** — consistent User-Agent across JS + HTTP levels, removes HeadlessChrome, sets real viewport
 2. **CDP Runtime.Enable fix** — rebrowser-patches v1.0.19, adapted for PW 1.58.2 (5 files, auto-applied with `isPatchCurrent` optimization)
 3. **Extension management** — `BROWSE_EXTENSIONS=none|paywall|all` controls extension loading per mode
-4. **Auto-handover (consent-per-domain)** — detects login walls, opens headed Chrome, user logs in, auto-resumes headless. Detection ALWAYS runs; the gate is **per-domain consent** stored in `~/.nightcrawl/state/handoff-consent.json` keyed by eTLD+1 with TTL. Approve once per domain (`grant-handoff <domain>`), then nightCrawl auto-handles SSO autonomously for that domain (TTL 30d default). Unknown domains never silent-pop — they surface `CONSENT_REQUIRED` to the agent + macOS notification. Replaces the prior `BROWSE_AUTO_HANDOVER` env-var gate (removed 2026-04-14 after the UW Canvas regression incident).
+4. **Auto-handover (consent-per-domain)** — detects login walls, opens headed Chrome, user logs in, auto-resumes headless. Detection ALWAYS runs; the gate is **per-domain consent** stored in `~/.nightcrawl/state/handoff-consent.json` keyed by eTLD+1 with TTL. Approve once per domain (`grant-handoff <domain>`), then nightCrawl auto-handles SSO autonomously for that domain (TTL 30d default). Unknown domains never silent-pop — they surface `CONSENT_REQUIRED` to the agent + macOS notification. Adds a per-domain consent gate in front of the `BROWSE_AUTO_HANDOVER` env-var gate (2026-04-14, after the UW Canvas regression incident): consent decides whether a domain may hand over at all (unknown domains never pop); the env var, off by default, still decides whether an approved hand-over opens a headed window or stays a headless sync returning `LOGIN_REQUIRED`.
 5. **bypass-paywalls-chrome v4.3.4.5** — Manifest V3, declarativeNetRequest
 6. **Cookie persistence** + import from Arc/Chrome/Firefox/Safari (AES-128-CBC decrypt via Keychain)
 7. **Scoped token system** — per-agent permissions (read/write/admin/meta scopes), domain restrictions, rate limiting
@@ -146,10 +146,11 @@ The fix makes nightcrawl safe for STATELESS, UNINFORMED callers — self-healing
 - State directory: `~/.nightcrawl/` (config, cookies, identities, audit log)
 - All anti-bot patches must pass: bot-detector.rebrowser.net, bot.sannysoft.com, creepjs
 - `BROWSE_EXTENSIONS=none|paywall|all` — control extension loading (default: `all`)
-- Auto-handover off by default — set `BROWSE_AUTO_HANDOVER=1` to opt in. Otherwise login walls are reported back to the agent without popping a window.
+- Auto-handover has two gates: per-domain consent (`grant-handoff`) decides IF a domain may hand over at all; `BROWSE_AUTO_HANDOVER=1` (off by default) decides whether an approved hand-over opens a headed window. With it off, login walls come back to the agent as `LOGIN_REQUIRED` / `CONSENT_REQUIRED` with no window.
 - Cookies auto-persisted after handoff/resume + every 5 min + on shutdown
 - Handoff consent: `grant-handoff <domain>` / `revoke-handoff <domain>` / `list-handoff` — per-eTLD+1 approval with 30-day default TTL
 - macOS handoff approvals: `notifyWithAction()` in `src/notify.ts` uses the native SwiftUI `NightCrawlNotify.app` only (opt-out via `NIGHTCRAWL_NO_NOTIFY=1`)
+- The nightcrawl skill ships as two byte-identical copies — `.claude/skills/nightcrawl/SKILL.md` (Claude Code) and `.agents/skills/nightcrawl/SKILL.md` (Codex/other agents). Edit `.claude` as canonical, then copy it over `.agents`; `test/skill-sync.test.ts` fails if they drift. Never edit SKILL.md by hand — use `/skill-creator`.
 
 ## Key References
 
