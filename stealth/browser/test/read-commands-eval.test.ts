@@ -40,6 +40,19 @@ describe('wrapForEvaluate (robust async eval)', () => {
     expect(w).toContain('const x=1; return x');
     expect(w).not.toContain('return (const');
   });
+
+  test('returns a block-body IIFE expression (the "nc js returned empty" bug)', () => {
+    // A single expression whose VALUE must come back, but it carries const/return/;
+    // INSIDE its own braces. The old keyword sniff misread that as a top-level
+    // statement list, so the outer IIFE never returned it → empty output.
+    const w = wrapForEvaluate('(() => { const x = 1; return x })()');
+    expect(w).toContain('return ((() => { const x = 1; return x })())');
+  });
+
+  test('returns a try/catch IIFE expression (same bug, different shape)', () => {
+    const w = wrapForEvaluate('(()=>{try{return 1}catch(e){return 2}})()');
+    expect(w).toContain('return ((()=>{try{return 1}catch(e){return 2}})())');
+  });
 });
 
 describe('wait-for', () => {

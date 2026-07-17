@@ -17,25 +17,34 @@ import { TEMP_DIR, isPathWithin } from './platform';
 import { stripHiddenElements } from './content-security';
 import { gateJsCode } from './integrity-gate';
 
-/** Detect whether code needs a block wrapper {…} vs an expression wrapper (…) inside an async IIFE. */
-function needsBlockWrapper(code: string): boolean {
-  const trimmed = code.trim();
-  if (trimmed.split('\n').length > 1) return true;
-  if (/\b(const|let|var|function|class|return|throw|if|for|while|switch|try)\b/.test(trimmed)) return true;
-  if (trimmed.includes(';')) return true;
-  return false;
-}
+// ─── AsyncFunction ctor: PARSE-test whether code is a single returned expression ───
+// Used only to parse `return (code)` (top-level `await` allowed). Parsing never
+// resolves identifiers, so page-only globals (document, window, …) are irrelevant
+// until the wrapped code actually runs inside page.evaluate().
+const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor as FunctionConstructor;
 
 /**
  * Wrap code for page.evaluate() in an async IIFE that ALWAYS returns its value, so a
  * promise (even one with no `await` keyword, e.g. `fetch(u).then(...)`) is awaited and
  * its resolved value comes back — parity with Engine R's awaitPromise. A single
- * expression gets `return (...)` injected; a multi-statement block keeps its own
- * `return`. Replaces the old await-token sniff that left `.then()` chains unwrapped
- * (the Cursor-course "nc js returned empty" bug). Exported for tests.
+ * expression — INCLUDING a block-body IIFE like `(() => { …; return x })()` — gets
+ * `return (...)` injected; a genuine multi-statement list keeps its own `return`.
+ *
+ * The expression-vs-statements decision is made by actually PARSING `return (code)`
+ * rather than sniffing for keywords. The old sniff misread block-body IIFEs (whose
+ * `const`/`return`/`;` live inside their own braces) as statement lists, so the outer
+ * IIFE never returned the value → the "nc js returned empty" bug. Exported for tests.
  */
 export function wrapForEvaluate(code: string): string {
-  const body = needsBlockWrapper(code) ? code : `return (${code.trim()})`;
+  const trimmed = code.trim();
+  const asExpr = `return (${trimmed})`;
+  let body: string;
+  try {
+    new AsyncFunction(asExpr); // parses iff `code` is one (awaitable) expression
+    body = asExpr;
+  } catch {
+    body = trimmed; // genuine statement list — the author owns its own `return`
+  }
   return `(async () => { ${body} })()`;
 }
 
