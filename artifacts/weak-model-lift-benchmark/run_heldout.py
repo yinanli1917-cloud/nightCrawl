@@ -5,6 +5,9 @@ import harness as H
 ART = os.path.dirname(os.path.abspath(__file__))
 tasks = json.load(open(os.path.join(ART, "heldout-tasks.json"), encoding="utf-8"))
 ts = time.strftime("%Y%m%dT%H%M%S")
+# Warm the ONE global daemon before timing tasks, so task 1 isn't charged for a cold
+# CloakBrowser boot (a cold first-goto can exceed the 20s nav timeout and throw).
+print("warming daemon…", H.nc_cmd(["goto", "https://example.com/"], timeout=120, engine="headless")[:60].replace("\n", " "))
 results = []
 for t in tasks:
     t0 = time.time()

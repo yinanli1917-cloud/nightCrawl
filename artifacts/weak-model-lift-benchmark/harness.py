@@ -61,19 +61,27 @@ def parse_verdict(text):
 # A FINISH whose text is itself an unexecuted command (the observed failure: the model
 # built the right run_js/goto/fetch but pasted it into FINISH instead of running it).
 _DIRECTIVE_LIKE = re.compile(
-    r"^\s*(ACTION:|FINISH:|(goto|get_text|run_js|find|table|read|data|fetch)\s*\()", re.I)
+    r"^\s*(ACTION:|FINISH:|(goto|get_text|run_js|find|table|read|data|fetch|search|follow)\s*\()", re.I)
 
 
 def looks_like_directive(answer):
     return bool(_DIRECTIVE_LIKE.match(answer or ""))
 
 
-def _split_arg(arg):
-    """Strip one layer of wrapping quotes, then whitespace-split (for find/table args)."""
+def _unquote(arg):
+    """Strip ONE layer of wrapping quotes. A weak model writes goto("url")/fetch("url")/
+    run_js("expr"); the paren parser keeps the quotes, so passing them raw to nc yields
+    'Invalid URL' and the model loops. Stripping them is correct translation (what a bare
+    goto(url) already does), condition-neutral across B and C."""
     a = (arg or "").strip()
     if len(a) >= 2 and a[0] in "\"'" and a[-1] == a[0]:
         a = a[1:-1]
-    return a.split()
+    return a
+
+
+def _split_arg(arg):
+    """Strip one layer of wrapping quotes, then whitespace-split (for find/table args)."""
+    return _unquote(arg).split()
 
 
 # ------------------------------------------------------------------- deepseek client
@@ -186,10 +194,16 @@ _C_SYS = ("You answer by fetching web pages. Tool:\n"
 _B_SYS = ("You answer by driving a real browser (nightcrawl). PREFER the high-level tools "
           "below over run_js — they return structured data directly, so you rarely need to "
           "write JavaScript. Tools:\n"
-          "ACTION: goto(<url>)          -> navigate to a page\n"
+          "ACTION: goto(<url>)          -> navigate to a page. If a goto fails (404/not found), "
+          "DON'T guess another URL — use search() or goto the site homepage\n"
+          "ACTION: search(<query>)      -> drive THIS site's own search box (finds the right page "
+          "for you instead of guessing a URL)\n"
+          "ACTION: follow(<keyword>)    -> click the on-page link best matching a keyword, in one "
+          "step (e.g. walk a search result -> the document); no need to snapshot/inspect refs\n"
           "ACTION: find(<keyword>)      -> jump to a term in a big page; returns the surrounding "
           "text and a pointer to any table it is in\n"
-          "ACTION: table(<index|near KW>) -> extract a table as rows (no arg lists every table)\n"
+          "ACTION: table(<index|near KW> [--sort COL] [--desc] [--top N]) -> extract a table as "
+          "rows (no arg lists every table); --sort/--top ranks it so you READ OFF the max/min\n"
           "ACTION: read()               -> the readable main article text (cleaner than get_text)\n"
           "ACTION: data()               -> the JSON/CSV backend request behind a chart/data page, "
           "with a ready-to-run fetch (the numbers on a chart are NOT in the page text)\n"
@@ -209,7 +223,7 @@ def condition_A(task):
 def _tools_fetch():
     def fetch(url):
         try:
-            return _html_to_text(_http_get(url))
+            return _html_to_text(_http_get(_unquote(url)))
         except Exception as e:
             return "ERROR: %s" % e
     return {"fetch": fetch}
@@ -223,7 +237,7 @@ def _tools_nc():
         # Return nc's REAL result (status / LOGIN_REQUIRED / error), not a blind
         # "navigated". The old version lied on failure, so the model kept reading the
         # STALE previous tab thinking it had navigated (the SEC task read example.com).
-        out = nc_cmd(["goto", url], timeout=120, engine="headless")
+        out = nc_cmd(["goto", _unquote(url)], timeout=120, engine="headless")
         return out or ("navigated: " + url)
     return {"goto": goto,
             "get_text": lambda _="": nc_cmd(["text"], timeout=40, engine="headless"),
@@ -231,7 +245,9 @@ def _tools_nc():
             "table": lambda a="": nc_cmd(["table"] + _split_arg(a), timeout=40, engine="headless"),
             "read": lambda _="": nc_cmd(["read"], timeout=40, engine="headless"),
             "data": lambda _="": nc_cmd(["data"], timeout=40, engine="headless"),
-            "run_js": lambda e: nc_cmd(["js", e], timeout=50, engine="headless")}
+            "search": lambda q: nc_cmd(["search"] + _split_arg(q), timeout=60, engine="headless"),
+            "follow": lambda kw: nc_cmd(["follow"] + _split_arg(kw), timeout=60, engine="headless"),
+            "run_js": lambda e: nc_cmd(["js", _unquote(e)], timeout=50, engine="headless")}
 
 
 def condition_C(task):

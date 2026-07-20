@@ -88,6 +88,15 @@ def test_split_arg_strips_quotes_and_splits():
     assert H._split_arg("") == []
 
 
+def test_unquote_strips_wrapping_quotes_for_goto():
+    # The real held-out bug: goto("url") kept the quotes -> nc 'Invalid URL' -> the model
+    # looped. _unquote fixes it while leaving a bare url and inner quotes untouched.
+    assert H._unquote('"https://ourworldindata.org/co2-emissions"') == "https://ourworldindata.org/co2-emissions"
+    assert H._unquote("'https://a.com/x'") == "https://a.com/x"
+    assert H._unquote("https://a.com/x") == "https://a.com/x"
+    assert H._unquote('document.querySelector("a").href') == 'document.querySelector("a").href'
+
+
 def test_live_deepseek_roundtrip():
     if os.environ.get("RUN_LIVE") != "1":
         print("  (skip live deepseek)"); return
