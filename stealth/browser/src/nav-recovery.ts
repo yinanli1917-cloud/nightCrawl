@@ -65,6 +65,21 @@ export function extractQuery(url: string): string {
   return out.join(' ');
 }
 
+function originOf(url: string): string {
+  try { return new URL(url).origin; } catch { return ''; }
+}
+
+// The shared recovery block: don't re-guess a URL, drive the site's own search / homepage.
+function recoveryLines(reason: string, origin: string, query: string): string {
+  const searchExample = query ? `search "${query}"` : 'search "<your terms>"';
+  const lines = [
+    `nav: this URL did not load a real page (${reason}). Guessing another URL usually fails again; a model's URL knowledge is often stale. Instead:`,
+    `  • ${searchExample}  — drive THIS site's own search box (finds the right page for you)`,
+  ];
+  if (origin) lines.push(`  • goto ${origin}/  — start from the homepage and navigate from there`);
+  return lines.join('\n');
+}
+
 /**
  * One recovery line for a failed goto, or '' when the navigation succeeded.
  * Failure = HTTP status >= 400, OR a not-found content signature at any status.
@@ -73,17 +88,18 @@ export function navFailureHint(info: NavResult): string {
   const code = typeof info.status === 'number' ? info.status : parseInt(String(info.status), 10) || 0;
   const failed = code >= 400 || isNotFoundBody(info.bodySample);
   if (!failed) return '';
-
   const reason = code >= 400 ? String(code) : 'page not found';
-  let origin = '';
-  try { origin = new URL(info.finalUrl || info.requestedUrl).origin; } catch { origin = ''; }
+  const origin = originOf(info.finalUrl || info.requestedUrl);
   const query = extractQuery(info.finalUrl) || extractQuery(info.requestedUrl);
-  const searchExample = query ? `search "${query}"` : 'search "<your terms>"';
+  return recoveryLines(reason, origin, query);
+}
 
-  const lines = [
-    `nav: this URL did not load a real page (${reason}). Guessing another URL usually fails again; a model's URL knowledge is often stale. Instead:`,
-    `  • ${searchExample}  — drive THIS site's own search box (finds the right page for you)`,
-  ];
-  if (origin) lines.push(`  • goto ${origin}/  — start from the homepage and navigate from there`);
-  return lines.join('\n');
+/**
+ * Recovery guidance for a goto that THREW (timeout / DNS / connection refused) instead of
+ * returning a response — often a slow or dead deep URL whose site root + search still work.
+ * Keeps a weak model from looping on goto retries.
+ */
+export function navErrorHint(requestedUrl: string, errMessage: string): string {
+  const reason = /timeout|timed out/i.test(errMessage) ? 'timed out' : 'could not connect';
+  return recoveryLines(reason, originOf(requestedUrl), extractQuery(requestedUrl));
 }

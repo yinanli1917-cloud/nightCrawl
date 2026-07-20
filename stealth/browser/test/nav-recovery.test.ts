@@ -8,7 +8,7 @@
  */
 
 import { describe, test, expect } from 'bun:test';
-import { navFailureHint, isNotFoundBody, extractQuery } from '../src/nav-recovery';
+import { navFailureHint, navErrorHint, isNotFoundBody, extractQuery } from '../src/nav-recovery';
 
 describe('isNotFoundBody — soft-404 content signature', () => {
   test('classic "Page Not Found" body (FDA soft-404)', () => {
@@ -70,6 +70,19 @@ describe('navFailureHint — one recovery line on a failed goto', () => {
   test('seeds concrete search terms from the failed URL', () => {
     const h = navFailureHint({ status: 404, finalUrl: 'https://clinicaltrials.gov/ct2/results?cond=cancer', requestedUrl: 'https://clinicaltrials.gov/ct2/results?cond=cancer' });
     expect(h).toMatch(/cancer/i);
+  });
+
+  test('navErrorHint: a goto that TIMED OUT still coaches search + homepage', () => {
+    const h = navErrorHint('https://ourworldindata.org/co2-emissions', 'page.goto: Timeout 15000ms exceeded');
+    expect(h).toMatch(/search/i);
+    expect(h).toMatch(/ourworldindata\.org/);
+    expect(h).toMatch(/timed out|timeout/i);
+  });
+
+  test('navErrorHint: a connection failure coaches too', () => {
+    const h = navErrorHint('https://a.example/x', 'net::ERR_CONNECTION_REFUSED');
+    expect(h).toMatch(/search/i);
+    expect(h).toMatch(/connect/i);
   });
 
   test('never emits a hardcoded third-party site — only the failed URL’s own host', () => {

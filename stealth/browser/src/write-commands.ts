@@ -17,7 +17,7 @@ import { cleanup, formatCleanupResult } from './cleanup';
 import { handleAutofill } from './autofill';
 import { rankSearchInput } from './search-input';
 import { rankLinks } from './follow-link';
-import { navFailureHint } from './nav-recovery';
+import { navFailureHint, navErrorHint } from './nav-recovery';
 import { resolveConfig } from './config';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -73,7 +73,15 @@ export async function handleWriteCommand(
       const url = args[0];
       if (!url) throw new Error('Usage: browse goto <url>');
       await validateNavigationUrl(url);
-      const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
+      let response;
+      try {
+        response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
+      } catch (err) {
+        // A goto that THREW (timeout/DNS/connection) — coach search/homepage instead of
+        // bubbling a raw error the model loops on. Deep URL dead, site root often still works.
+        const msg = err instanceof Error ? err.message : String(err);
+        return `goto failed: ${msg}\n\n${navErrorHint(url, msg)}`;
+      }
       const status = response?.status() || 'unknown';
       const finalUrl = page.url();
       // Sample a little text so a soft-404 (200 status, "page not found" body) is caught,
