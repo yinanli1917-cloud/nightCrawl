@@ -14,6 +14,7 @@ import {
   redactBody,
   redactUrl,
   DeepNetRing,
+  sampleResponse,
   type DeepNetEntry,
 } from '../src/network-capture-deep';
 
@@ -49,6 +50,40 @@ describe('network-capture-deep — redaction (secrets never persist raw)', () =>
   test('url: mask sensitive query params', () => {
     expect(redactUrl('https://x.com/cb?access_token=secret123&q=hello')).not.toContain('secret123');
     expect(redactUrl('https://x.com/cb?access_token=secret123&q=hello')).toContain('q=hello');
+  });
+});
+
+describe('network-capture-deep — sampleResponse', () => {
+  const res = (headers: Record<string, string>, body?: string) => ({
+    headers: () => headers,
+    text: async () => body ?? '',
+  });
+
+  test('captures content-type and a JSON body sample', async () => {
+    const r = await sampleResponse(res({ 'content-type': 'application/json' }, '[{"a":1}]'));
+    expect(r.contentType).toBe('application/json');
+    expect(r.bodySample).toBe('[{"a":1}]');
+  });
+
+  test('skips the body for non-data content types (keeps content-type)', async () => {
+    const r = await sampleResponse(res({ 'content-type': 'text/html' }, '<html>...'));
+    expect(r.contentType).toBe('text/html');
+    expect(r.bodySample).toBeUndefined();
+  });
+
+  test('skips the body when content-length exceeds the cap', async () => {
+    const r = await sampleResponse(res({ 'content-type': 'application/json', 'content-length': '9999999' }, '[]'));
+    expect(r.bodySample).toBeUndefined();
+  });
+
+  test('redacts secrets in the sampled body', async () => {
+    const r = await sampleResponse(res({ 'content-type': 'application/json' }, '{"token":"sk-livesecret123456789012"}'));
+    expect(r.bodySample).not.toContain('sk-livesecret123456789012');
+  });
+
+  test('never throws on a null/odd response', async () => {
+    expect(await sampleResponse(null)).toEqual({});
+    expect(await sampleResponse({})).toEqual({});
   });
 });
 

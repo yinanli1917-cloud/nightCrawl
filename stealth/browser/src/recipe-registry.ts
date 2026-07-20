@@ -69,6 +69,23 @@ export const RECIPES: Recipe[] = [
       authKindIn: ['sso', 'login-wall'],
     },
   },
+  {
+    id: 'data-portal',
+    engine: 'headless',
+    title: 'Open-data / statistics portal (numbers live behind CSV/API, not the chart DOM)',
+    steps: [
+      'The page renders a chart or table from a backend feed — the numbers are NOT in the page text.',
+      'Run `data` to surface the JSON/CSV request behind it (it prints a ready-to-run fetch), or open the table view and run `table`.',
+      'Pull the raw series from that endpoint or the table — do not scrape the chart pixels.',
+    ],
+    match: {
+      // Structural, cross-site — statistics/indicator/dataset paths + explicit data formats.
+      // Public data is open, so NO authKindIn: the content path fires without a login.
+      strongUrlRe: /\/(indicator|indicators|dataset|datasets|statistics|data-catalog)\b|[?&]format=(csv|json)\b/i,
+      // Both a charting library AND a data affordance must co-occur (false-positive guard).
+      contentRe: /(?=[\s\S]*(highcharts|echarts|plotly|chart\.js|d3\.js|amcharts|recharts|dygraph))(?=[\s\S]*(download|export|\.csv|\/api\/|dataset|\bjson\b))/i,
+    },
+  },
 ];
 
 // ─── Matching (pure) ───────────────────────────────────────

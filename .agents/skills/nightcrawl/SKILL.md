@@ -234,6 +234,10 @@ Refs are invalidated on navigation — run `snapshot` again after `goto`.
 | `links` | All links as "text → href" |
 | `accessibility` | Full ARIA tree |
 | `forms` | Form fields as JSON |
+| `find <keyword> [-C n] [--all] [--re]` | Jump to a term in a big page; returns surrounding text + a pointer to any enclosing table |
+| `table [<index>\|near <keyword>\|@ref] [--json]` | Extract a table or ARIA grid as rows (TSV, or `--json`); no arg lists every table |
+| `read` | Readable main-article text (cleaner than `text`) |
+| `data [--all]` | Surface the JSON/CSV backend request behind a chart/data page, with a ready-to-run fetch — chart numbers are NOT in the page text |
 
 ### Interaction
 | Command | Description |
@@ -385,6 +389,7 @@ nc snapshot -D
 - `js` — when you know (or can guess) the selector. Buttons, forms, data extraction.
 - `snapshot -i` — when you DON'T know the page structure. Use once to orient, then `js`.
 - `text` — when you need page content as readable text.
+- `find` / `table` / `read` / `data` — prefer these over hand-written `js`: they return structured content directly, so a weaker model rarely needs to write DOM JavaScript. `find` locates a term in a huge doc, `table` pulls rows, `read` gives clean article text, `data` finds the JSON/CSV backend behind a chart.
 - `snapshot -a` / `screenshot` — ONLY when the user asks to see the page.
 
 ### Batch and minimize

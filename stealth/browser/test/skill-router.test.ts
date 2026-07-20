@@ -8,7 +8,7 @@
  */
 
 import { describe, test, expect } from 'bun:test';
-import { resolveSkillFrom, surfaceSkill, type SkillResolveDeps } from '../src/skill-router';
+import { resolveSkillFrom, surfaceSkill, methodAdviceForNav, type SkillResolveDeps } from '../src/skill-router';
 import type { SkillRecord } from '../src/skill-journal';
 import type { SiteProfile } from '../src/site-profile';
 import type { Recipe } from '../src/recipe-registry';
@@ -100,5 +100,24 @@ describe('skill-router — surfaceSkill (advisory)', () => {
   test('cold-start surfaces nothing (no noise)', () => {
     const r = resolveSkillFrom('extract-data', 'https://fresh.com', undefined, deps());
     expect(surfaceSkill(r, 'extract-data')).toBe('');
+  });
+});
+
+// An empty state dir → an empty journal, so these exercise the recipe/cold tiers only.
+const EMPTY_ENV = { BROWSE_STATE_FILE: '/tmp/nc-methodadvice-test-empty/state.json' };
+
+describe('methodAdviceForNav — auto nav-time method advice for a weak driver', () => {
+  test('off-switch: BROWSE_DISABLE_SKILLS=1 → empty', () => {
+    expect(methodAdviceForNav('https://api.worldbank.org/v2/country/CN/indicator/X?format=json', { ...EMPTY_ENV, BROWSE_DISABLE_SKILLS: '1' })).toBe('');
+  });
+
+  test('a data-portal URL surfaces the curated data recipe at cold start', () => {
+    const out = methodAdviceForNav('https://api.worldbank.org/v2/country/CN/indicator/SP.ADO.TFRT?format=json', EMPTY_ENV);
+    expect(out).toContain('recipe:');
+    expect(out).toContain('data-portal'.slice(0, 4)); // "data"
+  });
+
+  test('an ordinary page with no learned skill and no recipe → empty (quiet)', () => {
+    expect(methodAdviceForNav('https://example.com/', EMPTY_ENV)).toBe('');
   });
 });

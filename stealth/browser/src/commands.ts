@@ -12,6 +12,7 @@
 
 export const READ_COMMANDS = new Set([
   'text', 'html', 'links', 'forms', 'accessibility',
+  'find', 'table', 'read', 'data',
   'js', 'eval', 'css', 'attrs', 'wait-for',
   'console', 'network', 'cookies', 'storage', 'perf',
   'dialog', 'is',
@@ -54,6 +55,7 @@ export const ALL_COMMANDS = new Set([...READ_COMMANDS, ...WRITE_COMMANDS, ...MET
 /** Commands that return untrusted third-party page content */
 export const PAGE_CONTENT_COMMANDS = new Set([
   'text', 'html', 'links', 'forms', 'accessibility',
+  'find', 'table', 'read', 'data',
   'console', 'dialog', 'attrs',
 ]);
 
@@ -82,6 +84,10 @@ export const COMMAND_DESCRIPTIONS: Record<string, { category: string; descriptio
   'links':   { category: 'Reading', description: 'All links as "text → href"' },
   'forms':   { category: 'Reading', description: 'Form fields as JSON' },
   'accessibility': { category: 'Reading', description: 'Full ARIA tree' },
+  'find':    { category: 'Reading', description: 'Locate a keyword on the page and return the surrounding text, with a pointer to any enclosing table. Use for big documents instead of dumping all text.', usage: 'find <keyword> [-C chars] [--all] [--re]' },
+  'table':   { category: 'Reading', description: 'Extract table(s) as rows (TSV, or --json). No arg lists every table; pick one by index, `near <keyword>`, or @ref. Works on <table> and ARIA grids.', usage: 'table [<index> | near <keyword> | @ref] [--json]' },
+  'read':    { category: 'Reading', description: 'Readable main-article text (strips nav/footer/chrome) — cleaner than `text` for articles and reports.', usage: 'read' },
+  'data':    { category: 'Reading', description: 'Surface the JSON/CSV backend request behind a chart/data page (from the captured network), with a runnable fetch shortcut — the numbers a chart renders are not in the page text.', usage: 'data [--all]' },
   // Inspection
   'js':      { category: 'Inspection', description: 'Run JavaScript expression and return result as string', usage: 'js <expr>' },
   'eval':    { category: 'Inspection', description: 'Run JavaScript from a file, or inline if the arg is not a file path (same as js). File paths must be under /tmp or cwd.', usage: 'eval <js-file-or-expr>' },

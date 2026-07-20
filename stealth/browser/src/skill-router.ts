@@ -3,7 +3,7 @@
  *          (profileKey/liveProfile), recipe-registry (matchRecipe/formatRecipe), goal
  *          (GoalType), handoff-consent (eTldPlusOne).
  * [OUTPUT]: Exports SkillResolveSource, SkillResolveResult, SkillResolveDeps,
- *           resolveSkillFrom, resolveSkill, surfaceSkill.
+ *           resolveSkillFrom, resolveSkill, surfaceSkill, methodAdviceForNav.
  * [POS]: Skill-library HEART — generalizes the engine loop's domain→site-type→cold-start
  *        resolve to METHODS. Tiers: L1 own learned (exact domain) → L2 own learned
  *        (site-TYPE, 3 domains/8 samples) → L4 curated recipe (recipe-registry) → L5
@@ -24,7 +24,7 @@ import {
 import { profileKey, liveProfile, type SiteProfile } from './site-profile';
 import { matchRecipe, formatRecipe, type Recipe } from './recipe-registry';
 import { eTldPlusOne } from './handoff-consent';
-import type { GoalType } from './goal';
+import { inferNavGoal, type GoalType } from './goal';
 
 export type SkillResolveSource = 'domain' | 'site-type' | 'curated' | 'cold-start';
 
@@ -147,4 +147,22 @@ export function surfaceSkill(res: SkillResolveResult, goalType: GoalType): strin
     return formatRecipe(res.curated);
   }
   return '';
+}
+
+/**
+ * Auto nav-time method advice for a weak/stateless driver: infer the goal from the URL,
+ * resolve the best learned method or curated recipe, and render it — WITHOUT the agent
+ * having to run `nc skills`. Quiet by default (surfaceSkill returns '' at cold-start with
+ * no matching recipe). BROWSE_DISABLE_SKILLS=1 turns it off, symmetric to
+ * BROWSE_DISABLE_RECIPES. This is what makes the (already-built) method flywheel reach a
+ * model that would never call `nc skills` itself.
+ */
+export function methodAdviceForNav(
+  url: string,
+  env: Record<string, string | undefined> = process.env,
+  now: number = Date.now(),
+): string {
+  if (env.BROWSE_DISABLE_SKILLS === '1') return '';
+  const goal = inferNavGoal(url);
+  return surfaceSkill(resolveSkill(goal, url, undefined, env, now), goal);
 }

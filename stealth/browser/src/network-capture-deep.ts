@@ -77,6 +77,29 @@ export function redactUrl(url: string): string {
   );
 }
 
+// ─── Response sampling (content-type + a small, redacted body sample) ──
+// Lets `data` (read-extract) rank a request as JSON/CSV data. Best-effort: header read
+// is cheap; the body is sampled ONLY for text-like data types under a size cap, so a
+// large or binary response is never buffered. Never throws.
+const RESP_SAMPLE_MAX_BYTES = 2_000_000;
+const SAMPLEABLE_CT = /json|csv|xml|text\/plain/i;
+
+export async function sampleResponse(res: any): Promise<{ contentType?: string; bodySample?: string }> {
+  if (!res) return {};
+  try {
+    const headers = (typeof res.headers === 'function' ? await res.headers() : res.headers) ?? {};
+    const contentType: string | undefined = headers['content-type'];
+    const length = Number(headers['content-length'] || 0);
+    if (!contentType || !SAMPLEABLE_CT.test(contentType) || length > RESP_SAMPLE_MAX_BYTES) {
+      return { contentType };
+    }
+    const body = typeof res.text === 'function' ? await res.text() : undefined;
+    return { contentType, bodySample: body ? redactBody(body, contentType).slice(0, RESP_BODY_CAP) : undefined };
+  } catch {
+    return {};
+  }
+}
+
 // ─── Capture wiring (best-effort, never blocks navigation) ──
 
 /**
@@ -93,6 +116,7 @@ export function attachDeepCapture(page: {
         const type = typeof req.resourceType === 'function' ? req.resourceType() : req.resourceType;
         if (!isApiRequest(type)) return;
         const res = typeof req.response === 'function' ? await req.response() : undefined;
+        const { contentType, bodySample } = await sampleResponse(res);
         const entry: DeepNetEntry = {
           timestamp: Date.now(),
           method: typeof req.method === 'function' ? req.method() : req.method,
@@ -101,6 +125,8 @@ export function attachDeepCapture(page: {
           reqHeaders: redactHeaders((typeof req.headers === 'function' ? req.headers() : req.headers) ?? {}),
           reqBody: req.postData ? redactBody(typeof req.postData === 'function' ? req.postData() : req.postData) : undefined,
           status: res ? (typeof res.status === 'function' ? res.status() : res.status) : undefined,
+          respContentType: contentType,
+          respBodySample: bodySample,
         };
         ring.push(entry);
       } catch {}

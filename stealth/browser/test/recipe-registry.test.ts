@@ -62,3 +62,25 @@ describe('matchRecipe', () => {
     expect(block.toLowerCase()).toContain('xapi');
   });
 });
+
+describe('matchRecipe — data-portal (general, structural, never a hostname)', () => {
+  test('fires on a statistics/indicator/dataset URL alone, no auth needed', () => {
+    expect(matchRecipe({ profile: prof('open', 'heavy-spa'), url: 'https://api.worldbank.org/v2/country/CN/indicator/SP.ADO.TFRT?format=json', content: '' })?.id).toBe('data-portal');
+    expect(matchRecipe({ profile: prof('open', 'heavy-spa'), url: 'https://data.gov.hk/en-data/dataset/hk-immd-set5', content: '' })?.id).toBe('data-portal');
+  });
+
+  test('fires when the page content names a charting library (content path, public)', () => {
+    const r = matchRecipe({ profile: prof('open', 'heavy-spa'), url: 'https://x.example/board', content: 'rendered with Highcharts and a CSV download' });
+    expect(r?.id).toBe('data-portal');
+  });
+
+  test('does NOT fire on a plain blog with no data URL and no charting content', () => {
+    expect(matchRecipe({ profile: prof('open', 'static'), url: 'https://blog.example.com/my-post', content: 'a normal article about statistics in society' })).toBeNull();
+  });
+
+  test('the data-portal recipe keys on structure, never a hostname', () => {
+    const dp = RECIPES.find((r) => r.id === 'data-portal')!;
+    const src = (dp.match.strongUrlRe?.source ?? '') + (dp.match.contentRe?.source ?? '');
+    expect(src).not.toMatch(/worldbank|data\.gov|maoyan|clinicaltrials/i);
+  });
+});

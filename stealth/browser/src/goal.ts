@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Pure module — no imports.
- * [OUTPUT]: Exports GoalType, KNOWN_GOALS, parseGoal, inferGoal.
+ * [OUTPUT]: Exports GoalType, KNOWN_GOALS, parseGoal, inferGoal, inferNavGoal.
  * [POS]: Skill-library task dimension. "Optimize for tasks, not just sites" — the goal
  *        is a first-class key alongside the site type, so a recipe for (complete-course
  *        × SCORM/xAPI) transfers across every such site. A coarse string-label set, not
@@ -38,5 +38,20 @@ export function inferGoal(command: string, url: string): GoalType {
   const u = url.toLowerCase();
   if (/index_lms|scormcontent|story[_-]?content|tincan|client=storyline|\/scorm\//.test(u)) return 'complete-course';
   if (/\/export\b|format=csv|\/download\b/.test(u) || command === 'download') return 'export-data';
+  return 'unknown';
+}
+
+/**
+ * Nav-time goal inference from the URL ALONE — the goto response carries no page body, so
+ * content-based inference isn't available cheaply here. High-precision: a strong URL
+ * signature or 'unknown' (never guess, to keep the auto nav-guidance quiet). Reuses
+ * inferGoal for the export/course shapes, then adds the data-portal + article shapes. Pure.
+ */
+export function inferNavGoal(url: string): GoalType {
+  const explicit = inferGoal('goto', url);
+  if (explicit !== 'unknown') return explicit;
+  const u = url.toLowerCase();
+  if (/\/(indicator|indicators|dataset|datasets|statistics|data-catalog)\b|[?&]format=json\b|\bapi\./.test(u)) return 'extract-data';
+  if (/\/(article|articles|news|story|report|reports|blog|posts?)\//.test(u)) return 'fetch-article';
   return 'unknown';
 }

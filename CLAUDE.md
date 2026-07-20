@@ -116,6 +116,37 @@ The fix makes nightcrawl safe for STATELESS, UNINFORMED callers — self-healing
   `nightcrawl` launcher on PATH so a fresh shell needs no `export PATH/NC` block. `nc` is
   NOT installed (it would shadow netcat); `alias nc=browse` if wanted.
 
+### Weak-model perception layer (agents as our users — democratize the browser)
+
+Driven by the weak-model-lift benchmark (`research/weak-model-lift-findings-2026-07-17.md`):
+deepseek-v4-flash knew WHAT to do but fumbled the low-level tool-driving (run_js returned
+empty on a bare statement list, the answer was pasted into FINISH unexecuted, data lived in
+a backend the DOM text never showed). The fix gives a weak/stateless driver forgiving,
+high-level primitives so it never needs to hand-write DOM JS, plus in-band coaching so it
+self-corrects. All page-general — no per-site logic.
+
+- **Forgiving read primitives** (`read-extract.ts` -> `read-commands.ts`, registered in
+  `commands.ts` READ + PAGE_CONTENT): `find <keyword> [-C n] [--all] [--re]` locates a term
+  in a big page and returns the surrounding region + a pointer to any enclosing table;
+  `table [<index>|near <kw>|@ref] [--json]` extracts a `<table>` OR ARIA grid as TSV/JSON;
+  `read` returns the readable main article (cleaner than `text`); `data [--all]` surfaces
+  the JSON/CSV backend request behind a chart from the redacted deep-capture ring
+  (`network-capture-deep.ts`, now filling `respContentType`/`respBodySample` via
+  `sampleResponse`), ranked with a hard exclude for third-party telemetry vendors, and
+  prints a ready-to-run `fetch`. `text`/`html`/`read`/`find`/`table` share `capOutput` so a
+  weak model is never flooded — on truncation the footer points at `find`/`table`/`data`.
+- **In-band coaching** (`error-coach.ts` -> `server.ts` catch + `read-commands.ts` js/eval):
+  a data-driven `{errorPattern -> hint}` table keyed on error CLASS (never a site) turns a
+  thrown error or an empty `js` result into ONE next-move line (`coach:` / `EMPTY_JS_HINT`),
+  so a stateless driver that never reads the SKILL.md still self-corrects instead of looping.
+- **Auto-surfaced method flywheel** (`skill-router.methodAdviceForNav` +
+  `goal.inferNavGoal` -> `server.ts` `appendEngineGuidance`): the already-built
+  skill/recipe layer was dark (only reachable via explicit `nc skills`). Now nav-time goal
+  is inferred from the URL and the best learned method / curated recipe auto-flows in the
+  guidance block. Quiet by default; `BROWSE_DISABLE_SKILLS=1` turns it off. A general
+  `data-portal` recipe (structural signature, never a hostname) nudges chart/statistics
+  pages toward `data`/`table`.
+
 ### Engine Configuration
 - **One global daemon per machine.** When `BROWSE_STATE_FILE` is unset, `resolveConfig` (`config.ts`) resolves the state dir / socket / lock to the global `~/.nightcrawl/` regardless of the caller's git root or cwd. Scoping them per git-root was the root cause of duplicate daemons (a call from project A and project B hashed different sockets → two daemons → they fought over the one shared Chromium profile + bridge port → SingletonLock crash → 45s startup + goto timeouts). Every project now adopts the ONE daemon; tab isolation stays keyed by the `X-Nightcrawl-Session` header, not stateDir. `BROWSE_STATE_FILE` still overrides (tests, benchmarks).
 - CloakBrowser stealth Chromium is the only engine. `BROWSE_ENGINE` is no longer parsed.
@@ -124,6 +155,8 @@ The fix makes nightcrawl safe for STATELESS, UNINFORMED callers — self-healing
 - `NIGHTCRAWL_BLOCK_HEADED=1` — **no-window test/verification mode.** CloakBrowser is anti-detect Chromium: a HEADED launch shows a visible window (headless is windowless). `launchCloakBrowser` (the single chokepoint for launchHeaded/handoff/autoHandover) refuses any `headless:false` launch when set, so a verification or CI run can never pop a window. Set it (and skip the headed-requiring suites: `handoff`, `default-browser-handoff`, `stealth-extensions`) for window-free verification. Headless launches always proceed.
 - `BROWSE_DISABLE_FLYWHEEL=1` — benchmark ablation switch. `closeLoop` no-ops (records no skill), so a generalization suite can measure a clean flywheel-OFF baseline against the same held-out tasks.
 - `BROWSE_DISABLE_RECIPES=1` — benchmark ablation switch. `appendRecipe` surfaces no curated recipe, isolating the flywheel's contribution from the hand-authored recipe registry.
+- `BROWSE_DISABLE_SKILLS=1` — turn off the auto-surfaced method advice on navigation (`methodAdviceForNav`). Symmetric to `BROWSE_DISABLE_RECIPES`; the explicit `nc skills` command still works.
+- `BROWSE_MAX_OUTPUT=<chars>` — cap for the big readers (`text`/`html`/`read`/`find`/`table`, default 12000). On truncation a footer points the model at `find`/`table`/`data`. Benchmarks set it below their observation cap so the footer survives.
 - `NIGHTCRAWL_NO_FAILURE_CAPTURE=1` — full off switch for automatic failure capture (`failure-collector.ts`); records nothing, files no task.
 - `NIGHTCRAWL_FAILURE_DIR=<dir>` — override the failure sink (default `~/.nightcrawl/`); used by tests for isolation.
 

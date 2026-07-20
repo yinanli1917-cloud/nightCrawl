@@ -16,6 +16,18 @@ import * as path from 'path';
 import { TEMP_DIR, isPathWithin } from './platform';
 import { stripHiddenElements } from './content-security';
 import { gateJsCode } from './integrity-gate';
+import { capOutput, parseFindArgs, findInPage, extractTables, readableText, findDataRequests } from './read-extract';
+import { EMPTY_JS_HINT } from './error-coach';
+
+/**
+ * Stringify a js/eval result. An empty/undefined result is the bare-statement-list trap
+ * (`const x = ...` returns nothing) — the #1 weak-model fumble — so coach the fix inline
+ * instead of returning a blank that reads as "nothing happened".
+ */
+function jsResultString(result: unknown): string {
+  const out = typeof result === 'object' && result !== null ? JSON.stringify(result, null, 2) : String(result ?? '');
+  return out === '' || out === 'undefined' ? `(js returned no value)\n${EMPTY_JS_HINT}` : out;
+}
 
 // ─── AsyncFunction ctor: PARSE-test whether code is a single returned expression ───
 // Used only to parse `return (code)` (top-level `await` allowed). Parsing never
@@ -134,7 +146,27 @@ export async function handleReadCommand(
 
   switch (command) {
     case 'text': {
-      return await getCleanText(target);
+      return capOutput(await getCleanText(target));
+    }
+
+    // ─── Forgiving high-level extraction (find/table/read/data) ───
+    // Collapse the DOM-scraping a weak model can't reliably hand-write.
+    case 'find': {
+      const { keyword, context, all, regex } = parseFindArgs(args);
+      if (!keyword) throw new Error('Usage: browse find <keyword> [-C N] [--all] [--re]');
+      return capOutput(await findInPage(target, keyword, { context, all, regex }));
+    }
+
+    case 'table': {
+      return capOutput(await extractTables(target, bm, args));
+    }
+
+    case 'read': {
+      return capOutput(await readableText(target));
+    }
+
+    case 'data': {
+      return findDataRequests(args);
     }
 
     case 'html': {
@@ -142,9 +174,9 @@ export async function handleReadCommand(
       if (selector) {
         const resolved = await bm.resolveRef(selector);
         if ('locator' in resolved) {
-          return await resolved.locator.innerHTML({ timeout: 5000 });
+          return capOutput(await resolved.locator.innerHTML({ timeout: 5000 }));
         }
-        return await target.locator(resolved.selector).innerHTML({ timeout: 5000 });
+        return capOutput(await target.locator(resolved.selector).innerHTML({ timeout: 5000 }));
       }
       // page.content() is page-only; use evaluate for frame compat
       const doctype = await target.evaluate(() => {
@@ -152,7 +184,7 @@ export async function handleReadCommand(
         return dt ? `<!DOCTYPE ${dt.name}>` : '';
       });
       const html = await target.evaluate(() => document.documentElement.outerHTML);
-      return doctype ? `${doctype}\n${html}` : html;
+      return capOutput(doctype ? `${doctype}\n${html}` : html);
     }
 
     case 'links': {
@@ -216,7 +248,7 @@ export async function handleReadCommand(
       }
       const wrapped = wrapForEvaluate(expr);
       const result = await withTimeout(target.evaluate(wrapped), JS_EVAL_TIMEOUT_MS, 'js');
-      return typeof result === 'object' ? JSON.stringify(result, null, 2) : String(result ?? '');
+      return jsResultString(result);
     }
 
     case 'eval': {
@@ -231,7 +263,7 @@ export async function handleReadCommand(
       }
       const wrapped = wrapForEvaluate(code);
       const result = await withTimeout(target.evaluate(wrapped), JS_EVAL_TIMEOUT_MS, 'eval');
-      return typeof result === 'object' ? JSON.stringify(result, null, 2) : String(result ?? '');
+      return jsResultString(result);
     }
 
     case 'wait-for': {
