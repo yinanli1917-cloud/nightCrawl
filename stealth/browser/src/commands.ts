@@ -12,7 +12,7 @@
 
 export const READ_COMMANDS = new Set([
   'text', 'html', 'links', 'forms', 'accessibility',
-  'find', 'table', 'read', 'data',
+  'find', 'table', 'read', 'data', 'extract',
   'js', 'eval', 'css', 'attrs', 'wait-for',
   'console', 'network', 'cookies', 'storage', 'perf',
   'dialog', 'is',
@@ -55,7 +55,7 @@ export const ALL_COMMANDS = new Set([...READ_COMMANDS, ...WRITE_COMMANDS, ...MET
 /** Commands that return untrusted third-party page content */
 export const PAGE_CONTENT_COMMANDS = new Set([
   'text', 'html', 'links', 'forms', 'accessibility',
-  'find', 'table', 'read', 'data',
+  'find', 'table', 'read', 'data', 'extract',
   'console', 'dialog', 'attrs',
 ]);
 
@@ -88,6 +88,7 @@ export const COMMAND_DESCRIPTIONS: Record<string, { category: string; descriptio
   'table':   { category: 'Reading', description: 'Extract table(s) as rows (TSV, or --json). No arg lists every table; pick one by index, `near <keyword>`, or @ref. Works on <table> and ARIA grids. Sort/rank with --sort <col> [--desc] [--top N] (numeric-aware) to read off the max/min instead of eyeballing.', usage: 'table [<index> | near <keyword> | @ref] [--json] [--sort <col>] [--desc] [--top <n>]' },
   'read':    { category: 'Reading', description: 'Readable main-article text (strips nav/footer/chrome) — cleaner than `text` for articles and reports.', usage: 'read' },
   'data':    { category: 'Reading', description: 'Surface the JSON/CSV backend request behind a chart/data page (from the captured network), with a runnable fetch shortcut — the numbers a chart renders are not in the page text.', usage: 'data [--all]' },
+  'extract': { category: 'Reading', description: 'Read INSIDE a PDF/Excel/CSV file (which read/text/table cannot see). Fetches it auth-aware and returns PDF text or spreadsheet rows. Pass a URL or @ref of the file link, or omit to extract the current PDF page. Spreadsheets take the same [<sheet>] [--json] [--sort <col>] [--desc] [--top N] as `table`.', usage: 'extract [<url>|@ref] [<sheet>] [--json] [--sort <col>] [--desc] [--top N]' },
   // Inspection
   'js':      { category: 'Inspection', description: 'Run JavaScript expression and return result as string', usage: 'js <expr>' },
   'eval':    { category: 'Inspection', description: 'Run JavaScript from a file, or inline if the arg is not a file path (same as js). File paths must be under /tmp or cwd.', usage: 'eval <js-file-or-expr>' },

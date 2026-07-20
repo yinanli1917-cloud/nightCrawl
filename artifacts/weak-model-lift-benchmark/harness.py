@@ -219,6 +219,8 @@ _B_SYS = ("You answer by driving a real browser (nightcrawl). PREFER the high-le
           "ACTION: read()               -> the readable main article text (cleaner than get_text)\n"
           "ACTION: data()               -> the JSON/CSV backend request behind a chart/data page, "
           "with a ready-to-run fetch (the numbers on a chart are NOT in the page text)\n"
+          "ACTION: extract(<url>)       -> read INSIDE a PDF/Excel/CSV file (read/table cannot). "
+          "Use it on a file link — a bid-summary PDF, a data .xlsx, a report .pdf\n"
           "ACTION: get_text()           -> raw visible text of the page (noisy; prefer read/find)\n"
           "ACTION: run_js(<expression>) -> last resort; must be ONE expression that RETURNS a value\n"
           "When ready: FINISH: <answer>. FINISH takes the ANSWER itself, never a command. "
@@ -259,6 +261,7 @@ def _tools_nc():
             "data": lambda _="": nc_cmd(["data"], timeout=40, engine="headless"),
             "search": lambda q: nc_cmd(["search"] + _split_arg(q), timeout=60, engine="headless"),
             "follow": lambda kw: nc_cmd(["follow"] + _split_arg(kw), timeout=60, engine="headless"),
+            "extract": lambda a="": nc_cmd(["extract"] + _split_arg(a), timeout=60, engine="headless"),
             "run_js": lambda e: nc_cmd(["js", _unquote(e)], timeout=50, engine="headless")}
 
 

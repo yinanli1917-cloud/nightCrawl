@@ -146,6 +146,18 @@ self-corrects. All page-general — no per-site logic.
   behind GitHub-style `/**/` anti-hijacking armor) — never framework code, so the ring stays
   clean. `scoreDataRequest` rewards it. Verified live: `data` surfaced a JSONP `<script>`
   request (api.github.com) that was previously invisible.
+- **Artifact extraction (PDF/Excel/CSV)** (`artifact-extract.ts` -> `read-commands.ts`,
+  registered in `commands.ts`): the residual hard-tail wall — a weak model reaches a
+  PDF/Excel (Caltrans bid summary, NTSB FDR report, publisher PDF) but `read`/`text`/`table`
+  can't see inside a binary file. `extract [<url>|@ref] [<sheet>] [--json] [--sort ..] [--top]`
+  fetches the file AUTH-AWARE (via the browser context, so session cookies apply) and returns
+  PDF text (`unpdf`) or spreadsheet rows (`xlsx`/SheetJS), reusing `capOutput` + the `table`
+  select/sort helpers. Detection is byte-authoritative (`%PDF`/OLE/PK magic beats a URL
+  extension, so an HTML 404 at a `.pdf` URL isn't parsed as a PDF; an `.xlsx` served as
+  octet-stream is still attempted). `read`/`text` AUTO-ROUTE to extraction on a PDF page
+  (detected by URL ext OR `document.contentType`, so extension-less arxiv-style PDF URLs
+  work). Verified live: minimal + arxiv PDFs, a CSV, and an octet-stream `.xlsx` download.
+  New deps `unpdf` + `xlsx` are justified (binary formats need parsers).
 - **In-band coaching** (`error-coach.ts` -> `server.ts` catch + `read-commands.ts` js/eval):
   a data-driven `{errorPattern -> hint}` table keyed on error CLASS (never a site) turns a
   thrown error or an empty `js` result into ONE next-move line (`coach:` / `EMPTY_JS_HINT`),

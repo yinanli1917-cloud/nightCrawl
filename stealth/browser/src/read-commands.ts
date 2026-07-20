@@ -17,6 +17,7 @@ import { TEMP_DIR, isPathWithin } from './platform';
 import { stripHiddenElements } from './content-security';
 import { gateJsCode } from './integrity-gate';
 import { capOutput, parseFindArgs, findInPage, extractTables, readableText, findDataRequests } from './read-extract';
+import { extractArtifact } from './artifact-extract';
 import { EMPTY_JS_HINT } from './error-coach';
 
 /**
@@ -144,6 +145,17 @@ export async function handleReadCommand(
   // Frame-aware target for content extraction
   const target = bm.getActiveFrameOrPage();
 
+  // Auto-route: a PDF page has no DOM text — `read`/`text` on it silently returned nothing.
+  // Detect by URL extension (cheap) OR document.contentType (catches extension-less PDF URLs
+  // like arxiv.org/pdf/1706.03762), then extract the PDF's real text.
+  if (command === 'read' || command === 'text') {
+    let isPdf = /\.pdf($|[?#])/i.test(bm.getCurrentUrl());
+    if (!isPdf) {
+      isPdf = await page.evaluate(() => document.contentType === 'application/pdf').catch(() => false);
+    }
+    if (isPdf) return capOutput(await extractArtifact(bm, []));
+  }
+
   switch (command) {
     case 'text': {
       return capOutput(await getCleanText(target));
@@ -167,6 +179,10 @@ export async function handleReadCommand(
 
     case 'data': {
       return findDataRequests(args);
+    }
+
+    case 'extract': {
+      return capOutput(await extractArtifact(bm, args));
     }
 
     case 'html': {
