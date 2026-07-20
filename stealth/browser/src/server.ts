@@ -15,6 +15,8 @@
 
 import { BrowserManager, killHeadedOrphans } from './browser-manager';
 import { handleReadCommand } from './read-commands';
+import { coachHint } from './error-coach';
+import { repetitionHint } from './repetition-coach';
 import { handleWriteCommand } from './write-commands';
 import { handleMetaCommand } from './meta-commands';
 import { handleCookiePickerRoute } from './cookie-picker-routes';
@@ -57,6 +59,7 @@ import {
 import { isFirstRun, runOnboarding } from './onboarding';
 import { checkpointSession, restoreSession, sessionFilePath } from './session-store';
 import { NAV_COMMANDS, buildNavGuidance, resolveAutoEngine } from './engine-routing';
+import { methodAdviceForNav } from './skill-router';
 import { recordWin } from './domain-strategy';
 import { recordDecision } from './engine-journal';
 import { recordFailure } from './failure-collector';
@@ -1035,6 +1038,15 @@ async function handleCommand(
       });
     }
 
+    // Planning-layer coach: nudge the model off a repeated/wasted move (re-search the same
+    // term, revisit a URL, re-read a page with no answer) so a small step budget isn't
+    // burned looping. Placed right after the command runs so EVERY return path below carries
+    // it. Explore commands only; best-effort, never masks the result.
+    try {
+      const rep = repetitionHint(sessionId, command, args, view.getCurrentUrl());
+      if (rep) result += '\n\n' + rep;
+    } catch {}
+
     // Activity: emit command_end (success)
     emitActivity({
       type: 'command_end',
@@ -1400,6 +1412,10 @@ async function handleCommand(
     let errorMsg = wrapError(err);
     const hint = browserManager.getFailureHint();
     if (hint) errorMsg += '\n' + hint;
+    // Coach the next move keyed on the error CLASS (never a site) so a weak/stateless
+    // driver self-corrects instead of looping. Best-effort; never masks the real error.
+    const coach = coachHint(err?.message ?? String(err), { url: browserManager.getCurrentUrl() });
+    if (coach) errorMsg += '\ncoach: ' + coach;
     return new Response(JSON.stringify({ error: errorMsg }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
@@ -1507,6 +1523,10 @@ async function appendEngineGuidance(resp: Response, body: any, startedAt: number
     const guidance = buildNavGuidance(url, chosen, undefined, text);
 
     let extra = guidance ? `\n\n${guidance}` : '';
+    // Auto-surface the METHOD flywheel (which extraction method / curated recipe), not just
+    // the ENGINE — so a weak model that never runs `nc skills` still gets the right move.
+    // Best-effort + quiet by default (empty unless a learned skill or recipe applies).
+    try { const method = methodAdviceForNav(url); if (method) extra += `\n\n${method}`; } catch {}
     // --engine=real only routes when the command is bridge-supported AND a bridge
     // is connected; otherwise it ran here on headless — say so honestly.
     if (body?.engine === 'real') {

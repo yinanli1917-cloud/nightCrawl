@@ -177,10 +177,22 @@ def agent_loop(task, tools, system, max_steps):
         log.append({"obs_" + name: obs[:400]})
         msgs += [{"role": "assistant", "content": out},
                  {"role": "user", "content": "OBSERVATION:\n" + obs}]
-    msgs.append({"role": "user", "content": "Max steps reached. Output 'FINISH: <best answer now>'."})
+    # Out of steps: force a CLEAN final value, not another directive. A weak model that
+    # reached the info but pasted an ACTION into its last turn scored 0 for no reason; this
+    # extracts the answer it already has. Re-ask once if it still emits a directive.
+    msgs.append({"role": "user", "content": "You are OUT OF STEPS. Do NOT output an ACTION. "
+                 "Reply with ONLY the final answer value (a name, number, date, or short phrase) "
+                 "based on what you have already seen. If unsure, give your single best specific guess."})
     out = call_deepseek(DS_MODEL_FLASH, msgs)
     act = parse_action(out)
-    return (act[1] if act and act[0] == "finish" else out[:300]), log
+    if act and act[0] == "finish":
+        return act[1], log
+    if looks_like_directive(out):
+        msgs += [{"role": "assistant", "content": out},
+                 {"role": "user", "content": "That is a command, not an answer. Reply with ONLY the "
+                  "final value (no ACTION, no FINISH prefix)."}]
+        out = call_deepseek(DS_MODEL_FLASH, msgs)
+    return out.strip()[:300], log
 
 
 # ------------------------------------------------------------------- conditions
@@ -255,7 +267,9 @@ def condition_C(task):
 
 
 def condition_B(task):
-    return agent_loop(task, _tools_nc(), _B_SYS, max_steps=12)
+    # 20, not 12: a step of deepseek-flash is ~$0.0002, and the hard-tail tasks are 5-7
+    # hops — the old 12 cap strangled the model one step from the answer (MIT 6.006 trace).
+    return agent_loop(task, _tools_nc(), _B_SYS, max_steps=20)
 
 
 # ------------------------------------------------------------------- judge (separate model)
