@@ -146,6 +146,68 @@ export function formatTable(t: RawTable, opts: { json: boolean; rowCap: number }
   return out;
 }
 
+// ─── table sort/top (reasoning-reducer) ────────────────────────
+// A weak model fumbles "which row has the max/min/rank" over a 200-row table. `--sort
+// <col> [--desc] [--top N]` lets it READ OFF the answer instead of eyeballing. General:
+// numeric-aware compare (commas/currency/percent stripped), lexical fallback; no per-site
+// logic. col is a 0-based index OR a header-name substring.
+export function parseNumeric(cell: string): number | null {
+  if (cell == null) return null;
+  const m = String(cell).replace(/[,\s]/g, '').match(/-?\d+(?:\.\d+)?/);
+  if (!m) return null;
+  const n = parseFloat(m[0]);
+  return Number.isFinite(n) ? n : null;
+}
+
+export function resolveColumn(header: string[], spec: string): number {
+  const trimmed = (spec ?? '').trim();
+  const n = parseInt(trimmed, 10);
+  if (!Number.isNaN(n) && String(n) === trimmed && n >= 0 && n < header.length) return n;
+  const s = trimmed.toLowerCase();
+  if (!s) return -1;
+  const exact = header.findIndex((h) => h.toLowerCase() === s);
+  if (exact >= 0) return exact;
+  return header.findIndex((h) => h.toLowerCase().includes(s));
+}
+
+export function sortRows(rows: string[][], colIdx: number, desc: boolean): string[][] {
+  if (rows.length <= 2 || colIdx < 0) return rows;
+  const [header, ...body] = rows;
+  const sorted = [...body].sort((a, b) => {
+    const av = parseNumeric(a[colIdx] ?? '');
+    const bv = parseNumeric(b[colIdx] ?? '');
+    const cmp = av !== null && bv !== null
+      ? av - bv
+      : String(a[colIdx] ?? '').localeCompare(String(b[colIdx] ?? ''));
+    return desc ? -cmp : cmp;
+  });
+  return [header, ...sorted];
+}
+
+export interface TableOpts {
+  json: boolean;
+  desc: boolean;
+  sortCol?: string;
+  top?: number;
+  positional: string[];
+}
+
+export function parseTableOpts(args: string[]): TableOpts {
+  const positional: string[] = [];
+  let json = false, desc = false;
+  let sortCol: string | undefined;
+  let top: number | undefined;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === '--json') json = true;
+    else if (a === '--desc') desc = true;
+    else if (a === '--sort') sortCol = args[++i];
+    else if (a === '--top') { const n = parseInt(args[++i], 10); top = Number.isFinite(n) ? n : undefined; }
+    else positional.push(a);
+  }
+  return { json, desc, sortCol, top, positional };
+}
+
 // In-page: extract every table (real <table> + ARIA grid) as capped rows. Self-contained
 // (evaluate can't close over module scope). Cells collapsed + truncated to bound transfer.
 function extractAllTablesInPage(): RawTable[] {
@@ -165,9 +227,26 @@ function extractAllTablesInPage(): RawTable[] {
   }).filter((t) => t.rows.length > 0);
 }
 
+// Apply --sort/--top to a table, returning the shaped rows + a note when a named column
+// wasn't found (so the model sees WHY the order is unchanged instead of a silent no-op).
+function shapeTable(t: RawTable, opts: TableOpts): { table: RawTable; note: string } {
+  let rows = t.rows;
+  let note = '';
+  if (opts.sortCol) {
+    const col = resolveColumn(rows[0] ?? [], opts.sortCol);
+    if (col < 0) note = `\n\n(note: sort column "${opts.sortCol}" not found in header ${JSON.stringify(rows[0] ?? [])} — showing unsorted)`;
+    else rows = sortRows(rows, col, opts.desc);
+  }
+  if (opts.top !== undefined && rows.length > 1) {
+    rows = [rows[0], ...rows.slice(1, 1 + Math.max(0, opts.top))];
+  }
+  return { table: { ...t, rows }, note };
+}
+
 export async function extractTables(target: Target, bm: TabView, args: string[]): Promise<string> {
-  const json = args.includes('--json');
-  const positional = args.filter((a) => a !== '--json');
+  const opts = parseTableOpts(args);
+  const { json, positional } = opts;
+  const shaping = opts.sortCol !== undefined || opts.top !== undefined;
 
   if (positional[0]?.startsWith('@')) {
     const resolved = await bm.resolveRef(positional[0]);
@@ -178,14 +257,17 @@ export async function extractTables(target: Target, bm: TabView, args: string[])
       return [...el.querySelectorAll('[role="row"]')].map((r) =>
         [...r.querySelectorAll('[role="cell"],[role="gridcell"],[role="columnheader"],[role="rowheader"]')].map(cell));
     });
-    return formatTable({ index: 0, rows, caption: '' }, { json, rowCap: DEFAULT_ROW_CAP });
+    const { table, note } = shapeTable({ index: 0, rows, caption: '' }, opts);
+    return formatTable(table, { json, rowCap: DEFAULT_ROW_CAP }) + note;
   }
 
   const tables = await target.evaluate(extractAllTablesInPage);
-  if (positional.length === 0) return formatTableList(tables);
-  const sel = selectTable(tables, positional);
+  // Bare `table` (no index, no shaping) lists; shaping with no index defaults to table #0.
+  if (positional.length === 0 && !shaping) return formatTableList(tables);
+  const sel = positional.length ? selectTable(tables, positional) : (tables[0] ?? { error: 'no tables on this page' });
   if ('error' in sel) return `${sel.error}\n\n${formatTableList(tables)}`;
-  return formatTable(sel, { json, rowCap: DEFAULT_ROW_CAP });
+  const { table, note } = shapeTable(sel, opts);
+  return formatTable(table, { json, rowCap: DEFAULT_ROW_CAP }) + note;
 }
 
 // ─── read (Readability-style main content) ─────────────────────
@@ -220,13 +302,20 @@ const DATA_URL_RE = /\/api\/|\/v\d+\/|graphql|format=csv|\.json(\?|$)|\.csv(\?|$
 // surfaced Azure App Insights (dc.services.visualstudio.com/v2/track) as if it were data.
 const ANALYTICS_RE = /google-analytics|googletagmanager|doubleclick|[?&]gtm|\/collect\b|\/beacon\b|\/pixel\b|\/track\b|segment\.(io|com)|mixpanel|amplitude|sentry|hotjar|clarity\.ms|applicationinsights|visualstudio\.com|nr-data\.net|newrelic|datadoghq|\/rum\b|\/telemetry\b/i;
 
+// A captured body that is a JSON value OR a JSONP-wrapped value (callback({…})/([…])).
+const DATA_BODY_RE = /^\s*(?:[\w$.]{1,64}\s*\(\s*)?[[{]/;
+
 export function scoreDataRequest(e: DeepNetEntry): number {
   if (ANALYTICS_RE.test(e.url)) return -100; // telemetry vendor — never data, even a JSON POST to /v2/track
   let s = 0;
   if (e.respContentType && DATA_CT_RE.test(e.respContentType)) s += 3;
   if (DATA_URL_RE.test(e.url)) s += 2;
-  if (e.respBodySample && /^\s*[[{]/.test(e.respBodySample)) s += 2;
+  if (e.respBodySample && DATA_BODY_RE.test(e.respBodySample)) s += 2;
   if (e.method && e.method !== 'GET') s += 1;
+  // A `script` request only reaches the ring when it carried data (JSONP/JSON) — the
+  // numbers behind a chart on a data-app (Maoyan/World Bank). Reward it so it surfaces
+  // even though its content-type is javascript, not json.
+  if (e.resourceType === 'script' && e.respBodySample) s += 2;
   return s;
 }
 

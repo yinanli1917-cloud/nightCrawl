@@ -18,6 +18,10 @@ import {
   selectTable,
   formatTable,
   extractTables,
+  parseNumeric,
+  resolveColumn,
+  sortRows,
+  parseTableOpts,
   type RawTable,
   scoreDataRequest,
   rankDataRequests,
@@ -155,6 +159,65 @@ describe('table', () => {
   });
 });
 
+// ─── table --sort/--desc/--top (reasoning-reducer) ───────────
+describe('table sort/top', () => {
+  test('parseNumeric strips commas/currency/percent', () => {
+    expect(parseNumeric('1,234')).toBe(1234);
+    expect(parseNumeric('$5.6')).toBe(5.6);
+    expect(parseNumeric('78%')).toBe(78);
+    expect(parseNumeric('2006')).toBe(2006);
+    expect(parseNumeric('n/a')).toBeNull();
+    expect(parseNumeric('')).toBeNull();
+  });
+
+  test('resolveColumn accepts an index or a header name (substring, case-insensitive)', () => {
+    const header = ['Country', 'Population', 'GDP per capita'];
+    expect(resolveColumn(header, '1')).toBe(1);
+    expect(resolveColumn(header, 'population')).toBe(1);
+    expect(resolveColumn(header, 'gdp')).toBe(2);
+    expect(resolveColumn(header, 'nope')).toBe(-1);
+  });
+
+  test('sortRows sorts numerically, keeps the header, honors desc', () => {
+    const rows = [['City', 'Pop'], ['A', '1,000'], ['B', '90'], ['C', '300']];
+    const asc = sortRows(rows, 1, false);
+    expect(asc.map(r => r[0])).toEqual(['City', 'B', 'C', 'A']); // 90 < 300 < 1000
+    const desc = sortRows(rows, 1, true);
+    expect(desc.map(r => r[0])).toEqual(['City', 'A', 'C', 'B']);
+  });
+
+  test('sortRows falls back to lexical when a column is non-numeric', () => {
+    const rows = [['Name'], ['Charlie'], ['alice'], ['Bob']];
+    expect(sortRows(rows, 0, false).map(r => r[0])).toEqual(['Name', 'alice', 'Bob', 'Charlie']);
+  });
+
+  test('parseTableOpts pulls --sort/--desc/--top and leaves positional intact', () => {
+    const o = parseTableOpts(['2', '--sort', 'Population', '--desc', '--top', '3', '--json']);
+    expect(o.positional).toEqual(['2']);
+    expect(o.sortCol).toBe('Population');
+    expect(o.desc).toBe(true);
+    expect(o.top).toBe(3);
+    expect(o.json).toBe(true);
+  });
+
+  test('extractTables --sort --desc --top gives the max row first, capped', async () => {
+    const T: RawTable[] = [{ index: 0, caption: '', rows: [['City', 'Pop'], ['A', '1,000'], ['B', '90'], ['C', '300']] }];
+    const target = { evaluate: async () => T };
+    const out = await extractTables(target as any, fakeBm(target), ['--sort', 'Pop', '--desc', '--top', '1']);
+    const lines = out.split('\n').filter(l => l && !l.includes('showing') && !l.startsWith('(') && !l.startsWith('—'));
+    expect(lines[0]).toBe('City\tPop');
+    expect(lines[1]).toBe('A\t1,000'); // the max
+    expect(lines.length).toBe(2);      // header + top 1
+  });
+
+  test('extractTables warns when the sort column is not found (unsorted, with a note)', async () => {
+    const T: RawTable[] = [{ index: 0, caption: '', rows: [['City', 'Pop'], ['A', '1'], ['B', '2']] }];
+    const target = { evaluate: async () => T };
+    const out = await extractTables(target as any, fakeBm(target), ['--sort', 'ZZZ']);
+    expect(out).toMatch(/not found|unsorted/i);
+  });
+});
+
 // ─── data (backend data-request finder) ──────────────────────
 const entry = (o: Partial<DeepNetEntry>): DeepNetEntry => ({
   timestamp: 0, method: 'GET', url: 'https://x/', resourceType: 'fetch', ...o,
@@ -168,6 +231,14 @@ describe('data', () => {
     expect(scoreDataRequest(api)).toBeGreaterThan(0);
     expect(scoreDataRequest(analytics)).toBeLessThan(0);
     expect(scoreDataRequest(api)).toBeGreaterThan(scoreDataRequest(plain));
+  });
+
+  test('a script/JSONP response carrying data is scored as data (Maoyan/World Bank class)', () => {
+    const jsonp = entry({ url: 'https://box.maoyan.com/promovie/api/box/second.json', resourceType: 'script', respContentType: 'application/javascript', respBodySample: 'cb({"movieList":[{"boxInfo":"3.2亿"}]})' });
+    expect(scoreDataRequest(jsonp)).toBeGreaterThan(0);
+    // an analytics script is still excluded even when its body looks structured
+    const trackScript = entry({ url: 'https://www.googletagmanager.com/gtm.js', resourceType: 'script', respBodySample: '{"e":1}' });
+    expect(scoreDataRequest(trackScript)).toBeLessThan(0);
   });
 
   test('de-ranks third-party telemetry vendors, even JSON POSTs (App Insights, etc.)', () => {

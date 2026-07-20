@@ -20,7 +20,7 @@ export const READ_COMMANDS = new Set([
 
 export const WRITE_COMMANDS = new Set([
   'goto', 'back', 'forward', 'reload',
-  'click', 'fill', 'select', 'hover', 'type', 'press', 'scroll', 'wait', 'search',
+  'click', 'fill', 'select', 'hover', 'type', 'press', 'scroll', 'wait', 'search', 'follow',
   'viewport', 'cookie', 'cookie-import', 'cookie-import-browser', 'header', 'useragent',
   'upload', 'dialog-accept', 'dialog-dismiss',
   'cleanup', 'autofill',
@@ -85,7 +85,7 @@ export const COMMAND_DESCRIPTIONS: Record<string, { category: string; descriptio
   'forms':   { category: 'Reading', description: 'Form fields as JSON' },
   'accessibility': { category: 'Reading', description: 'Full ARIA tree' },
   'find':    { category: 'Reading', description: 'Locate a keyword on the page and return the surrounding text, with a pointer to any enclosing table. Use for big documents instead of dumping all text.', usage: 'find <keyword> [-C chars] [--all] [--re]' },
-  'table':   { category: 'Reading', description: 'Extract table(s) as rows (TSV, or --json). No arg lists every table; pick one by index, `near <keyword>`, or @ref. Works on <table> and ARIA grids.', usage: 'table [<index> | near <keyword> | @ref] [--json]' },
+  'table':   { category: 'Reading', description: 'Extract table(s) as rows (TSV, or --json). No arg lists every table; pick one by index, `near <keyword>`, or @ref. Works on <table> and ARIA grids. Sort/rank with --sort <col> [--desc] [--top N] (numeric-aware) to read off the max/min instead of eyeballing.', usage: 'table [<index> | near <keyword> | @ref] [--json] [--sort <col>] [--desc] [--top <n>]' },
   'read':    { category: 'Reading', description: 'Readable main-article text (strips nav/footer/chrome) — cleaner than `text` for articles and reports.', usage: 'read' },
   'data':    { category: 'Reading', description: 'Surface the JSON/CSV backend request behind a chart/data page (from the captured network), with a runnable fetch shortcut — the numbers a chart renders are not in the page text.', usage: 'data [--all]' },
   // Inspection
@@ -109,6 +109,7 @@ export const COMMAND_DESCRIPTIONS: Record<string, { category: string; descriptio
   'type':    { category: 'Interaction', description: 'Type into focused element', usage: 'type <text>' },
   'press':   { category: 'Interaction', description: 'Press key — Enter, Tab, Escape, ArrowUp/Down/Left/Right, Backspace, Delete, Home, End, PageUp, PageDown, or modifiers like Shift+Enter', usage: 'press <key>' },
   'search':  { category: 'Interaction', description: 'Use the site\'s OWN search box: finds the search input, types the query, and submits — instead of guessing a URL. Then read results with find/table/data.', usage: 'search <query>' },
+  'follow':  { category: 'Interaction', description: 'Click the on-page link that best matches a keyword, in one step (no snapshot/@ref needed). Use it to walk search results → filing → document instead of guessing URLs.', usage: 'follow <keyword>' },
   'scroll':  { category: 'Interaction', description: 'Scroll element into view, or scroll to page bottom if no selector', usage: 'scroll [sel]' },
   'wait':    { category: 'Interaction', description: 'Wait for element, network idle, or page load (timeout: 15s)', usage: 'wait <sel|--networkidle|--load>' },
   'upload':  { category: 'Interaction', description: 'Upload file(s)', usage: 'upload <sel> <file> [file2...]' },

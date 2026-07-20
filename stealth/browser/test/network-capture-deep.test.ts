@@ -15,6 +15,7 @@ import {
   redactUrl,
   DeepNetRing,
   sampleResponse,
+  looksLikeData,
   type DeepNetEntry,
 } from '../src/network-capture-deep';
 
@@ -25,6 +26,49 @@ describe('network-capture-deep — API-only filter', () => {
     expect(isApiRequest('document')).toBe(false);
     expect(isApiRequest('image')).toBe(false);
     expect(isApiRequest('stylesheet')).toBe(false);
+  });
+});
+
+describe('network-capture-deep — looksLikeData (JSONP / JSON vs code)', () => {
+  test('JSONP callback wrapper is data', () => {
+    expect(looksLikeData('jsonp_12345({"data":[1,2,3]})')).toBe(true);
+    expect(looksLikeData('cb( [ {"year":2006} ] )')).toBe(true);
+  });
+  test('JSONP behind anti-hijacking /**/ armor is data (GitHub-style)', () => {
+    expect(looksLikeData('/**/cb({"login":"torvalds"})', 'application/javascript')).toBe(true);
+  });
+  test('bare JSON object/array is data', () => {
+    expect(looksLikeData('[{"a":1},{"b":2}]')).toBe(true);
+    expect(looksLikeData('{"series":[1,2]}')).toBe(true);
+  });
+  test('a JS bundle is NOT data (starts with code, not a value)', () => {
+    expect(looksLikeData('!function(e){var t=1}(window)')).toBe(false);
+    expect(looksLikeData('(function(){console.log(1)})()')).toBe(false);
+    expect(looksLikeData('var app = new Vue({})')).toBe(false);
+  });
+  test('json/csv content-type short-circuits to data', () => {
+    expect(looksLikeData('anything at all', 'text/csv')).toBe(true);
+  });
+  test('empty is not data', () => {
+    expect(looksLikeData('')).toBe(false);
+  });
+});
+
+describe('network-capture-deep — sampleResponse for script/JSONP', () => {
+  const res = (headers: Record<string, string>, body?: string) => ({
+    headers: () => headers, text: async () => body ?? '',
+  });
+  test('a script response carrying JSONP data IS sampled', async () => {
+    const r = await sampleResponse(res({ 'content-type': 'application/javascript' }, 'cb({"gdp":[2006,2007]})'), 'script');
+    expect(r.bodySample).toContain('gdp');
+  });
+  test('a script response that is real code is NOT sampled', async () => {
+    const r = await sampleResponse(res({ 'content-type': 'application/javascript' }, '!function(){}()'), 'script');
+    expect(r.bodySample).toBeUndefined();
+  });
+  test('a fetch response is unaffected by the script gate (JSON body still sampled)', async () => {
+    const r = await sampleResponse(res({ 'content-type': 'application/json' }, '[{"a":1}]'), 'fetch');
+    expect(r.bodySample).toBe('[{"a":1}]');
   });
 });
 

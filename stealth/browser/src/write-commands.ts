@@ -16,6 +16,8 @@ import { validateNavigationUrl } from './url-validation';
 import { cleanup, formatCleanupResult } from './cleanup';
 import { handleAutofill } from './autofill';
 import { rankSearchInput } from './search-input';
+import { rankLinks } from './follow-link';
+import { navFailureHint } from './nav-recovery';
 import { resolveConfig } from './config';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -73,7 +75,17 @@ export async function handleWriteCommand(
       await validateNavigationUrl(url);
       const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
       const status = response?.status() || 'unknown';
-      return `Navigated to ${url} (${status})`;
+      const finalUrl = page.url();
+      // Sample a little text so a soft-404 (200 status, "page not found" body) is caught,
+      // and the model gets a recovery hint instead of looping on stale-URL guesses.
+      const bodySample = await page
+        .evaluate(() => (document.title + ' ' + (document.body?.innerText || '')).slice(0, 600))
+        .catch(() => '');
+      const norm = (u: string) => u.replace(/#.*$/, '').replace(/\/$/, '');
+      const redirected = finalUrl && norm(finalUrl) !== norm(url);
+      const target = redirected ? `${finalUrl} (redirected from ${url})` : url;
+      const hint = navFailureHint({ status, finalUrl, requestedUrl: url, bodySample });
+      return `Navigated to ${target} (${status})${hint ? `\n\n${hint}` : ''}`;
     }
 
     case 'back': {
@@ -256,6 +268,51 @@ export async function handleWriteCommand(
       }
       const moved = bm.getCurrentUrl() !== urlBefore;
       return `Searched "${query}"${moved ? '' : ' (page did not navigate — the results may be inline; read them, or try `snapshot -i`)'} → now at ${bm.getCurrentUrl()}. Use \`find\`/\`table\`/\`data\` to read the results.`;
+    }
+
+    case 'follow': {
+      // Navigation-assist: click the on-page link that best matches a keyword, in ONE
+      // step — collapses the snapshot -> find @ref -> click chain a weak model fumbles.
+      // Gather links in-page, rank Node-side (pure/tested), click with a TRUSTED locator.
+      const keyword = args.join(' ');
+      if (!keyword) throw new Error('Usage: browse follow <keyword>');
+      const cands = await target.evaluate(() => {
+        const vis = (el: Element) => {
+          const r = el.getBoundingClientRect(); const st = getComputedStyle(el);
+          return r.width > 0 && r.height > 0 && st.visibility !== 'hidden' && st.display !== 'none';
+        };
+        return [...document.querySelectorAll('a[href]')].map((el, index) => ({
+          index, visible: vis(el),
+          text: (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 120),
+          href: (el as HTMLAnchorElement).href || el.getAttribute('href') || '',
+          ariaLabel: el.getAttribute('aria-label') || '',
+          title: el.getAttribute('title') || '',
+        }));
+      });
+      const pick = rankLinks(cands, keyword);
+      if (pick === -1) {
+        return `No link matching "${keyword}" on this page. Try \`find "${keyword}"\` to locate the text, or \`search "${keyword}"\` to use the site's search.`;
+      }
+      const chosen = cands[pick];
+      // Mark the chosen link + force same-tab (strip target=_blank) so the session's active
+      // tab actually moves — a new tab would silently strand a stateless driver.
+      await target.evaluate((i) => {
+        const a = [...document.querySelectorAll('a[href]')][i] as HTMLAnchorElement | undefined;
+        if (a) { a.removeAttribute('target'); a.setAttribute('data-nc-follow', '1'); }
+      }, chosen.index);
+      const urlBefore = bm.getCurrentUrl();
+      try {
+        const linkLoc = target.locator('[data-nc-follow="1"]');
+        await linkLoc.scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => {});
+        await linkLoc.click({ timeout: 5000 });
+        await page.waitForLoadState('domcontentloaded', { timeout: 12000 }).catch(() => {});
+        await page.waitForLoadState('networkidle', { timeout: 6000 }).catch(() => {});
+      } finally {
+        await target.evaluate(() => document.querySelector('[data-nc-follow]')?.removeAttribute('data-nc-follow')).catch(() => {});
+      }
+      const moved = bm.getCurrentUrl() !== urlBefore;
+      const label = chosen.text || chosen.ariaLabel || keyword;
+      return `Followed "${label}"${moved ? '' : ' (URL unchanged — may be an in-page anchor or an SPA update; read the page)'} → now at ${bm.getCurrentUrl()}. Use \`find\`/\`table\`/\`read\` to read it.`;
     }
 
     case 'scroll': {

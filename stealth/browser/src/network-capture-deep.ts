@@ -16,7 +16,7 @@ export interface DeepNetEntry {
   timestamp: number;
   method: string;
   url: string;
-  resourceType: string;                 // 'xhr' | 'fetch'
+  resourceType: string;                 // 'xhr' | 'fetch' | 'script' (script only when it carries data)
   reqHeaders?: Record<string, string>;  // redacted
   reqBody?: string;                     // redacted, capped
   status?: number;
@@ -83,18 +83,53 @@ export function redactUrl(url: string): string {
 // large or binary response is never buffered. Never throws.
 const RESP_SAMPLE_MAX_BYTES = 2_000_000;
 const SAMPLEABLE_CT = /json|csv|xml|text\/plain/i;
+const SCRIPT_CT = /javascript|ecmascript/i;
 
-export async function sampleResponse(res: any): Promise<{ contentType?: string; bodySample?: string }> {
+/**
+ * True when a response body is DATA (a JSON value or a JSONP-wrapped value), as opposed
+ * to executable code. Used to decide whether a `script` resource carried the numbers
+ * behind a chart (Maoyan/World Bank load series via JSONP/`<script>`), so `data` can
+ * surface them without the model hand-writing fetch+parse JS. A json/csv content-type
+ * short-circuits to true; otherwise the body must START with a value (`{`/`[`), directly
+ * or behind a `callback(` wrapper — a real bundle starts with `!function`/`(function`/`var`
+ * and is rejected.
+ */
+export function looksLikeData(sample: string, contentType?: string): boolean {
+  if (SAMPLEABLE_CT.test(contentType || '')) return true;
+  // Strip a BOM, leading whitespace/semicolons, and a leading /* */ comment (servers
+  // prepend `/**/` to JSONP as anti-hijacking armor, e.g. GitHub's API).
+  const head = (sample || '')
+    .replace(/^﻿/, '')
+    .replace(/^[\s;]+/, '')
+    .replace(/^\/\*[\s\S]*?\*\//, '')
+    .replace(/^[\s;]+/, '')
+    .slice(0, 200);
+  if (!head) return false;
+  if (/^[\w$.]{1,64}\s*\(\s*[[{]/.test(head)) return true; // JSONP: name( {…} / […]
+  if (/^[[{]/.test(head) && /[:,\]}]/.test(head)) return true; // bare JSON object/array
+  return false;
+}
+
+export async function sampleResponse(
+  res: any,
+  resourceType?: string,
+): Promise<{ contentType?: string; bodySample?: string }> {
   if (!res) return {};
   try {
     const headers = (typeof res.headers === 'function' ? await res.headers() : res.headers) ?? {};
     const contentType: string | undefined = headers['content-type'];
     const length = Number(headers['content-length'] || 0);
-    if (!contentType || !SAMPLEABLE_CT.test(contentType) || length > RESP_SAMPLE_MAX_BYTES) {
-      return { contentType };
-    }
+    if (length > RESP_SAMPLE_MAX_BYTES) return { contentType };
+    // xhr/fetch: sample the known data content-types. script: also read a javascript
+    // response, but keep the sample ONLY when its body is really data (JSONP/JSON), never
+    // when it is code — so the ring never fills with framework bundles.
+    const isScript = resourceType === 'script';
+    const sampleable = SAMPLEABLE_CT.test(contentType || '') || (isScript && SCRIPT_CT.test(contentType || ''));
+    if (!contentType || !sampleable) return { contentType };
     const body = typeof res.text === 'function' ? await res.text() : undefined;
-    return { contentType, bodySample: body ? redactBody(body, contentType).slice(0, RESP_BODY_CAP) : undefined };
+    if (!body) return { contentType };
+    if (isScript && !looksLikeData(body, contentType)) return { contentType };
+    return { contentType, bodySample: redactBody(body, contentType).slice(0, RESP_BODY_CAP) };
   } catch {
     return {};
   }
@@ -114,9 +149,13 @@ export function attachDeepCapture(page: {
     page.on('requestfinished', async (req: any) => {
       try {
         const type = typeof req.resourceType === 'function' ? req.resourceType() : req.resourceType;
-        if (!isApiRequest(type)) return;
+        // xhr/fetch is the API surface; a `script` is captured ONLY when it carried data
+        // (JSONP/JSON) — the numbers behind a chart on data-app sites.
+        if (!isApiRequest(type) && type !== 'script') return;
         const res = typeof req.response === 'function' ? await req.response() : undefined;
-        const { contentType, bodySample } = await sampleResponse(res);
+        const { contentType, bodySample } = await sampleResponse(res, type);
+        // A script with no data sample is plain code — never record it (keeps the ring clean).
+        if (type === 'script' && !bodySample) return;
         const entry: DeepNetEntry = {
           timestamp: Date.now(),
           method: typeof req.method === 'function' ? req.method() : req.method,

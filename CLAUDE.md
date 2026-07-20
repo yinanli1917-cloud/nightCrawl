@@ -135,17 +135,39 @@ self-corrects. All page-general — no per-site logic.
   `sampleResponse`), ranked with a hard exclude for third-party telemetry vendors, and
   prints a ready-to-run `fetch`. `text`/`html`/`read`/`find`/`table` share `capOutput` so a
   weak model is never flooded — on truncation the footer points at `find`/`table`/`data`.
+  `table` also takes `--sort <col> [--desc] [--top N]` (numeric-aware: commas/currency/%
+  stripped, lexical fallback) so a weak model READS OFF the max/min/rank instead of
+  eyeballing 200 rows and comparing long numbers in its head (the residual REASONING wall on
+  data-reachable tasks). Verified live on Wikipedia's 242-row population table.
+- **Data-app capture (script/JSONP)** (`network-capture-deep.ts`): the numbers on a
+  data-app (Maoyan, some gov portals) load via `<script>`/JSONP, not xhr/fetch, so `data`
+  never saw them. Capture now also records a `script` response, but ONLY when its body is
+  really DATA (`looksLikeData`: a JSON value, or a `callback({…})`/`([…])` wrapper, even
+  behind GitHub-style `/**/` anti-hijacking armor) — never framework code, so the ring stays
+  clean. `scoreDataRequest` rewards it. Verified live: `data` surfaced a JSONP `<script>`
+  request (api.github.com) that was previously invisible.
 - **In-band coaching** (`error-coach.ts` -> `server.ts` catch + `read-commands.ts` js/eval):
   a data-driven `{errorPattern -> hint}` table keyed on error CLASS (never a site) turns a
   thrown error or an empty `js` result into ONE next-move line (`coach:` / `EMPTY_JS_HINT`),
   so a stateless driver that never reads the SKILL.md still self-corrects instead of looping.
-- **Navigation-assist** (`search-input.ts` ranker -> `write-commands.ts` `search`): a weak
-  model guesses (often stale) URLs instead of using a site's own search — the residual
-  "navigation" wall after the perception layer. `search <query>` finds the site's search box
-  (a pure, tested ranker over `type=search`/`role=searchbox`/common names/placeholders incl.
-  搜索/search-forms), then drives it with TRUSTED Playwright input (fill+Enter, with a Search
-  -button fallback for Enter-swallowing SPA comboboxes) — raw JS value-set is ignored by
-  React/Vue, trusted events are not. Verified on Wikipedia's Vue search.
+- **Navigation-assist** (`search-input.ts` + `follow-link.ts` + `nav-recovery.ts` ->
+  `write-commands.ts`): a weak model guesses (often stale) URLs instead of using a site's own
+  navigation — the residual "navigation" wall after the perception layer. Three general,
+  page-general (no hostnames) moves, each a pure tested ranker/classifier + a trusted DOM
+  drive:
+  - `search <query>` finds the site's search box (ranker over `type=search`/`role=searchbox`/
+    common names/placeholders incl. 搜索/search-forms) and drives it with TRUSTED Playwright
+    input (fill+Enter, Search-button fallback for Enter-swallowing SPA comboboxes) — raw JS
+    value-set is ignored by React/Vue, trusted events are not. Verified on Wikipedia's search.
+  - `follow <keyword>` clicks the on-page link that best matches a keyword in ONE step (ranker
+    over visible text > aria/title > href path; forces same-tab), collapsing the snapshot ->
+    find @ref -> click chain a weak model fumbles on multi-step traversal (search result ->
+    filing -> document). Verified live (Apple_Inc → `follow "Tim Cook"` → /wiki/Tim_Cook).
+  - `goto` auto-recovery (`nav-recovery.ts`): a failed navigation (4xx/5xx status OR a soft-404
+    "page not found" body at 200) appends ONE recovery line — use THIS site's `search`/homepage
+    (seeded with terms from the failed URL), not another guess. `goto` also now reports the
+    FINAL landing URL on redirect (`… (redirected from …)`) so the model isn't misled. Verified
+    live on SEC/FDA 404s + the clinicaltrials /ct2 → /search redirect.
 - **Auto-surfaced method flywheel** (`skill-router.methodAdviceForNav` +
   `goal.inferNavGoal` -> `server.ts` `appendEngineGuidance`): the already-built
   skill/recipe layer was dark (only reachable via explicit `nc skills`). Now nav-time goal
