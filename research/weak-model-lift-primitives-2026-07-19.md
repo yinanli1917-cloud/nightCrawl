@@ -105,6 +105,26 @@ blocked/rendered/authenticated sites, where flash's navigation weakness independ
 it. **The benchmark is underpowered to measure the lift — it needs more tasks (a held-out
 20-30 sample) and a task mix that isolates "does a browser help" from "can flash navigate".**
 
+## Generalization (held-out set) + navigation-assist
+
+To check the primitives aren't overfit to the original 6, ran condition B (config-fixed) on
+12 HELD-OUT protocol3 tasks the work never touched (ourworldindata, JNTO stats, FDA, MIT
+catalog, IATA, Caltrans, Toronto CS, NTSB, CWUR, NYC open-data, BLS, SSA).
+- Result: **2/12 CORRECT** — ourworldindata (#3, "Trinidad and Tobago", genuine) and CWUR
+  (#27, but its answer text says it could NOT reach the site and answered from public memory
+  — a judge false-positive, not a tool win). MIT catalog (#11) was nearly right, judged
+  strict. So ~1/12 genuine — the approach DOES transfer (not pure overfit), but modestly.
+- The dominant held-out failure is the SAME navigation wall: "unable to retrieve due to
+  navigation" on FDA, Caltrans, Toronto, NTSB, NYC data — the model can't reach the right
+  page. This validated building the navigation-assist.
+
+**`search <query>`** (`search-input.ts` + `write-commands.ts`): finds the site's own search
+box (pure, tested ranker) and drives it with TRUSTED Playwright input (fill+Enter, Search-
+button fallback for Enter-swallowing SPA comboboxes). Raw JS value-set is ignored by
+React/Vue; trusted events work — verified: JS-set left Wikipedia on the homepage, trusted
+`search "Glioblastoma"` navigated straight to the Glioblastoma article. This lets a weak
+model use site search instead of guessing stale URLs (the clinicaltrials `/ct2/` failure).
+
 ## Takeaway / next wall
 
 Net: **B−C moved from +0 to +1/6**, and the qualitative change is bigger than the number —

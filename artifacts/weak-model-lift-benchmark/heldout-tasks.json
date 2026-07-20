@@ -1,0 +1,86 @@
+[
+ {
+  "task_idx": 3,
+  "task_id": "01d5097913764d668c75d7546d0b2be7",
+  "website": "https://ourworldindata.org",
+  "task": "2000年人口超过100万的国家中，人均二氧化碳排放量最高的五个国家中人均GDP最低的是哪个",
+  "answer": "2000年人口超过100万且人均二氧化碳排放量最高的五个国家是阿联酋，科威特，美国，沙特阿拉伯，特立尼达和多巴哥\n\n其中人均GDP最低的是特立尼达和多巴哥，人均GDP为19180美元"
+ },
+ {
+  "task_idx": 4,
+  "task_id": "e7f7b81051104c5c8c105103e01a0462",
+  "website": "https://statistics.jnto.go.jp/en/",
+  "task": "2023年外国游客访问日本时，选择从关西国际机场口岸入境的游客在所有入境的外国游客中比例最高的月份是几月",
+  "answer": "2023-11-01 00:00:00"
+ },
+ {
+  "task_idx": 9,
+  "task_id": "e65e586e216e43c1ad26c8c0d2a39c31",
+  "website": "https://www.fda.gov",
+  "task": "查询活性成分为‘Ibuprofen’且剂型为‘SOLUTION’的药品，找到申请持有人为‘CUMBERLAND PHARMACEUTICALS INC’的记录。请给出该药品的NDA申请号（Application Number）以及其专利到期日（如果有）中最早的一个日期。",
+  "answer": "N022348，2029年9月30日"
+ },
+ {
+  "task_idx": 11,
+  "task_id": "8ac3d5bf57da470ea5d4879d5fcce527",
+  "website": "https://catalog.mit.edu/",
+  "task": "找到麻省理工学院（MIT） 2021-2022学年的课程目录（Course Catalog），查找计算机科学系的课程编号**‘6.006’ (Introduction to Algorithms)，列出该课程描述中明确要求的直接先修课程（Prerequisites）**的编号。如果先修课之间是‘或（OR）’的关系，请完整保留这种逻辑描述。",
+  "answer": "先修课程：6.042[J] AND（6.0001 OR 6.009）\n\n6.042[J]：计算机科学数学(Mathematics for Computer Science)\n6.0001：Python计算机科学编程导论(Introduction to Computer Science Programming in Python)\n6.009：编程基础(Fundamentals of Programming)"
+ },
+ {
+  "task_idx": 13,
+  "task_id": "636c19752cc042a08930ce59cb277479",
+  "website": "https://www.iata.org/",
+  "task": "找到2025年IATA发布的可持续性分析中关于\"STIP proposals\"的分析的Credit编号。",
+  "answer": "Ugis-Riba_shutterstock_273008201"
+ },
+ {
+  "task_idx": 16,
+  "task_id": "9a81aaa6061f42fe901fb61bebb0c457",
+  "website": "https://dot.ca.gov/",
+  "task": "查询加利福尼亚州交通局合同编号为‘04-0K1204’的建设项目的‘Bid Summary’（投标汇总）文件（通常是PDF或Excel），\n在该文件中找出排名第二（2nd Low Bidder）的承包商名称，以及他们对‘Item 12’（第12项工程条目，通常是特定材料或施工项）所报的单价（Unit Price）是多少？",
+  "answer": "MIKE BROWN ELECTRIC CO.\n他们对 Item 12 的单价\nItem 12 (0012): PREPARE WATER POLLUTION CONTROL PROGRAM（准备水污染控制计划）\n\nMIKE BROWN ELECTRIC CO. 的单价：$525.00（一次性总价 Lump Sum）"
+ },
+ {
+  "task_idx": 19,
+  "task_id": "e67c0f2f7fc74741809a639218840d75",
+  "website": "https://www.cs.toronto.edu",
+  "task": "列出多伦多大学2025秋季周期、音乐学院、时间倾向于上午（8:00-11:59）、在圣乔治(St. George)校园上课的、可信权值(credit weight)为0.17的本科课程编号。",
+  "answer": "EMU150H1\nEMU151H1\nEMU152H1\nEMU252H1\nEMU262H1\nEMU128H1"
+ },
+ {
+  "task_idx": 21,
+  "task_id": "e0516574ab054f88820c7cead87224e0",
+  "website": "https://www.ntsb.gov/Pages/home.aspx",
+  "task": "查询2009年Colgan Air 3407号班机空难（事故ID ‘DCA09MA027’）的案卷，请在FDR报告的数据图表或参数列表中，找出在撞击前（End of Recording）的最后5秒内，‘Stick Shaker’（推杆震动器/失速警告）是否被激活（Active/On）？并找出当时记录的‘Angle of Attack’（迎角）的最大值是多少度？",
+  "answer": "在撞击前最后5秒，Stick Shaker 处于激活状态 (Yes) \nAngle of Attack (AOA) 最大值：31.0 deg\n\n• 俯仰角 (Pitch Attitude) 最大值：31度（nose up）\n• Stick shaker 在AOA达到临界失速角时激活（与除冰系统开启时的预期失速速度一致）\n• 失速发生时的飞行载荷：1.42 G\n• 预测失速速度（1G时）：约105节"
+ },
+ {
+  "task_idx": 27,
+  "task_id": "46e2250ebef04da9bc4c1193606f668d",
+  "website": "https://cwur.org",
+  "task": "查看2024年的GLOBAL 2000 LIST BY THE CENTER FOR WORLD UNIVERSITY RANKINGS榜单，法国地区排名前0.2%的学校是哪几个。",
+  "answer": "19\tPSL University\n31\tParis-Saclay University\n33\tParis City University\n36\tSorbonne University"
+ },
+ {
+  "task_idx": 35,
+  "task_id": "c5063f6cf11144ff8f242cddd33c9f4f",
+  "website": "https://data.cityofnewyork.us/",
+  "task": "查询NYC 311投诉数据库中，2024年1月曼哈顿区(Manhattan)噪音(Noise)类别投诉总数。",
+  "answer": "11674"
+ },
+ {
+  "task_idx": 36,
+  "task_id": "c022cb291f864aa1a22138ec449bedf9",
+  "website": "https://data.bls.gov/",
+  "task": "查询美国劳工统计局(BLS)数据，2024年12月Information行业就业人数（季节性调整，千人）。",
+  "answer": "2895（千人）"
+ },
+ {
+  "task_idx": 39,
+  "task_id": "059f5bfb92884cd5af1a2c377d4011d7",
+  "website": "https://www.ssa.gov/",
+  "task": "查询SSA网站Wyoming州2020年男婴最流行名字第1名的出生人数。",
+  "answer": "38"
+ }
+]

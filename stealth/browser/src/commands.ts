@@ -20,7 +20,7 @@ export const READ_COMMANDS = new Set([
 
 export const WRITE_COMMANDS = new Set([
   'goto', 'back', 'forward', 'reload',
-  'click', 'fill', 'select', 'hover', 'type', 'press', 'scroll', 'wait',
+  'click', 'fill', 'select', 'hover', 'type', 'press', 'scroll', 'wait', 'search',
   'viewport', 'cookie', 'cookie-import', 'cookie-import-browser', 'header', 'useragent',
   'upload', 'dialog-accept', 'dialog-dismiss',
   'cleanup', 'autofill',
@@ -108,6 +108,7 @@ export const COMMAND_DESCRIPTIONS: Record<string, { category: string; descriptio
   'hover':   { category: 'Interaction', description: 'Hover element', usage: 'hover <sel>' },
   'type':    { category: 'Interaction', description: 'Type into focused element', usage: 'type <text>' },
   'press':   { category: 'Interaction', description: 'Press key — Enter, Tab, Escape, ArrowUp/Down/Left/Right, Backspace, Delete, Home, End, PageUp, PageDown, or modifiers like Shift+Enter', usage: 'press <key>' },
+  'search':  { category: 'Interaction', description: 'Use the site\'s OWN search box: finds the search input, types the query, and submits — instead of guessing a URL. Then read results with find/table/data.', usage: 'search <query>' },
   'scroll':  { category: 'Interaction', description: 'Scroll element into view, or scroll to page bottom if no selector', usage: 'scroll [sel]' },
   'wait':    { category: 'Interaction', description: 'Wait for element, network idle, or page load (timeout: 15s)', usage: 'wait <sel|--networkidle|--load>' },
   'upload':  { category: 'Interaction', description: 'Upload file(s)', usage: 'upload <sel> <file> [file2...]' },

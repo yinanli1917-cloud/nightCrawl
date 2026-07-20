@@ -139,6 +139,13 @@ self-corrects. All page-general — no per-site logic.
   a data-driven `{errorPattern -> hint}` table keyed on error CLASS (never a site) turns a
   thrown error or an empty `js` result into ONE next-move line (`coach:` / `EMPTY_JS_HINT`),
   so a stateless driver that never reads the SKILL.md still self-corrects instead of looping.
+- **Navigation-assist** (`search-input.ts` ranker -> `write-commands.ts` `search`): a weak
+  model guesses (often stale) URLs instead of using a site's own search — the residual
+  "navigation" wall after the perception layer. `search <query>` finds the site's search box
+  (a pure, tested ranker over `type=search`/`role=searchbox`/common names/placeholders incl.
+  搜索/search-forms), then drives it with TRUSTED Playwright input (fill+Enter, with a Search
+  -button fallback for Enter-swallowing SPA comboboxes) — raw JS value-set is ignored by
+  React/Vue, trusted events are not. Verified on Wikipedia's Vue search.
 - **Auto-surfaced method flywheel** (`skill-router.methodAdviceForNav` +
   `goal.inferNavGoal` -> `server.ts` `appendEngineGuidance`): the already-built
   skill/recipe layer was dark (only reachable via explicit `nc skills`). Now nav-time goal

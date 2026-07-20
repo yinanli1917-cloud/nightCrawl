@@ -15,6 +15,7 @@ import { replaceCookiesFor } from './handoff-cookie-import';
 import { validateNavigationUrl } from './url-validation';
 import { cleanup, formatCleanupResult } from './cleanup';
 import { handleAutofill } from './autofill';
+import { rankSearchInput } from './search-input';
 import { resolveConfig } from './config';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -197,6 +198,64 @@ export async function handleWriteCommand(
       if (!key) throw new Error('Usage: browse press <key> (e.g., Enter, Tab, Escape)');
       await page.keyboard.press(key);
       return `Pressed ${key}`;
+    }
+
+    case 'search': {
+      // Navigation-assist: use the SITE's own search box instead of guessing (stale) URLs.
+      // Gather candidate inputs in-page, rank Node-side (pure/tested), fill + trusted-Enter.
+      const query = args.join(' ');
+      if (!query) throw new Error('Usage: browse search <query>');
+      const cands = await target.evaluate(() => {
+        const vis = (el: Element) => {
+          const r = el.getBoundingClientRect(); const st = getComputedStyle(el);
+          return r.width > 0 && r.height > 0 && st.visibility !== 'hidden' && st.display !== 'none';
+        };
+        return [...document.querySelectorAll('input, textarea')].map((el, index) => {
+          const form = el.closest('form');
+          const inSearchForm = !!form && ((form.getAttribute('role') || '') === 'search'
+            || /search/i.test(form.getAttribute('action') || ''));
+          return {
+            index, visible: vis(el),
+            type: el.getAttribute('type') || '', name: el.getAttribute('name') || '',
+            ariaLabel: el.getAttribute('aria-label') || '', placeholder: el.getAttribute('placeholder') || '',
+            role: el.getAttribute('role') || '', inSearchForm,
+          };
+        });
+      });
+      const pick = rankSearchInput(cands);
+      if (pick === -1) {
+        return `No search box found on this page — open the site's homepage, or run \`snapshot -i\` to see its inputs.`;
+      }
+      // Mark the chosen input so we can drive it with a UNIQUE, TRUSTED Playwright locator.
+      // Trusted input matters: SPA search boxes (React/Vue) ignore raw JS value-set but
+      // respond to real fill+Enter (verified: JS-set failed on Wikipedia, trusted worked).
+      await target.evaluate((i) => {
+        [...document.querySelectorAll('input, textarea')][i]?.setAttribute('data-nc-search', '1');
+      }, cands[pick].index);
+      const urlBefore = bm.getCurrentUrl();
+      try {
+        const input = target.locator('[data-nc-search="1"]');
+        await input.fill(query);
+        await input.press('Enter');
+        await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
+        // SPA fallback: an Enter-swallowing combobox needs its Search button clicked.
+        if (bm.getCurrentUrl() === urlBefore) {
+          await target.evaluate(() => {
+            const vis = (b: Element) => (b as HTMLElement).offsetWidth > 0;
+            const el = document.querySelector('[data-nc-search="1"]');
+            const label = (b: Element) => `${(b.textContent || '').trim()} ${b.getAttribute('aria-label') || ''}`;
+            const btn = (el?.closest('form')?.querySelector('button[type="submit"], input[type="submit"]') as HTMLElement)
+              ?? ([...document.querySelectorAll('button, input[type="submit"], [role="button"]')].filter(vis)
+                .find((b) => /^(search|搜索|搜寻|查询|查找)$/i.test((b.textContent || '').trim()) || /search|搜索/i.test(label(b))) as HTMLElement);
+            btn?.click();
+          });
+          await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
+        }
+      } finally {
+        await target.evaluate(() => document.querySelector('[data-nc-search]')?.removeAttribute('data-nc-search')).catch(() => {});
+      }
+      const moved = bm.getCurrentUrl() !== urlBefore;
+      return `Searched "${query}"${moved ? '' : ' (page did not navigate — the results may be inline; read them, or try `snapshot -i`)'} → now at ${bm.getCurrentUrl()}. Use \`find\`/\`table\`/\`data\` to read the results.`;
     }
 
     case 'scroll': {

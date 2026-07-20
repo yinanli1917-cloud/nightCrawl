@@ -247,6 +247,7 @@ Refs are invalidated on navigation — run `snapshot` again after `goto`.
 | `type <text>` | Type into focused element |
 | `select <sel> <val>` | Select dropdown option |
 | `press <key>` | Enter, Tab, Escape, Arrows, etc. |
+| `search <query>` | Use the site's OWN search box (finds it, types, submits) instead of guessing a URL — then read results with find/table/data |
 | `scroll [sel]` | Scroll element into view or page bottom |
 | `hover <sel>` | Hover element |
 | `upload <sel> <file>` | Upload file |
