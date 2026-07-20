@@ -238,6 +238,7 @@ Refs are invalidated on navigation — run `snapshot` again after `goto`.
 | `table [<index>\|near <keyword>\|@ref] [--json] [--sort <col>] [--desc] [--top N]` | Extract a table or ARIA grid as rows (TSV, or `--json`); no arg lists every table. `--sort <col>` ranks numerically (commas/currency/% stripped) so you read off the max/min instead of eyeballing rows |
 | `read` | Readable main-article text (cleaner than `text`) |
 | `data [--all]` | Surface the JSON/CSV backend request behind a chart/data page, with a ready-to-run fetch — chart numbers are NOT in the page text |
+| `extract [<url>\|@ref] [<sheet>] [--json] [--sort <col>] [--desc] [--top N]` | Read INSIDE a PDF/Excel/CSV file (which `read`/`table` can't see). Fetches it auth-aware; returns PDF text or spreadsheet rows. Omit the arg to extract the current PDF page (`read`/`text` also auto-extract on a PDF) |
 
 ### Interaction
 | Command | Description |
