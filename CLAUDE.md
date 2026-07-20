@@ -168,6 +168,15 @@ self-corrects. All page-general — no per-site logic.
     (seeded with terms from the failed URL), not another guess. `goto` also now reports the
     FINAL landing URL on redirect (`… (redirected from …)`) so the model isn't misled. Verified
     live on SEC/FDA 404s + the clinicaltrials /ct2 → /search redirect.
+- **Planning-assist (repetition/loop coach)** (`repetition-coach.ts` -> `server.ts`
+  `handleCommand`, post-dispatch): the perception layer removed DOM-fumbling; this removes
+  step-WASTE, the residual wall on hard multi-hop tasks. The daemon tracks each session's
+  recent actions and, when a weak model repeats a wasted move (re-searches the same term,
+  re-guesses a visited URL, re-reads a page that has no answer), injects ONE `coach:` nudge
+  toward the productive move. General, session-scoped, no per-site logic. Paired with a
+  modest step-budget lift (a weak-model step is ~$0.0002), this moved the 12 hard-tail
+  gov-data benchmark tasks from 0 solved to 2 solved + 1 partial at ~$0.0025/task. Residual
+  failures are now extraction from PDFs/complex artifacts, not tool-fumbling or looping.
 - **Auto-surfaced method flywheel** (`skill-router.methodAdviceForNav` +
   `goal.inferNavGoal` -> `server.ts` `appendEngineGuidance`): the already-built
   skill/recipe layer was dark (only reachable via explicit `nc skills`). Now nav-time goal
