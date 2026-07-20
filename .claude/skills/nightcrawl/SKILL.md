@@ -221,7 +221,7 @@ Refs are invalidated on navigation — run `snapshot` again after `goto`.
 ### Navigation
 | Command | Description |
 |---------|-------------|
-| `goto <url>` | Navigate to URL |
+| `goto <url>` | Navigate to URL. On a failed nav (404/soft-404/timeout) it appends a recovery hint — use the site's own `search`/homepage, don't re-guess a URL — and reports the final URL after a redirect |
 | `back` / `forward` | History navigation |
 | `reload` | Reload page |
 | `url` | Print current URL |
@@ -235,7 +235,7 @@ Refs are invalidated on navigation — run `snapshot` again after `goto`.
 | `accessibility` | Full ARIA tree |
 | `forms` | Form fields as JSON |
 | `find <keyword> [-C n] [--all] [--re]` | Jump to a term in a big page; returns surrounding text + a pointer to any enclosing table |
-| `table [<index>\|near <keyword>\|@ref] [--json]` | Extract a table or ARIA grid as rows (TSV, or `--json`); no arg lists every table |
+| `table [<index>\|near <keyword>\|@ref] [--json] [--sort <col>] [--desc] [--top N]` | Extract a table or ARIA grid as rows (TSV, or `--json`); no arg lists every table. `--sort <col>` ranks numerically (commas/currency/% stripped) so you read off the max/min instead of eyeballing rows |
 | `read` | Readable main-article text (cleaner than `text`) |
 | `data [--all]` | Surface the JSON/CSV backend request behind a chart/data page, with a ready-to-run fetch — chart numbers are NOT in the page text |
 
@@ -248,6 +248,7 @@ Refs are invalidated on navigation — run `snapshot` again after `goto`.
 | `select <sel> <val>` | Select dropdown option |
 | `press <key>` | Enter, Tab, Escape, Arrows, etc. |
 | `search <query>` | Use the site's OWN search box (finds it, types, submits) instead of guessing a URL — then read results with find/table/data |
+| `follow <keyword>` | Click the on-page link best matching a keyword in one step (walk a search result → the document); no snapshot/@ref needed |
 | `scroll [sel]` | Scroll element into view or page bottom |
 | `hover <sel>` | Hover element |
 | `upload <sel> <file>` | Upload file |
