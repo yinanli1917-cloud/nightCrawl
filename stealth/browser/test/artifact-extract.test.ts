@@ -14,6 +14,7 @@ import {
   detectArtifactType,
   extractSpreadsheet,
   formatArtifactPdf,
+  extractArtifact,
 } from '../src/artifact-extract';
 
 const PDF_MAGIC = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d]); // %PDF-
@@ -68,6 +69,28 @@ describe('extractSpreadsheet — round-trip real xlsx bytes', () => {
     const bytes = new TextEncoder().encode('a,b\n1,2\n3,4\n');
     const tables = extractSpreadsheet(bytes);
     expect(tables[0].rows).toEqual([['a', 'b'], ['1', '2'], ['3', '4']]);
+  });
+});
+
+describe('extractArtifact — size guard (a huge dump must NOT crash the daemon)', () => {
+  const fakeBm = (headers: Record<string, string>) => ({
+    getCurrentUrl: () => 'https://x/',
+    getActiveFrameOrPage: () => ({}),
+    resolveRef: async () => ({ selector: 'a' }),
+    getPage: () => ({
+      context: () => ({
+        request: {
+          fetch: async () => ({ headers: () => headers }),
+          get: async () => ({ headers: () => headers, body: async () => new Uint8Array(0) }),
+        },
+      }),
+    }),
+  }) as any;
+
+  test('refuses an over-cap file by content-length, returning a graceful message', async () => {
+    const out = await extractArtifact(fakeBm({ 'content-length': String(99_000_000) }), ['https://x/all-contracts.xlsx']);
+    expect(out).toMatch(/too large/i);
+    expect(out).toMatch(/99 MB/);
   });
 });
 

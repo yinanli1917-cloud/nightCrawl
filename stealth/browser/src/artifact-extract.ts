@@ -126,6 +126,13 @@ async function resolveArtifactUrl(bm: TabView, arg: string | undefined): Promise
  * `extract [<url>|@ref] [<sheet>] [--json] [--sort <col>] [--desc] [--top N]`
  * Fetch a PDF/Excel/CSV (auth-aware, via the browser context) and return its text/rows.
  */
+// A huge download (a whole "all contracts" dump) OOM-crashed the daemon, stranding the
+// session — the worst kind of wasted step. Refuse oversized files loudly instead.
+const MAX_ARTIFACT_BYTES = 30_000_000; // 30 MB
+const tooBigMsg = (mb: number) =>
+  `This file is ~${mb} MB — too large to extract inline (it likely lists many records). ` +
+  `Narrow to a SPECIFIC record's file, or use the site's search/filter to reach one row.`;
+
 export async function extractArtifact(bm: TabView, args: string[]): Promise<string> {
   const first = args[0];
   const isTarget = !!first && (first.startsWith('@') || /^https?:\/\//i.test(first) || /^\//.test(first));
@@ -133,12 +140,30 @@ export async function extractArtifact(bm: TabView, args: string[]): Promise<stri
   const rest = isTarget ? args.slice(1) : args;
 
   const url = await resolveArtifactUrl(bm, target);
-  const resp = await bm.getPage().context().request.get(url, { timeout: 30000 });
+  const reqCtx = bm.getPage().context().request;
+  // HEAD first to bound size WITHOUT downloading — a giant "all records" dump OOM-crashed the
+  // GET buffer. Best-effort: a server that omits HEAD/content-length falls through to the GET.
+  try {
+    const head = await reqCtx.fetch(url, { method: 'HEAD', timeout: 15000 });
+    const hlen = Number(head.headers()['content-length'] || 0);
+    if (hlen > MAX_ARTIFACT_BYTES) return tooBigMsg(Math.round(hlen / 1e6));
+  } catch { /* HEAD unsupported — rely on the GET guard below */ }
+
+  const resp = await reqCtx.get(url, { timeout: 30000 });
   const ct = resp.headers()['content-type'];
+  const declared = Number(resp.headers()['content-length'] || 0);
+  if (declared > MAX_ARTIFACT_BYTES) return tooBigMsg(Math.round(declared / 1e6));
+
   const bytes = new Uint8Array(await resp.body());
+  if (bytes.length > MAX_ARTIFACT_BYTES) return tooBigMsg(Math.round(bytes.length / 1e6));
   const type = detectArtifactType(ct, url, bytes);
 
-  if (type === 'pdf') return formatArtifactPdf(await extractPdfText(bytes));
-  if (type === 'spreadsheet') return formatArtifactSheets(extractSpreadsheet(bytes), rest);
+  // Guard the parse: a corrupt/encrypted PDF must yield a message, never crash the daemon.
+  try {
+    if (type === 'pdf') return formatArtifactPdf(await extractPdfText(bytes));
+    if (type === 'spreadsheet') return formatArtifactSheets(extractSpreadsheet(bytes), rest);
+  } catch (err) {
+    return `Could not parse this ${type} (${err instanceof Error ? err.message : String(err)}). It may be corrupt, encrypted, or an unusual format.`;
+  }
   return `Not a PDF/Excel/CSV (content-type: ${ct || 'unknown'}). For an HTML page use \`read\`/\`text\`/\`table\` instead. URL: ${url}`;
 }
