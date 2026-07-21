@@ -1,7 +1,7 @@
 # HANDOFF — 2026-04-03
 
 ## 当前任务
-Plan and bootstrap an **independent stealth browser project** — forking gstack browse's CLI architecture into a standalone product that can operate on the hostile web (not just QA your own sites). This is a new project, separate from naTure.
+Plan and bootstrap an **independent digital-twin browser project** — forking gstack browse's CLI architecture into a standalone product that acts as the user across their authenticated and bot-protected sites (not just QA your own sites). This is a new project, separate from naTure.
 
 ## 完成状态
 - ✅ Full competitive landscape research (agent-browser, camoufox-cli, browserbase, etc.)
@@ -18,7 +18,7 @@ Plan and bootstrap an **independent stealth browser project** — forking gstack
 ## 关键决策
 
 ### 1. The project must be independent from gstack
-gstack browse = QA tool (snapshot → click → diff → assert for YOUR sites). What we built = browser agent that reverse-engineers APIs, solves captchas, bypasses anti-bot, and acquires data from the hostile web. Different product category entirely.
+gstack browse = QA tool (snapshot → click → diff → assert for YOUR sites). What we built = a digital-twin browser agent that acts as the user across their authenticated sites and sites with anti-automation checks, using their real cookies and sessions. Different product category entirely.
 
 ### 2. Competitive positioning confirmed
 No existing tool combines: **local stateful CLI + anti-bot stealth + cookie import from real browsers + network interception + JS eval**. Closest:

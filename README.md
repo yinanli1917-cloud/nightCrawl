@@ -38,7 +38,7 @@ nightCrawl will detect and load it automatically when present.
 nightCrawl stands on the shoulders of these open source projects. Thank you.
 
 - [gstack](https://github.com/garrytan/gstack) by **Garry Tan** -- nightCrawl's browser engine is forked from gstack browse. Garry merged our stealth contributions upstream. We forked to pursue a different product direction: an autonomous digital-twin browser that acts as you across your logged-in web, rather than QA verification. Thank you, Garry.
-- [rebrowser-patches](https://github.com/rebrowser/rebrowser-patches) -- CDP Runtime.Enable bypass that defeats Cloudflare, PerimeterX, and DataDome detection
+- [rebrowser-patches](https://github.com/rebrowser/rebrowser-patches) -- CDP Runtime.Enable patch that keeps Cloudflare, PerimeterX, and DataDome from flagging automation
 - [Patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright) -- Playwright stealth patching inspiration
 - [Camoufox](https://github.com/Bin-Huang/camoufox-cli) -- C++ fingerprint spoofing research and roadmap inspiration
 - [Vercel agent-browser](https://github.com/vercel-labs/agent-browser) -- agent browser architecture research

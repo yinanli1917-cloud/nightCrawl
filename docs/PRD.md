@@ -38,8 +38,8 @@ sessions + human handover + proactive workflow detection**.
 - Not a scraping API — it's a browser, not a data pipeline
 
 ### Differentiation
-> nightCrawl is your digital twin in the browser — it acts as you on the hostile web,
-> with your real cookies, stealth patches, and persistent sessions, where every other
+> nightCrawl is your digital twin in the browser — it acts as you, with your real cookies,
+> real sessions, and stealth patches that keep sites treating you as you, where every other
 > tool gets blocked. Everything stays local.
 
 ### Privacy Promise (prominent in all UX)

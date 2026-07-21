@@ -420,7 +420,7 @@ BROWSE_HUMANIZE=1 nc goto https://strict-site.example.com
 
 ### Escalation Ladder
 
-The first thing you try rarely works on hostile sites. Try at least 3 approaches before
+The first thing you try rarely works on the strictest sites. Try at least 3 approaches before
 reporting that something can't be done.
 
 1. **DOM manipulation** — click, fill, scroll, wait for elements. The basics.
@@ -429,12 +429,12 @@ reporting that something can't be done.
    validation? Call the submit handler directly.
 3. **Network interception** — `network` captures API calls the page makes. Replay them
    with `js fetch()` or curl. The page is just a UI; the real work is in the API.
-4. **Protocol reverse-engineering** — read the JS source (`html script`), find the
-   endpoints, understand the data format. SCORM has `cmi.interactions`; OAuth has token
+4. **Read the page's own source and API** — read the JS (`html script`), find the
+   endpoints it calls, understand the data format. SCORM has `cmi.interactions`; OAuth has token
    endpoints; SPAs have GraphQL schemas.
-5. **Direct HTTP bypass** — skip the browser. Use `curl` with cookies/tokens from
-   `nc cookies`. If you can see the request in `network`, you can replay it without
-   the page.
+5. **Call the request directly** — skip the browser. Replay the request with `curl` using
+   cookies/tokens from `nc cookies`. If you can see the request in `network`, you can
+   replay it without the page.
 6. **Turn up stealth or go live** — enable `BROWSE_HUMANIZE=1` and/or pin
    `BROWSE_FINGERPRINT_SEED`; or run the step through the real Arc browser with
    `--engine=real`, which shares the user's live session.
@@ -453,7 +453,7 @@ Most blocks are client-side theatrics — the server doesn't enforce them:
 
 ### When you're truly stuck
 
-After 3+ genuine attempts, report a structured status — not a summary of defeat:
+After 3+ genuine attempts, report a structured status, not a give-up:
 
 ```
 ACCOMPLISHED: [what you did — navigation, data extraction, etc.]
