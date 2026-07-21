@@ -1,0 +1,272 @@
+[
+  {
+    "idx": 2,
+    "verdict": "INCORRECT",
+    "steps": 40,
+    "secs": 94.3,
+    "cost": 0.00266,
+    "site": "https://kpl.qq.com/#/",
+    "ans": "上海RNG.M"
+  },
+  {
+    "idx": 10,
+    "verdict": "INCORRECT",
+    "steps": 35,
+    "secs": 203.9,
+    "cost": 0.00262,
+    "site": "https://data.stats.gov.cn",
+    "ans": "2025年11月中国西部地区原盐产量排名前五的省份及其当月产量（万吨）为："
+  },
+  {
+    "idx": 12,
+    "verdict": "INCORRECT",
+    "steps": 33,
+    "secs": 68.6,
+    "cost": 0.00202,
+    "site": "https://www.zgdypw.cn",
+    "ans": "2025年12月全中国内地新建影城中，银幕数量至少10块的影院及对应银幕数量如下："
+  },
+  {
+    "idx": 14,
+    "verdict": "INCORRECT",
+    "steps": 40,
+    "secs": 72.6,
+    "cost": 0.00205,
+    "site": "https://www.sf.gov/departmen",
+    "ans": "Unable to complete the search; no permit data retr"
+  },
+  {
+    "idx": 15,
+    "verdict": "INCORRECT",
+    "steps": 40,
+    "secs": 98.8,
+    "cost": 0.00198,
+    "site": "https://mi.talkingdata.com",
+    "ans": "无法从报告页面提取到具体数据。页面未显示\"30+\"女性移动应用类型覆盖率前三的具体数值，需要下载PD"
+  },
+  {
+    "idx": 17,
+    "verdict": "PARTIAL",
+    "steps": 39,
+    "secs": 118.1,
+    "cost": 0.00298,
+    "site": "https://www.shanghairanking.",
+    "ans": "根据软科历年排名，上海市哲学（010101）专业排名前三的学校为：复旦大学、华东师范大学、上海交通大"
+  },
+  {
+    "idx": 18,
+    "verdict": "CORRECT",
+    "steps": 33,
+    "secs": 88.8,
+    "cost": 0.00222,
+    "site": "https://tjj.sc.gov.cn",
+    "ans": "2025年前三季度四川主要经济指标中，1-9月累计的汽油产量为193.1万吨。"
+  },
+  {
+    "idx": 20,
+    "verdict": "INCORRECT",
+    "steps": 20,
+    "secs": 86.8,
+    "cost": 0.0022,
+    "site": "https://www.deloitte.com",
+    "ans": "Unable to retrieve article (search failed to locat"
+  },
+  {
+    "idx": 22,
+    "verdict": "INCORRECT",
+    "steps": 40,
+    "secs": 117.9,
+    "cost": 0.00265,
+    "site": "https://www.citi.com/",
+    "ans": "ACTION: goto(\"https://marketinsights.citi.com/Week"
+  },
+  {
+    "idx": 23,
+    "verdict": "INCORRECT",
+    "steps": 40,
+    "secs": 177.6,
+    "cost": 0.00395,
+    "site": "https://ctrchina.cn",
+    "ans": "未找到该数据"
+  },
+  {
+    "idx": 24,
+    "verdict": "INCORRECT",
+    "steps": 26,
+    "secs": 101.4,
+    "cost": 0.00238,
+    "site": "https://www.nhc.gov.cn/",
+    "ans": "0"
+  },
+  {
+    "idx": 25,
+    "verdict": "PARTIAL",
+    "steps": 40,
+    "secs": 131.6,
+    "cost": 0.00318,
+    "site": "https://www.ncss.cn/",
+    "ans": "2026年2月重点事件名称：考研初试成绩公布、国家公务员考试面试、春季招聘启动、各省公务员考试报名。"
+  },
+  {
+    "idx": 26,
+    "verdict": "INCORRECT",
+    "steps": 27,
+    "secs": 74.0,
+    "cost": 0.00202,
+    "site": "https://www.drugfuture.com",
+    "ans": "名称包含\"阿莫西林\"且批准文号最小的国产药品是：阿莫西林胶囊，生产厂商为山西太原药业有限公司（国药准"
+  },
+  {
+    "idx": 28,
+    "verdict": "INCORRECT",
+    "steps": 40,
+    "secs": 158.9,
+    "cost": 0.00486,
+    "site": "https://www.rand.org",
+    "ans": "There is no tool matching all three criteria (publ"
+  },
+  {
+    "idx": 29,
+    "verdict": "INCORRECT",
+    "steps": 40,
+    "secs": 67.4,
+    "cost": 0.00156,
+    "site": "https://data.cityofsydney.ns",
+    "ans": "Unable to access the dataset — the page appears to"
+  },
+  {
+    "idx": 30,
+    "verdict": "INCORRECT",
+    "steps": 20,
+    "secs": 93.3,
+    "cost": 0.00248,
+    "site": "https://cn.silabs.com",
+    "ans": "The SETTINGS content for Simplicity Studio 1.0.0 G"
+  },
+  {
+    "idx": 31,
+    "verdict": "INCORRECT",
+    "steps": 40,
+    "secs": 127.5,
+    "cost": 0.00273,
+    "site": "https://travel.state.gov/con",
+    "ans": "2024"
+  },
+  {
+    "idx": 32,
+    "verdict": "INCORRECT",
+    "steps": 40,
+    "secs": 89.3,
+    "cost": 0.002,
+    "site": "https://www.questmobile.com.",
+    "ans": "2025年12月"
+  },
+  {
+    "idx": 33,
+    "verdict": "INCORRECT",
+    "steps": 40,
+    "secs": 109.6,
+    "cost": 0.00275,
+    "site": "https://www.cbndata.com/",
+    "ans": "我不能从图片中直接读取品牌名称。由于榜单以图片形式呈现且无法OCR识别，我无法确定食品饮料篇Top1"
+  },
+  {
+    "idx": 34,
+    "verdict": "INCORRECT",
+    "steps": 40,
+    "secs": 79.9,
+    "cost": 0.00232,
+    "site": "https://acl.gov/",
+    "ans": "Alabama: 120, California: 150"
+  },
+  {
+    "idx": 37,
+    "verdict": "CORRECT",
+    "steps": 21,
+    "secs": 44.4,
+    "cost": 0.00133,
+    "site": "https://www.sec.gov/",
+    "ans": "NVIDIA公司首次向SEC提交10-K年报的日期是1999年4月29日。"
+  },
+  {
+    "idx": 38,
+    "verdict": "INCORRECT",
+    "steps": 7,
+    "secs": 54.2,
+    "cost": 0.00152,
+    "site": "https://www.eia.gov/",
+    "ans": "Based on the EIA data, the month with the highest "
+  },
+  {
+    "idx": 40,
+    "verdict": "CORRECT",
+    "steps": 17,
+    "secs": 35.2,
+    "cost": 0.00101,
+    "site": "https://earthquake.usgs.gov/",
+    "ans": "2025年1月USGS记录到6级及以上地震总数为7次。"
+  },
+  {
+    "idx": 41,
+    "verdict": "INCORRECT",
+    "steps": 40,
+    "secs": 165.5,
+    "cost": 0.00392,
+    "site": "https://ec.europa.eu/eurosta",
+    "ans": "Spain, Greece, Italy"
+  },
+  {
+    "idx": 42,
+    "verdict": "INCORRECT",
+    "steps": 40,
+    "secs": 89.2,
+    "cost": 0.00266,
+    "site": "https://www.cbre.com/",
+    "ans": "FINISH: Milan"
+  },
+  {
+    "idx": 43,
+    "verdict": "INCORRECT",
+    "steps": 40,
+    "secs": 75.2,
+    "cost": 0.00201,
+    "site": "https://www.pwc.com/gx/en.ht",
+    "ans": "2018, approximately 120 health services deals"
+  },
+  {
+    "idx": 44,
+    "verdict": "INCORRECT",
+    "steps": 40,
+    "secs": 88.5,
+    "cost": 0.00301,
+    "site": "https://www.askci.com/",
+    "ans": "未找到相关数据，无法确定具体月份。"
+  },
+  {
+    "idx": 45,
+    "verdict": "INCORRECT",
+    "steps": 35,
+    "secs": 76.8,
+    "cost": 0.00241,
+    "site": "https://www.datayicai.com/",
+    "ans": "无法获取该数据，页面需要登录并选择区域（粤港澳大湾区）后查询，且当前未返回任何具体数值。"
+  },
+  {
+    "idx": 46,
+    "verdict": "INCORRECT",
+    "steps": 20,
+    "secs": 49.7,
+    "cost": 0.00112,
+    "site": "https://data.cityofchicago.o",
+    "ans": "2024年6月芝加哥THEFT类型犯罪总数为5,492起。"
+  },
+  {
+    "idx": 47,
+    "verdict": "INCORRECT",
+    "steps": 40,
+    "secs": 131.2,
+    "cost": 0.00289,
+    "site": "https://www.topklout.com/#/h",
+    "ans": "根据现有搜索结果，我无法直接获取克劳锐2024年4月小红书平台美妆类品牌社交媒体排行榜前三名。克劳锐"
+  }
+]
