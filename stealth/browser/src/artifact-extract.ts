@@ -10,9 +10,13 @@
  *        find/table affordances work on the file's content. General, no per-site logic.
  */
 
-import { extractText, getDocumentProxy } from 'unpdf';
+import { extractText, extractTextItems, getDocumentProxy } from 'unpdf';
 import * as XLSX from 'xlsx';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import type { TabView } from './session-view';
+import { reconstructTable, looksTabular } from './pdf-tables';
 import {
   capOutput,
   formatTable,
@@ -67,6 +71,42 @@ export async function extractPdfText(bytes: Uint8Array): Promise<string> {
   return Array.isArray(text) ? text.join('\n') : String(text ?? '');
 }
 
+const MAX_PDF_PAGES = 50;
+
+/**
+ * One pass over a PDF: merged text AND reconstructed per-page tables (position-based, general).
+ * Only pages that `looksTabular` become tables, so a prose page just contributes text. Uses
+ * unpdf's `extractTextItems` (positioned items, no-worker mode — a fillable AcroForm crashes
+ * the raw getTextContent path with "object can not be cloned"). NEVER throws: a parse failure
+ * returns empty, so the daemon can never die on a hostile PDF.
+ */
+export async function extractPdfContent(bytes: Uint8Array): Promise<{ text: string; tables: RawTable[] }> {
+  let pages: any[][];
+  try {
+    const res = await extractTextItems(bytes);
+    pages = (res.items || []).slice(0, MAX_PDF_PAGES);
+  } catch {
+    return { text: '', tables: [] };
+  }
+  const textParts: string[] = [];
+  const tables: RawTable[] = [];
+  pages.forEach((pageItems, p) => {
+    let line = '';
+    for (const it of pageItems) {
+      if (typeof it.str !== 'string') continue;
+      line += it.str;
+      if (it.hasEOL) { textParts.push(line); line = ''; }
+    }
+    if (line.trim()) textParts.push(line);
+    const items = pageItems
+      .filter((it) => typeof it.str === 'string' && it.str.trim() !== '')
+      .map((it) => ({ str: it.str, x: it.x, y: it.y, w: it.width }));
+    const rows = reconstructTable(items);
+    if (looksTabular(rows)) tables.push({ index: tables.length, caption: `page ${p + 1}`, rows });
+  });
+  return { text: textParts.join('\n'), tables };
+}
+
 /** Spreadsheet (xlsx/xls/csv) → one RawTable per sheet, cells stringified. [] if unparseable. */
 export function extractSpreadsheet(bytes: Uint8Array): RawTable[] {
   let wb;
@@ -89,6 +129,39 @@ export function formatArtifactPdf(text: string): string {
     return 'This PDF has no extractable text (likely scanned images). Try `data` for a backend data source, or read the surrounding page.';
   }
   return capOutput(clean);
+}
+
+export interface ArtifactResult {
+  kind?: 'pdf' | 'spreadsheet' | 'none';
+  ct?: string;
+  text?: string;
+  tables?: RawTable[];
+  error?: string;
+  mb?: number;
+}
+
+// Fetch AND parse in a DISPOSABLE subprocess. BOTH the HTTP fetch (Playwright's request
+// client AND Bun's in-daemon fetch native-crash the daemon on some servers, e.g. irs.gov)
+// and the pdfjs/xlsx parse are fragile IN the long-lived daemon though safe in a clean
+// process. Any pathology dies in the child (killed on timeout); the daemon can never die or
+// hang on a URL. Cookies pass via a 0600 temp file so they never appear in `ps`.
+const ARTIFACT_FETCH_SCRIPT = path.join(import.meta.dir, '..', 'scripts', 'artifact-fetch.ts');
+
+async function fetchAndParseIsolated(url: string, cookie: string): Promise<ArtifactResult> {
+  const tmp = path.join(os.tmpdir(), `nc-af-${process.pid}-${Math.random().toString(36).slice(2)}.json`);
+  try {
+    fs.writeFileSync(tmp, JSON.stringify({ url, cookie, maxBytes: MAX_ARTIFACT_BYTES }), { mode: 0o600 });
+    const proc = Bun.spawn([process.execPath, 'run', ARTIFACT_FETCH_SCRIPT, tmp], { stdout: 'pipe', stderr: 'ignore' });
+    const killer = setTimeout(() => { try { proc.kill(); } catch {} }, 40000);
+    const out = await new Response(proc.stdout).text();
+    await proc.exited;
+    clearTimeout(killer);
+    return JSON.parse(out || '{}') as ArtifactResult;
+  } catch {
+    return { error: 'the fetch/parse subprocess failed' };
+  } finally {
+    try { fs.unlinkSync(tmp); } catch {}
+  }
 }
 
 // ─── the `extract` command ─────────────────────────────────────
@@ -140,30 +213,26 @@ export async function extractArtifact(bm: TabView, args: string[]): Promise<stri
   const rest = isTarget ? args.slice(1) : args;
 
   const url = await resolveArtifactUrl(bm, target);
-  const reqCtx = bm.getPage().context().request;
-  // HEAD first to bound size WITHOUT downloading — a giant "all records" dump OOM-crashed the
-  // GET buffer. Best-effort: a server that omits HEAD/content-length falls through to the GET.
-  try {
-    const head = await reqCtx.fetch(url, { method: 'HEAD', timeout: 15000 });
-    const hlen = Number(head.headers()['content-length'] || 0);
-    if (hlen > MAX_ARTIFACT_BYTES) return tooBigMsg(Math.round(hlen / 1e6));
-  } catch { /* HEAD unsupported — rely on the GET guard below */ }
+  const cookies = await bm.getPage().context().cookies(url).catch(() => [] as any[]);
+  const cookieHeader = cookies.map((c: any) => `${c.name}=${c.value}`).join('; ');
 
-  const resp = await reqCtx.get(url, { timeout: 30000 });
-  const ct = resp.headers()['content-type'];
-  const declared = Number(resp.headers()['content-length'] || 0);
-  if (declared > MAX_ARTIFACT_BYTES) return tooBigMsg(Math.round(declared / 1e6));
+  // Everything fragile — the fetch AND the parse — happens in the disposable subprocess.
+  const r = await fetchAndParseIsolated(url, cookieHeader);
+  if (r.error === 'too-large') return tooBigMsg(r.mb ?? 0);
+  if (r.error) return `Could not fetch/parse ${url} (${r.error}). Try opening it with \`goto\` instead.`;
 
-  const bytes = new Uint8Array(await resp.body());
-  if (bytes.length > MAX_ARTIFACT_BYTES) return tooBigMsg(Math.round(bytes.length / 1e6));
-  const type = detectArtifactType(ct, url, bytes);
-
-  // Guard the parse: a corrupt/encrypted PDF must yield a message, never crash the daemon.
-  try {
-    if (type === 'pdf') return formatArtifactPdf(await extractPdfText(bytes));
-    if (type === 'spreadsheet') return formatArtifactSheets(extractSpreadsheet(bytes), rest);
-  } catch (err) {
-    return `Could not parse this ${type} (${err instanceof Error ? err.message : String(err)}). It may be corrupt, encrypted, or an unusual format.`;
+  if (r.kind === 'pdf') {
+    const tables = r.tables ?? [];
+    if (rest.includes('--tables')) {
+      return tables.length
+        ? formatArtifactSheets(tables, rest.filter((a) => a !== '--tables'))
+        : 'No tables detected in this PDF (it may be prose or scanned images). Use `extract <url>` for its text.';
+    }
+    const footer = tables.length
+      ? `\n\n(${tables.length} table(s) detected — use \`extract <url> --tables\` for structured rows you can --sort)`
+      : '';
+    return formatArtifactPdf(r.text ?? '') + footer;
   }
-  return `Not a PDF/Excel/CSV (content-type: ${ct || 'unknown'}). For an HTML page use \`read\`/\`text\`/\`table\` instead. URL: ${url}`;
+  if (r.kind === 'spreadsheet') return formatArtifactSheets(r.tables ?? [], rest);
+  return `Not a PDF/Excel/CSV (content-type: ${r.ct || 'unknown'}). For an HTML page use \`read\`/\`text\`/\`table\` instead. URL: ${url}`;
 }

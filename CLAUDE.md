@@ -146,18 +146,25 @@ self-corrects. All page-general — no per-site logic.
   behind GitHub-style `/**/` anti-hijacking armor) — never framework code, so the ring stays
   clean. `scoreDataRequest` rewards it. Verified live: `data` surfaced a JSONP `<script>`
   request (api.github.com) that was previously invisible.
-- **Artifact extraction (PDF/Excel/CSV)** (`artifact-extract.ts` -> `read-commands.ts`,
-  registered in `commands.ts`): the residual hard-tail wall — a weak model reaches a
-  PDF/Excel (Caltrans bid summary, NTSB FDR report, publisher PDF) but `read`/`text`/`table`
-  can't see inside a binary file. `extract [<url>|@ref] [<sheet>] [--json] [--sort ..] [--top]`
-  fetches the file AUTH-AWARE (via the browser context, so session cookies apply) and returns
-  PDF text (`unpdf`) or spreadsheet rows (`xlsx`/SheetJS), reusing `capOutput` + the `table`
-  select/sort helpers. Detection is byte-authoritative (`%PDF`/OLE/PK magic beats a URL
-  extension, so an HTML 404 at a `.pdf` URL isn't parsed as a PDF; an `.xlsx` served as
-  octet-stream is still attempted). `read`/`text` AUTO-ROUTE to extraction on a PDF page
-  (detected by URL ext OR `document.contentType`, so extension-less arxiv-style PDF URLs
-  work). Verified live: minimal + arxiv PDFs, a CSV, and an octet-stream `.xlsx` download.
-  New deps `unpdf` + `xlsx` are justified (binary formats need parsers).
+- **Artifact extraction (PDF/Excel/CSV, isolated)** (`artifact-extract.ts` +
+  `pdf-tables.ts` + `scripts/artifact-fetch.ts` -> `read-commands.ts`, registered in
+  `commands.ts`): the residual hard-tail wall — a weak model reaches a PDF/Excel (Caltrans
+  bid summary, NTSB FDR report, publisher PDF) but `read`/`text`/`table` can't see inside a
+  binary file. `extract [<url>|@ref] [<sheet>] [--json] [--tables] [--sort ..] [--top]`
+  returns PDF text (`unpdf`) or spreadsheet rows (`xlsx`/SheetJS), reusing `capOutput` + the
+  `table` select/sort helpers. `--tables` reconstructs a PDF's TABLES from text positions
+  (`pdf-tables.ts`: cluster items into rows by y, cells/columns by x-gaps — one general
+  algorithm, no per-PDF logic, `looksTabular` gates the fallback to flat text). `read`/`text`
+  AUTO-ROUTE to extraction on a PDF page (URL ext OR `document.contentType`, so extension-less
+  arxiv-style PDF URLs work). Detection is byte-authoritative (`%PDF`/OLE/PK magic beats a URL
+  extension). **Fully ISOLATED (`artifact-fetch.ts` subprocess):** BOTH the fetch AND the
+  parse run in a disposable, timeout-guarded child — because Playwright's request client AND
+  Bun's in-daemon `fetch` NATIVE-crash the daemon on some servers (irs.gov), and pdfjs crashes
+  it on fillable AcroForms, though both are safe in a clean process. Auth via the session
+  cookies passed through a 0600 temp file (never argv). So NO url or PDF can ever crash or hang
+  the daemon — a hard requirement (the fillable W-4 crashed it repeatedly before isolation).
+  Verified live: minimal/arxiv PDFs, a CSV, an octet-stream `.xlsx`, `--tables` reconstruction,
+  and the W-4 form + large/dead URLs all leave the daemon alive. Deps `unpdf` + `xlsx`.
 - **In-band coaching** (`error-coach.ts` -> `server.ts` catch + `read-commands.ts` js/eval):
   a data-driven `{errorPattern -> hint}` table keyed on error CLASS (never a site) turns a
   thrown error or an empty `js` result into ONE next-move line (`coach:` / `EMPTY_JS_HINT`),
